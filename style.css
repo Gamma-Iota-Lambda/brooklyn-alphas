@@ -73,8 +73,8 @@ nav.scrolled {
   text-decoration: none;
 }
 .nav-crest {
-  width: 48px;
-  height: 48px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
   mix-blend-mode: lighten;
   filter: brightness(1.1);
