@@ -192,7 +192,7 @@
         <h2 id="about-heading" class="section-title">Brotherhood<br>Built in <em>Brooklyn</em></h2>
         <div class="about-body">
           <p>The Gamma Iota Lambda Chapter — known as The Brooklyn Alphas — is a graduate chapter of Alpha Phi Alpha Fraternity, Inc., the first intercollegiate Greek-letter fraternity established for African American men.</p>
-          <p>Founded in Brooklyn in 1945, GIL has been a steadfast presence in the borough for over eight decades, championing education, civic leadership, and service across our communities.</p>
+          <p>Chartered in Brooklyn in 1945, GIL has been a steadfast presence in the borough for over eight decades, championing education, civic leadership, and service across our communities.</p>
           <p>Our brothers are professionals, educators, community leaders, and change-makers — united by a shared commitment to excellence and the advancement of our community.</p>
         </div>
         <div class="about-mission">
@@ -447,7 +447,7 @@
       <a href="#contact">Contact</a>
       <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer">Full Site</a>
     </nav>
-    <div class="footer-right">The Brooklyn Alphas · Est. 1945</div>
+    <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
   </footer>
 
   <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
@@ -476,9 +476,35 @@
       });
     });
 
-    // Scroll reveal
+    // Scroll reveal — robust version
     const revealEls = document.querySelectorAll('.reveal');
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach((entry, i) => {
-        if (entry.isIntersecting) {
-          entry.target.style.transitionDel
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0, rootMargin: '0px 0px -40px 0px' });
+
+      revealEls.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) {
+          el.classList.add('visible');
+        } else {
+          observer.observe(el);
+        }
+      });
+    } else {
+      revealEls.forEach(el => el.classList.add('visible'));
+    }
+
+    // Safety net: reveal anything still hidden after 1.5s
+    setTimeout(() => {
+      document.querySelectorAll('.reveal:not(.visible)').forEach(el => {
+        el.classList.add('visible');
+      });
+    }, 1500);
+  l
