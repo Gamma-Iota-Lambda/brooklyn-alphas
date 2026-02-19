@@ -72,21 +72,12 @@ nav.scrolled {
   gap: 0.75rem;
   text-decoration: none;
 }
-.nav-logo .crest-placeholder {
-  width: 44px;
-  height: 44px;
-  border: 2px solid var(--gold);
-  border-radius: 3px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Playfair Display', serif;
-  font-size: 0.75rem;
-  font-weight: 900;
-  color: var(--gold);
-  letter-spacing: 0.02em;
-  line-height: 1;
-  text-align: center;
+.nav-crest {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  mix-blend-mode: lighten;
+  filter: brightness(1.1);
 }
 .nav-logo-text {
   display: flex;
@@ -160,6 +151,26 @@ nav.scrolled {
   opacity: 0.03;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
+
+/* ─── APA CREST HERO BACKGROUND ─── */
+.hero-apa-crest {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  width: min(520px, 55vw);
+  pointer-events: none;
+  user-select: none;
+}
+.hero-apa-crest img {
+  width: 100%;
+  height: auto;
+  opacity: 0.08;
+  mix-blend-mode: lighten;
+  filter: brightness(1.2) saturate(0.8);
+}
+
 .hero-diagonal {
   position: absolute;
   top: 0; right: 0;
