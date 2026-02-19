@@ -211,17 +211,18 @@ nav.scrolled {
 }
 .hero-year {
   font-family: 'Playfair Display', serif;
-  font-size: clamp(5rem, 15vw, 12rem);
+  font-size: clamp(2rem, 5vw, 4rem);
   font-weight: 900;
-  line-height: 0.85;
+  line-height: 0.9;
   color: transparent;
-  -webkit-text-stroke: 1px rgba(184,134,11,0.3);
+  -webkit-text-stroke: 1px rgba(184,134,11,0.25);
   position: absolute;
   right: 5%;
-  top: 10%;
+  top: 8%;
   z-index: 1;
   user-select: none;
   letter-spacing: -0.02em;
+  text-align: right;
   opacity: 0;
   animation: fadeIn 1.2s 0.5s forwards;
 }
@@ -272,6 +273,7 @@ nav.scrolled {
   color: transparent;
   -webkit-text-stroke: 1px rgba(184,134,11,0.3);
   letter-spacing: -0.02em;
+  display: block;
 }
 
 .hero-title {
