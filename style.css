@@ -226,6 +226,40 @@ nav.scrolled {
   opacity: 0;
   animation: fadeIn 1.2s 0.5s forwards;
 }
+
+/* ─── HERO FOUNDING YEAR (1906) ─── */
+.hero-founding {
+  position: absolute;
+  right: 5%;
+  top: 10%;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1em;
+  opacity: 0;
+  animation: fadeIn 1.2s 0.7s forwards;
+  pointer-events: none;
+  user-select: none;
+}
+.hero-founding-label {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 400;
+  font-size: clamp(0.55rem, 1vw, 0.75rem);
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+  color: rgba(184,134,11,0.4);
+}
+.hero-founding-year {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  font-weight: 900;
+  line-height: 0.9;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(184,134,11,0.22);
+  letter-spacing: -0.02em;
+}
+
 .hero-title {
   font-family: 'Playfair Display', serif;
   font-size: clamp(2.8rem, 6vw, 5.5rem);
@@ -981,6 +1015,7 @@ footer {
   .nav-links { display: none; }
   .hero-content { padding: 7rem 1.5rem 4rem; }
   .hero-year { display: none; }
+  .hero-founding { display: none; }
   .about-grid, .scholarship-inner, .contact-inner { grid-template-columns: 1fr; gap: 2.5rem; }
   .programs-grid { grid-template-columns: 1fr 1fr; }
   .meeting-inner { grid-template-columns: 1fr; }
