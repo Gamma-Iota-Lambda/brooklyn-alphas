@@ -51,7 +51,7 @@ body {
 }
 
 /* ─── NAV ─── */
-nav {
+#main-nav {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 100;
@@ -63,7 +63,7 @@ nav {
   background: rgba(10,10,10,0.97);
   transition: background 0.4s;
 }
-nav.scrolled {
+#main-nav.scrolled {
   background: rgba(10,10,10,0.97);
   border-bottom: 1px solid rgba(184,134,11,0.25);
 }
@@ -1171,7 +1171,7 @@ footer {
 
 /* ─── RESPONSIVE ─── */
 @media (max-width: 900px) {
-  nav { padding: 1rem 1.5rem; }
+  #main-nav { padding: 1rem 1.5rem; }
   .nav-links { display: none; }
   .hero-content { padding: 7rem 1.5rem 4rem; }
   .hero-year { display: none; }
