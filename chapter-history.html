@@ -314,7 +314,7 @@
 
   <!-- NAV -->
   <nav id="main-nav" aria-label="Primary navigation">
-    <a href="index.html" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
+    <a href="#" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
       <img src="gil-crest.png" alt="Gamma Iota Lambda Chapter Crest" class="nav-crest" />
       <div class="nav-logo-text">
         <span>Gamma Iota Lambda</span>
@@ -322,14 +322,21 @@
       </div>
     </a>
     <ul class="nav-links">
-      <li><a href="index.html#about">About</a></li>
-      <li><a href="index.html#programs">Programs</a></li>
-      <li><a href="index.html#meeting">Meetings</a></li>
-      <li><a href="index.html#history">History</a></li>
-      <li><a href="chapter-history.html" style="color: var(--gold-bright);">Chapter</a></li>
+      <li><a href="#about">About</a></li>
+      <li><a href="#meeting">Meetings</a></li>
+      <li class="nav-dropdown">
+        <a href="#history">Chapter ▾</a>
+        <ul class="nav-dropdown-menu">
+          <li><a href="#history">Chapter History</a></li>
+          <li><a href="chapter-history.html">Full Chapter History</a></li>
+          <li><a href="alpha-academy.html">Alpha Academy</a></li>
+          <li><a href="#programs">Programs</a></li>
+          <li><a href="#scholarship">Scholarship</a></li>
+        </ul>
+      </li>
       <li><a href="fraternity-history.html">Fraternity</a></li>
-      <li><a href="index.html#scholarship">Scholarship</a></li>
-      <li><a href="index.html#contact">Contact</a></li>
+      <li><a href="impact-20.html">Impact $20</a></li>
+      <li><a href="#contact">Contact</a></li>
     </ul>
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="nav-cta">RSVP Meeting</a>
     <button class="nav-hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
@@ -339,14 +346,16 @@
 
   <!-- MOBILE MENU -->
   <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
-    <a href="index.html#about" class="mobile-nav-link">About</a>
-    <a href="index.html#programs" class="mobile-nav-link">Programs</a>
-    <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
-    <a href="index.html#history" class="mobile-nav-link">History</a>
-    <a href="chapter-history.html" class="mobile-nav-link">Chapter History</a>
+    <a href="#about" class="mobile-nav-link">About</a>
+    <a href="#programs" class="mobile-nav-link">Programs</a>
+    <a href="#meeting" class="mobile-nav-link">Meetings</a>
+    <a href="#history" class="mobile-nav-link">Chapter History</a>
+    <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">↳ Full Chapter History</a>
+    <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">↳ Alpha Academy</a>
     <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
-    <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
-    <a href="index.html#contact" class="mobile-nav-link">Contact</a>
+    <a href="impact-20.html">Impact $20</a>
+    <a href="#scholarship" class="mobile-nav-link">Scholarship</a>
+    <a href="#contact" class="mobile-nav-link">Contact</a>
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
   </div>
 
