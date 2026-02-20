@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fraternity History | Alpha Phi Alpha | The Brooklyn Alphas</title>
+  <meta name="description" content="The history of Alpha Phi Alpha Fraternity, Inc. — the first intercollegiate Greek-letter fraternity established for African American men, founded December 4, 1906 at Cornell University." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* ─── PAGE-SPECIFIC STYLES ─── */
+    .fh-hero {
+      min-height: 55vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 8rem 5% 4rem;
+      position: relative;
+      overflow: hidden;
+      background: var(--black-soft);
+    }
+    .fh-hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 80% 50%, rgba(184,134,11,0.10) 0%, transparent 60%),
+        var(--black-soft);
+    }
+    .fh-hero-year {
+      position: absolute;
+      right: 3%;
+      top: 50%;
+      transform: translateY(-50%);
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(6rem, 18vw, 16rem);
+      font-weight: 900;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(184,134,11,0.12);
+      user-select: none;
+      line-height: 0.85;
+      letter-spacing: -0.02em;
+      pointer-events: none;
+    }
+    .fh-hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 900px;
+    }
+    .fh-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold);
+      text-decoration: none;
+      margin-bottom: 2.5rem;
+      transition: gap 0.2s;
+    }
+    .fh-back:hover { gap: 0.75rem; }
+    .fh-back::before { content: '←'; }
+    .fh-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .fh-eyebrow::before {
+      content: '';
+      display: block;
+      width: 40px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .fh-eyebrow span {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 400;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .fh-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.5rem, 6vw, 5rem);
+      font-weight: 900;
+      line-height: 1.05;
+      color: var(--white);
+    }
+    .fh-title em {
+      font-style: normal;
+      color: var(--gold-bright);
+    }
+    .fh-subtitle {
+      margin-top: 1rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1rem;
+      font-weight: 300;
+      letter-spacing: 0.06em;
+      color: rgba(255,255,255,0.55);
+    }
+
+    /* ─── CONTENT ─── */
+    .fh-content {
+      background: var(--black);
+      padding: 6rem 5%;
+    }
+    .fh-content-inner {
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    .fh-lead {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.15rem, 2.5vw, 1.4rem);
+      font-weight: 700;
+      line-height: 1.7;
+      color: var(--white);
+      border-left: 3px solid var(--gold);
+      padding-left: 1.75rem;
+      margin-bottom: 3rem;
+    }
+    .fh-body p {
+      font-size: 1.05rem;
+      line-height: 1.95;
+      color: rgba(255,255,255,0.75);
+      font-weight: 300;
+      margin-bottom: 2rem;
+    }
+    .fh-divider {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin: 3.5rem 0;
+    }
+    .fh-divider::before,
+    .fh-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(184,134,11,0.2);
+    }
+    .fh-divider-icon {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.2rem;
+      color: rgba(184,134,11,0.4);
+    }
+
+    /* ─── LEADERS CALLOUT ─── */
+    .fh-leaders {
+      background: rgba(184,134,11,0.05);
+      border: 1px solid rgba(184,134,11,0.2);
+      padding: 2.5rem;
+      margin: 3rem 0;
+      position: relative;
+    }
+    .fh-leaders::before {
+      content: '';
+      position: absolute;
+      top: 8px; left: 8px; right: -8px; bottom: -8px;
+      border: 1px solid rgba(184,134,11,0.08);
+      pointer-events: none;
+    }
+    .fh-leaders-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.25rem;
+    }
+    .fh-leaders-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem 1.5rem;
+      list-style: none;
+    }
+    .fh-leaders-list li {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 400;
+      color: rgba(255,255,255,0.8);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .fh-leaders-list li::before {
+      content: '◆';
+      color: var(--gold);
+      font-size: 0.4rem;
+    }
+
+    /* ─── FOUNDING DATE BADGE ─── */
+    .fh-date-badge {
+      text-align: center;
+      padding: 3rem;
+      border-top: 1px solid rgba(184,134,11,0.15);
+      border-bottom: 1px solid rgba(184,134,11,0.15);
+      margin: 4rem 0;
+    }
+    .fh-date-badge-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+      margin-bottom: 0.75rem;
+    }
+    .fh-date-badge-date {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 900;
+      color: var(--gold-bright);
+    }
+    .fh-date-badge-sub {
+      margin-top: 0.5rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+    }
+
+    /* ─── CTA ─── */
+    .fh-cta {
+      background: var(--black-soft);
+      padding: 5rem 5%;
+      text-align: center;
+    }
+    .fh-cta h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 900;
+      color: var(--white);
+      margin-bottom: 1rem;
+    }
+    .fh-cta h2 em { font-style: normal; color: var(--gold-bright); }
+    .fh-cta p {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1rem;
+      font-weight: 300;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 2rem;
+      letter-spacing: 0.05em;
+    }
+    .fh-cta-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 600px) {
+      .fh-hero { padding: 6rem 1.25rem 3rem; }
+      .fh-content { padding: 4rem 1.25rem; }
+      .fh-leaders { padding: 1.75rem; margin-right: 8px; }
+      .fh-leaders::before { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- NAV -->
+  <nav id="main-nav" aria-label="Primary navigation">
+    <a href="index.html" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
+      <img src="gil-crest.png" alt="Gamma Iota Lambda Chapter Crest" class="nav-crest" />
+      <div class="nav-logo-text">
+        <span>Gamma Iota Lambda</span>
+        <span>The Brooklyn Alphas · Chartered 1945</span>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html#about">About</a></li>
+      <li><a href="index.html#programs">Programs</a></li>
+      <li><a href="index.html#meeting">Meetings</a></li>
+      <li><a href="index.html#history">History</a></li>
+      <li><a href="fraternity-history.html" style="color: var(--gold-bright);">Fraternity</a></li>
+      <li><a href="index.html#scholarship">Scholarship</a></li>
+      <li><a href="index.html#contact">Contact</a></li>
+    </ul>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="nav-cta">RSVP Meeting</a>
+    <button class="nav-hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <!-- MOBILE MENU -->
+  <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+    <a href="index.html#about" class="mobile-nav-link">About</a>
+    <a href="index.html#programs" class="mobile-nav-link">Programs</a>
+    <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
+    <a href="index.html#history" class="mobile-nav-link">History</a>
+    <a href="fraternity-history.html" class="mobile-nav-link">Fraternity</a>
+    <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
+    <a href="index.html#contact" class="mobile-nav-link">Contact</a>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
+  </div>
+
+  <main id="main-content">
+
+    <!-- HERO -->
+    <div class="fh-hero">
+      <div class="fh-hero-bg"></div>
+      <div class="fh-hero-year" aria-hidden="true">1906</div>
+      <div class="fh-hero-content">
+        <a href="index.html" class="fh-back">Back to Home</a>
+        <div class="fh-eyebrow"><span>Alpha Phi Alpha Fraternity, Inc.</span></div>
+        <h1 class="fh-title">Fraternity<br><em>History</em></h1>
+        <p class="fh-subtitle">Founded December 4, 1906 · Cornell University · Ithaca, New York</p>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="fh-content">
+      <div class="fh-content-inner">
+
+        <div class="fh-date-badge reveal">
+          <div class="fh-date-badge-label">Date of Founding</div>
+          <div class="fh-date-badge-date">December 4, 1906</div>
+          <div class="fh-date-badge-sub">Cornell University · Ithaca, New York</div>
+        </div>
+
+        <p class="fh-lead reveal">Alpha Phi Alpha Fraternity, Inc., the first intercollegiate Greek-letter fraternity established for African American Men, was founded on December 4, 1906 at Cornell University in Ithaca, New York by seven college men who recognized the need for a strong bond of brotherhood among African descendants in the United States.</p>
+
+        <div class="fh-body">
+          <p class="reveal">The fraternity initially served as a study and support group for Black students who faced racial prejudice, both educationally and socially, at Cornell. The Jewel founders and early leaders of the fraternity succeeded in laying a firm foundation for Alpha Phi Alpha's principles of scholarship, fellowship, good character, and the uplifting of humanity. Alpha Phi Alpha chapters were established at other colleges and universities, many of them historically Black institutions, soon after the founding at Cornell. The first alumni chapter was established in 1911. While continuing to stress academic excellence among its members, Alpha also recognized the need to help correct the educational, economic, political, and social injustices faced by African Americans in society at large.</p>
+
+          <div class="fh-divider reveal"><span class="fh-divider-icon">◆</span></div>
+
+          <div class="fh-leaders reveal">
+            <div class="fh-leaders-label">Notable Alpha Men — Civil Rights Leaders</div>
+            <ul class="fh-leaders-list">
+              <li>W.E.B. DuBois</li>
+              <li>Adam Clayton Powell, Jr.</li>
+              <li>Edward Brooke</li>
+              <li>Dr. Martin Luther King, Jr.</li>
+              <li>Thurgood Marshall</li>
+              <li>Andrew Young</li>
+              <li>William Gray</li>
+              <li>Paul Robeson</li>
+            </ul>
+          </div>
+
+          <p class="reveal">Alpha Phi Alpha has long stood at the forefront of the African-American community's fight for civil rights through leaders such as W.E.B. DuBois, Adam Clayton Powell, Jr., Edward Brooke, Dr. Martin Luther King, Jr., Thurgood Marshall, Andrew Young, William Gray, Paul Robeson, and many others. Since its founding on December 4, 1906, Alpha Phi Alpha Fraternity, Inc. has supplied voice and vision to the struggle of African Americans and people of color around the world.</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="fh-cta">
+      <h2>Connect with<br><em>The Brooklyn Alphas</em></h2>
+      <p>Gamma Iota Lambda Chapter · Chartered 1945 · Brooklyn, New York</p>
+      <div class="fh-cta-buttons">
+        <a href="index.html#about" class="btn-primary">About Our Chapter</a>
+        <a href="index.html#contact" class="btn-outline">Get Involved</a>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer role="contentinfo">
+    <div class="footer-left">
+      <strong>Gamma Iota Lambda Chapter · ΑΦΑ</strong>
+      © 2026 Alpha Phi Alpha Fraternity, Inc. All rights reserved.
+    </div>
+    <nav class="footer-center" aria-label="Footer navigation">
+      <a href="index.html#about">About</a>
+      <a href="index.html#programs">Programs</a>
+      <a href="index.html#meeting">Meetings</a>
+      <a href="index.html#scholarship">Scholarship</a>
+      <a href="index.html#contact">Contact</a>
+      <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer">Full Site</a>
+    </nav>
+    <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
+  </footer>
+
+  <script>
+    // Sticky nav
+    const nav = document.getElementById('main-nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+
+    // Hamburger menu
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobile-menu');
+    hamburger.addEventListener('click', () => {
+      const isOpen = mobileMenu.classList.toggle('open');
+      hamburger.classList.toggle('open', isOpen);
+      hamburger.setAttribute('aria-expanded', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    });
+    mobileMenu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    });
+
+    // Scroll reveal
+    document.querySelectorAll('.reveal').forEach(el => {
+      new IntersectionObserver(([entry], obs) => {
+        if (entry.isIntersecting) {
+          el.classList.add('visible');
+          obs.disconnect();
+        }
+      }, { threshold: 0.1 }).observe(el);
+    });
+  </script>
+</body>
+</html>
