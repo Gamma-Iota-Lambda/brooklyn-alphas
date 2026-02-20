@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Impact $20 | Gamma Iota Lambda | The Brooklyn Alphas</title>
+  <meta name="description" content="Impact $20 — your $20 donation directly supports educational access, mentorship, and community programs in Brooklyn through Gamma Iota Lambda Chapter of Alpha Phi Alpha." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+
+    /* ─── HERO ─── */
+    .i20-hero {
+      min-height: 70vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 9rem 8% 5rem;
+      position: relative;
+      overflow: hidden;
+      background: var(--black);
+    }
+    .i20-hero-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 50%, rgba(184,134,11,0.10) 0%, transparent 65%);
+    }
+    .i20-hero-bk {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(8rem, 22vw, 22rem);
+      font-weight: 900;
+      font-style: italic;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(184,134,11,0.08);
+      user-select: none;
+      pointer-events: none;
+      letter-spacing: -0.02em;
+    }
+    .i20-hero-content {
+      position: relative;
+      z-index: 2;
+    }
+    .i20-hero-eyebrow {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .i20-hero-eyebrow::before,
+    .i20-hero-eyebrow::after {
+      content: '';
+      width: 36px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .i20-hero-eyebrow span {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 400;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .i20-hero-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(4rem, 14vw, 13rem);
+      font-weight: 900;
+      line-height: 0.9;
+      color: var(--white);
+      letter-spacing: -0.02em;
+    }
+    .i20-hero-title em {
+      font-style: normal;
+      color: var(--gold-bright);
+    }
+    .i20-hero-sub {
+      margin-top: 2rem;
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 300;
+      color: rgba(255,255,255,0.65);
+      max-width: 560px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.7;
+    }
+    .i20-hero-sub strong { color: var(--white); font-weight: 500; }
+
+    /* ─── EDUCATE SECTION ─── */
+    .i20-educate {
+      background: #1e1e1e;
+      padding: 6rem 8%;
+    }
+    .i20-educate h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 900;
+      color: var(--white);
+      margin-bottom: 1.5rem;
+    }
+    .i20-educate-lead {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.05rem;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.7);
+      max-width: 820px;
+      margin-bottom: 3rem;
+      padding-bottom: 3rem;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .i20-educate-lead strong { color: var(--white); }
+
+    /* ─── ACCORDION ─── */
+    .i20-accordion {
+      max-width: 900px;
+    }
+    .i20-accordion-item {
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    .i20-accordion-trigger {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 1.4rem 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      text-align: left;
+    }
+    .i20-accordion-trigger span {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1rem;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--white);
+    }
+    .i20-accordion-icon {
+      font-size: 1.3rem;
+      color: rgba(255,255,255,0.5);
+      transition: transform 0.3s;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .i20-accordion-item.open .i20-accordion-icon {
+      transform: rotate(45deg);
+    }
+    .i20-accordion-body {
+      display: none;
+      padding: 0 0 1.5rem 2rem;
+    }
+    .i20-accordion-item.open .i20-accordion-body {
+      display: block;
+    }
+    .i20-accordion-body p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.98rem;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.6);
+    }
+
+    /* ─── WHY $20 ─── */
+    .i20-why {
+      background: #252525;
+      padding: 6rem 8%;
+    }
+    .i20-why h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 900;
+      color: var(--white);
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+    .i20-why-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      max-width: 1100px;
+      margin: 0 auto 5rem;
+    }
+    .i20-why-text p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.05rem;
+      line-height: 1.85;
+      color: rgba(255,255,255,0.7);
+      margin-bottom: 1.5rem;
+    }
+    .i20-why-text p strong { color: var(--white); }
+
+    /* ─── STAT BARS ─── */
+    .i20-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .i20-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .i20-bar-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      width: 90px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+    .i20-bar-track {
+      flex: 1;
+      height: 8px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .i20-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--gold);
+    }
+    .i20-bar-value {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      width: 70px;
+      flex-shrink: 0;
+    }
+
+    /* ─── DONUT SECTION ─── */
+    .i20-donut-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      max-width: 1100px;
+      margin: 0 auto 3rem;
+    }
+    .i20-donut-text p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.05rem;
+      line-height: 1.85;
+      color: rgba(255,255,255,0.7);
+    }
+    .i20-donut-text p strong { color: var(--white); }
+    .i20-donut-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1.5rem;
+    }
+    .i20-donut-wrap svg { width: min(220px, 100%); height: auto; }
+    .i20-donut-legend {
+      display: flex;
+      gap: 1.5rem;
+    }
+    .i20-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 400;
+      color: rgba(255,255,255,0.55);
+      letter-spacing: 0.06em;
+    }
+    .i20-legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .i20-why-tagline {
+      text-align: center;
+      font-family: 'Barlow', sans-serif;
+      font-size: 1rem;
+      color: rgba(255,255,255,0.5);
+      font-style: italic;
+      max-width: 700px;
+      margin: 0 auto;
+      padding-top: 3rem;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+
+    /* ─── TAX / DONATE ─── */
+    .i20-donate {
+      background: var(--white);
+      padding: 6rem 8%;
+    }
+    .i20-donate-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .i20-donate-left h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 900;
+      color: #111;
+      line-height: 1.15;
+      margin-bottom: 2rem;
+    }
+    .i20-donate-qr {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .i20-donate-qr-box {
+      width: 160px;
+      height: 160px;
+      background: #f0f0f0;
+      border: 2px solid #ddd;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      color: #999;
+      text-align: center;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .i20-donate-zelle {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #6d1ed4;
+      letter-spacing: 0.02em;
+    }
+    .i20-donate-right p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1rem;
+      line-height: 1.8;
+      color: #333;
+      margin-bottom: 1.25rem;
+    }
+    .i20-donate-right p strong { color: #111; }
+    .i20-donate-right p:last-child {
+      font-weight: 700;
+      color: #111;
+    }
+
+    /* ─── JOIN MOVEMENT ─── */
+    .i20-movement {
+      background: #f0f0f0;
+      padding: 6rem 8%;
+      text-align: center;
+    }
+    .i20-movement h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 900;
+      color: #111;
+      margin-bottom: 2rem;
+    }
+    .i20-movement p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.05rem;
+      line-height: 1.85;
+      color: #444;
+      max-width: 680px;
+      margin: 0 auto 1.25rem;
+    }
+    .i20-movement p strong { color: #111; }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 800px) {
+      .i20-hero { min-height: 55vh; padding: 7rem 5% 4rem; }
+      .i20-educate, .i20-why, .i20-donate, .i20-movement { padding: 4rem 5%; }
+      .i20-why-grid, .i20-donut-section, .i20-donate-grid {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+      }
+      .i20-donate-qr { align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- NAV -->
+  <nav id="main-nav" aria-label="Primary navigation">
+    <a href="index.html" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
+      <img src="gil-crest.png" alt="Gamma Iota Lambda Chapter Crest" class="nav-crest" />
+      <div class="nav-logo-text">
+        <span>Gamma Iota Lambda</span>
+        <span>The Brooklyn Alphas · Chartered 1945</span>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html#about">About</a></li>
+      <li><a href="index.html#programs">Programs</a></li>
+      <li><a href="index.html#meeting">Meetings</a></li>
+      <li class="nav-dropdown">
+        <a href="index.html#history">Chapter ▾</a>
+        <ul class="nav-dropdown-menu">
+          <li><a href="index.html#history">Chapter History</a></li>
+          <li><a href="chapter-history.html">Full Chapter History</a></li>
+          <li><a href="alpha-academy.html">Alpha Academy</a></li>
+        </ul>
+      </li>
+      <li><a href="fraternity-history.html">Fraternity</a></li>
+      <li><a href="index.html#scholarship">Scholarship</a></li>
+      <li><a href="impact-20.html" style="color: var(--gold-bright);">Impact $20</a></li>
+      <li><a href="index.html#contact">Contact</a></li>
+    </ul>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="nav-cta">RSVP Meeting</a>
+    <button class="nav-hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <!-- MOBILE MENU -->
+  <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+    <a href="index.html#about" class="mobile-nav-link">About</a>
+    <a href="index.html#programs" class="mobile-nav-link">Programs</a>
+    <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
+    <a href="index.html#history" class="mobile-nav-link">Chapter History</a>
+    <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">↳ Full Chapter History</a>
+    <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">↳ Alpha Academy</a>
+    <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
+    <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
+    <a href="impact-20.html" class="mobile-nav-link">Impact $20</a>
+    <a href="index.html#contact" class="mobile-nav-link">Contact</a>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
+  </div>
+
+  <main id="main-content">
+
+    <!-- HERO -->
+    <div class="i20-hero">
+      <div class="i20-hero-bg"></div>
+      <div class="i20-hero-bk" aria-hidden="true">Brooklyn</div>
+      <div class="i20-hero-content">
+        <div class="i20-hero-eyebrow"><span>Gamma Iota Lambda Chapter</span></div>
+        <h1 class="i20-hero-title">Impact <em>$20</em></h1>
+        <p class="i20-hero-sub">Did you know that <strong>$20</strong> can help expand educational access, mentorship, and community programs in Brooklyn?</p>
+      </div>
+    </div>
+
+    <!-- LETS EDUCATE -->
+    <div class="i20-educate">
+      <h2>Let's Educate The Community Together</h2>
+      <p class="i20-educate-lead">Education isn't just about classrooms—it's about community. Every donation directly supports our <strong>One GIL vision</strong> and our ongoing mission to <strong>Educate the Community</strong> through programs that inform, empower, and inspire.</p>
+
+      <div class="i20-accordion">
+
+        <div class="i20-accordion-item open">
+          <button class="i20-accordion-trigger">
+            <span>Alpha Academy</span>
+            <span class="i20-accordion-icon">+</span>
+          </button>
+          <div class="i20-accordion-body">
+            <p>Developing academic excellence and leadership in young men through mentorship, workshops, and real-world experiences.</p>
+          </div>
+        </div>
+
+        <div class="i20-accordion-item">
+          <button class="i20-accordion-trigger">
+            <span>Community Education Initiatives</span>
+            <span class="i20-accordion-icon">+</span>
+          </button>
+          <div class="i20-accordion-body">
+            <p>Hosting forums and learning experiences that address financial literacy, civic engagement, health, and social justice.</p>
+          </div>
+        </div>
+
+        <div class="i20-accordion-item">
+          <button class="i20-accordion-trigger">
+            <span>Scholarships &amp; Fellowships</span>
+            <span class="i20-accordion-icon">+</span>
+          </button>
+          <div class="i20-accordion-body">
+            <p>Expanding access to higher education through the Myles A. Paige Scholarship and new academic partnerships.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- WHY IMPACT $20 -->
+    <div class="i20-why">
+      <h2>Why Impact $20</h2>
+
+      <div class="i20-why-grid">
+        <div class="i20-why-text">
+          <p>Brooklyn is home to nearly <strong>2.7 million people</strong>, over <strong>1 million households</strong>, and hundreds of thousands of families across neighborhoods like East New York, Brownsville, and Canarsie.</p>
+        </div>
+        <div class="i20-bars">
+          <div class="i20-bar-row">
+            <div class="i20-bar-label">People</div>
+            <div class="i20-bar-track"><div class="i20-bar-fill" style="width:90%"></div></div>
+            <div class="i20-bar-value">2.7M</div>
+          </div>
+          <div class="i20-bar-row">
+            <div class="i20-bar-label">Households</div>
+            <div class="i20-bar-track"><div class="i20-bar-fill" style="width:37%"></div></div>
+            <div class="i20-bar-value">1M+</div>
+          </div>
+          <div class="i20-bar-row">
+            <div class="i20-bar-label">Target</div>
+            <div class="i20-bar-track"><div class="i20-bar-fill" style="width:12%; background: rgba(184,134,11,0.5);"></div></div>
+            <div class="i20-bar-value">ENY/BV/C</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="i20-donut-section">
+        <div class="i20-donut-text">
+          <p>In East New York, nearly <strong>1 in 3 households are families with children</strong>, while in Brownsville and Canarsie that number climbs to <strong>over 60–70%</strong>. There's no shortage of work to do — and no shortage of people who need to see Alpha in action.</p>
+        </div>
+        <div class="i20-donut-wrap">
+          <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+            <!-- Donut chart: ENY ~33%, Brownsville ~38%, Canarsie ~29% -->
+            <!-- Total circumference for r=70: 2*pi*70 = 439.8 -->
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#555" stroke-width="28"
+              stroke-dasharray="439.8" stroke-dashoffset="0" />
+            <!-- ENY: 33% = 145 -->
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#888" stroke-width="28"
+              stroke-dasharray="145 439.8" stroke-dashoffset="110"
+              transform="rotate(-90 100 100)" />
+            <!-- Brownsville: 38% = 167 -->
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#aaa" stroke-width="28"
+              stroke-dasharray="167 439.8" stroke-dashoffset="-35"
+              transform="rotate(-90 100 100)" />
+            <!-- Canarsie: 29% = 127 -->
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#ccc" stroke-width="28"
+              stroke-dasharray="127 439.8" stroke-dashoffset="-202"
+              transform="rotate(-90 100 100)" />
+            <circle cx="100" cy="100" r="55" fill="#252525" />
+          </svg>
+          <div class="i20-donut-legend">
+            <div class="i20-legend-item"><div class="i20-legend-dot" style="background:#888"></div>ENY</div>
+            <div class="i20-legend-item"><div class="i20-legend-dot" style="background:#aaa"></div>Brownsville</div>
+            <div class="i20-legend-item"><div class="i20-legend-dot" style="background:#ccc"></div>Canarsie</div>
+          </div>
+        </div>
+      </div>
+
+      <p class="i20-why-tagline">Every $20 contribution fuels the same spirit that built this chapter—turning collective purpose into measurable progress.</p>
+    </div>
+
+    <!-- TAX DEDUCTIBLE / DONATE -->
+    <div class="i20-donate">
+      <div class="i20-donate-grid">
+        <div class="i20-donate-left">
+          <h2>Your Gift Matters And It's Tax-Deductible</h2>
+          <div class="i20-donate-qr">
+            <div class="i20-donate-qr-box">QR Code<br>Coming Soon</div>
+            <div class="i20-donate-zelle">Zelle®</div>
+          </div>
+        </div>
+        <div class="i20-donate-right">
+          <p>Every dollar you contribute is <strong>fully tax-deductible</strong> through the <strong>Gamma Iota Lambda Foundation, Inc.</strong>, our registered 501(c)(3) charitable organization.</p>
+          <p>Your $20 donation will directly support programs that educate, uplift, and empower the next generation of leaders.</p>
+          <p>Scan the QR code below to give securely via <strong>Zelle</strong> and become part of the movement today.</p>
+          <p><strong>Make your $20 impact today — because when you give, our entire community grows.</strong></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- JOIN THE MOVEMENT -->
+    <div class="i20-movement">
+      <h2>Join The Movement</h2>
+      <p>Impact $20 isn't just about raising funds—it's about building a legacy of learning and leadership. Your support helps ensure that every young man we reach sees himself as capable, connected, and called to serve.</p>
+      <p>When you give, you're not just donating—you're investing in <strong>education, empowerment, and enduring impact.</strong></p>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer role="contentinfo">
+    <div class="footer-left">
+      <strong>Gamma Iota Lambda Chapter · ΑΦΑ</strong>
+      © 2026 Alpha Phi Alpha Fraternity, Inc. All rights reserved.
+    </div>
+    <nav class="footer-center" aria-label="Footer navigation">
+      <a href="index.html#about">About</a>
+      <a href="index.html#programs">Programs</a>
+      <a href="index.html#meeting">Meetings</a>
+      <a href="index.html#scholarship">Scholarship</a>
+      <a href="index.html#contact">Contact</a>
+      <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer">Full Site</a>
+    </nav>
+    <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('main-nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobile-menu');
+    hamburger.addEventListener('click', () => {
+      const isOpen = mobileMenu.classList.toggle('open');
+      hamburger.classList.toggle('open', isOpen);
+      hamburger.setAttribute('aria-expanded', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    });
+    mobileMenu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    });
+
+    // Accordion
+    document.querySelectorAll('.i20-accordion-trigger').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const item = btn.closest('.i20-accordion-item');
+        const isOpen = item.classList.contains('open');
+        document.querySelectorAll('.i20-accordion-item').forEach(i => i.classList.remove('open'));
+        if (!isOpen) item.classList.add('open');
+      });
+    });
+  </script>
+</body>
+</html>
