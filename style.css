@@ -763,6 +763,55 @@ section {
   color: rgba(255,255,255,0.55);
 }
 
+
+/* ─── FRATERNITY HISTORY ─── */
+#fraternity-history {
+  background: var(--black);
+  position: relative;
+  overflow: hidden;
+}
+#fraternity-history::before {
+  content: '1906';
+  position: absolute;
+  right: -2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: 'Playfair Display', serif;
+  font-size: 18rem;
+  font-weight: 900;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(184,134,11,0.05);
+  user-select: none;
+  line-height: 1;
+  pointer-events: none;
+}
+.frat-history-inner {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.frat-history-header {
+  margin-bottom: 3rem;
+}
+.frat-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.8rem;
+}
+.frat-history-body p {
+  font-size: 1.05rem;
+  line-height: 1.9;
+  color: rgba(255,255,255,0.75);
+  font-weight: 300;
+  position: relative;
+  z-index: 1;
+}
+.frat-history-body p:first-child {
+  font-size: 1.15rem;
+  color: rgba(255,255,255,0.88);
+  border-left: 3px solid var(--gold);
+  padding-left: 1.5rem;
+}
+
 /* ─── SCHOLARSHIP ─── */
 #scholarship {
   background: var(--black);
@@ -1027,15 +1076,7 @@ footer {
 }
 
 /* ─── SCROLL REVEAL ─── */
-.reveal {
-  opacity: 0;
-  transform: translateY(28px);
-  transition: opacity 0.65s ease, transform 0.65s ease;
-}
-.reveal.visible {
-  opacity: 1;
-  transform: translateY(0);
-}
+/* Removed — content visible by default */
 
 /* ─── RESPONSIVE ─── */
 @media (max-width: 900px) {
@@ -1164,7 +1205,7 @@ footer {
     animation-delay: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
-  .reveal { opacity: 1; transform: none; }
+
 
 }
 
