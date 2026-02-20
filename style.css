@@ -1027,12 +1027,13 @@ footer {
 }
 
 /* ─── SCROLL REVEAL ─── */
-.reveal {
+/* Elements visible by default — only hidden if JS is active */
+.js-ready .reveal {
   opacity: 0;
   transform: translateY(28px);
   transition: opacity 0.65s ease, transform 0.65s ease;
 }
-.reveal.visible {
+.js-ready .reveal.visible {
   opacity: 1;
   transform: translateY(0);
 }
