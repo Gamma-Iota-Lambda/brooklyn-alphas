@@ -65,38 +65,48 @@
     }
   }
 
-    // Scroll reveal
-    (function() {
-      const els = document.querySelectorAll('.reveal');
-      if (!els.length) return;
+    // Scroll reveal — safe version
+    // Step 1: mark <html> so CSS knows JS is active (elements become hidden)
+    document.documentElement.classList.add('js-ready');
 
-      function show(el) {
-        el.classList.add('visible');
-      }
+    // Step 2: immediately show anything already in viewport
+    const revealEls = document.querySelectorAll('.reveal');
 
-      // Show anything already in viewport immediately
-      function checkAll() {
-        els.forEach(el => {
-          if (el.classList.contains('visible')) return;
-          const rect = el.getBoundingClientRect();
-          if (rect.top < window.innerHeight - 40) show(el);
+    function showEl(el) {
+      el.classList.add('visible');
+    }
+
+    function isInView(el) {
+      const rect = el.getBoundingClientRect();
+      return rect.top < window.innerHeight - 40 && rect.bottom > 0;
+    }
+
+    // Show all in-viewport elements right now
+    revealEls.forEach(el => { if (isInView(el)) showEl(el); });
+
+    // Watch remaining elements
+    if ('IntersectionObserver' in window) {
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+          if (e.isIntersecting) {
+            showEl(e.target);
+            io.unobserve(e.target);
+          }
         });
-      }
+      }, { rootMargin: '0px 0px -40px 0px', threshold: 0 });
 
-      // Use IntersectionObserver where available
-      if ('IntersectionObserver' in window) {
-        const io = new IntersectionObserver((entries) => {
-          entries.forEach(e => { if (e.isIntersecting) { show(e.target); io.unobserve(e.target); } });
-        }, { rootMargin: '0px 0px -40px 0px', threshold: 0 });
-        els.forEach(el => io.observe(el));
-      } else {
-        // Fallback: scroll listener
-        window.addEventListener('scroll', checkAll, { passive: true });
-      }
+      revealEls.forEach(el => {
+        if (!el.classList.contains('visible')) io.observe(el);
+      });
+    } else {
+      // No IntersectionObserver — just show everything
+      revealEls.forEach(showEl);
+    }
 
-      // Always run on load to catch above-fold elements
-      checkAll();
-    })();
+    // Nuclear fallback: after 2s, show anything still hidden
+    setTimeout(() => {
+      document.querySelectorAll('.reveal:not(.visible)').forEach(showEl);
+    }, 2000);
 
   </script>
 
