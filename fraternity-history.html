@@ -321,20 +321,20 @@
     <div class="fh-content">
       <div class="fh-content-inner">
 
-        <div class="fh-date-badge reveal">
+        <div class="fh-date-badge">
           <div class="fh-date-badge-label">Date of Founding</div>
           <div class="fh-date-badge-date">December 4, 1906</div>
           <div class="fh-date-badge-sub">Cornell University · Ithaca, New York</div>
         </div>
 
-        <p class="fh-lead reveal">Alpha Phi Alpha Fraternity, Inc., the first intercollegiate Greek-letter fraternity established for African American Men, was founded on December 4, 1906 at Cornell University in Ithaca, New York by seven college men who recognized the need for a strong bond of brotherhood among African descendants in the United States.</p>
+        <p class="fh-lead">Alpha Phi Alpha Fraternity, Inc., the first intercollegiate Greek-letter fraternity established for African American Men, was founded on December 4, 1906 at Cornell University in Ithaca, New York by seven college men who recognized the need for a strong bond of brotherhood among African descendants in the United States.</p>
 
         <div class="fh-body">
           <p class="reveal">The fraternity initially served as a study and support group for Black students who faced racial prejudice, both educationally and socially, at Cornell. The Jewel founders and early leaders of the fraternity succeeded in laying a firm foundation for Alpha Phi Alpha's principles of scholarship, fellowship, good character, and the uplifting of humanity. Alpha Phi Alpha chapters were established at other colleges and universities, many of them historically Black institutions, soon after the founding at Cornell. The first alumni chapter was established in 1911. While continuing to stress academic excellence among its members, Alpha also recognized the need to help correct the educational, economic, political, and social injustices faced by African Americans in society at large.</p>
 
-          <div class="fh-divider reveal"><span class="fh-divider-icon">◆</span></div>
+          <div class="fh-divider"><span class="fh-divider-icon">◆</span></div>
 
-          <div class="fh-leaders reveal">
+          <div class="fh-leaders">
             <div class="fh-leaders-label">Notable Alpha Men — Civil Rights Leaders</div>
             <ul class="fh-leaders-list">
               <li>W.E.B. DuBois</li>
@@ -406,16 +406,6 @@
         hamburger.setAttribute('aria-expanded', 'false');
         document.body.style.overflow = '';
       });
-    });
-
-    // Scroll reveal
-    document.querySelectorAll('.reveal').forEach(el => {
-      new IntersectionObserver(([entry], obs) => {
-        if (entry.isIntersecting) {
-          el.classList.add('visible');
-          obs.disconnect();
-        }
-      }, { threshold: 0.1 }).observe(el);
     });
   </script>
 </body>
