@@ -1103,6 +1103,62 @@ footer {
   50% { opacity: 0.3; }
 }
 
+
+/* ─── NAV DROPDOWN ─── */
+.nav-dropdown {
+  position: relative;
+}
+.nav-dropdown > a {
+  cursor: pointer;
+}
+.nav-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.75rem);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(10,10,10,0.98);
+  border: 1px solid rgba(184,134,11,0.2);
+  min-width: 200px;
+  z-index: 200;
+  flex-direction: column;
+  padding: 0.5rem 0;
+  list-style: none;
+}
+.nav-dropdown-menu::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: rgba(10,10,10,0.98);
+  border-left: 1px solid rgba(184,134,11,0.2);
+  border-top: 1px solid rgba(184,134,11,0.2);
+  rotate: 45deg;
+}
+.nav-dropdown-menu li a {
+  display: block;
+  padding: 0.65rem 1.25rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.65) !important;
+  text-decoration: none;
+  transition: color 0.2s, background 0.2s;
+  white-space: nowrap;
+}
+.nav-dropdown-menu li a:hover {
+  color: var(--gold-bright) !important;
+  background: rgba(184,134,11,0.07);
+}
+.nav-dropdown:hover .nav-dropdown-menu {
+  display: flex;
+}
+
 /* ─── SCROLL REVEAL ─── */
 /* Removed — content visible by default */
 
