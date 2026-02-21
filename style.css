@@ -1333,3 +1333,27 @@ footer {
     font-size: 0.9rem;
   }
 }
+
+/* ─── MOBILE MENU CLOSE BUTTON ─── */
+.mobile-menu-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.7);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+.mobile-menu-close:hover {
+  background: rgba(184,134,11,0.15);
+  color: var(--gold-bright);
+  border-color: var(--gold);
+}
