@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Recommended Readings | Gamma Iota Lambda | The Brooklyn Alphas</title>
+  <meta name="description" content="Recommended readings curated by Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc. — essential texts in Black history, leadership, and fraternal excellence." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+
+    /* ─── HERO ─── */
+    .rr-hero {
+      min-height: 52vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 9rem 8% 5rem;
+      position: relative;
+      overflow: hidden;
+      background: var(--black-soft);
+    }
+    .rr-hero-bg {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 55% 50%, rgba(184,134,11,0.10) 0%, transparent 65%);
+    }
+    .rr-hero-watermark {
+      position: absolute;
+      right: 3%;
+      bottom: 0;
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(5rem, 18vw, 16rem);
+      font-weight: 900;
+      font-style: italic;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(184,134,11,0.07);
+      line-height: 0.85;
+      user-select: none;
+      pointer-events: none;
+      letter-spacing: -0.03em;
+    }
+    .rr-hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 760px;
+    }
+    .rr-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      text-decoration: none;
+      margin-bottom: 2.5rem;
+      transition: gap 0.2s;
+    }
+    .rr-back:hover { gap: 0.8rem; }
+    .rr-back::before { content: '←'; }
+    .rr-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .rr-eyebrow::before {
+      content: '';
+      width: 36px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .rr-eyebrow span {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 400;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .rr-hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.8rem, 7vw, 5.5rem);
+      font-weight: 900;
+      line-height: 1.0;
+      color: var(--white);
+      margin-bottom: 1rem;
+    }
+    .rr-hero h1 em {
+      font-style: italic;
+      color: var(--gold-bright);
+    }
+    .rr-hero-sub {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.45);
+      text-transform: uppercase;
+    }
+
+    /* ─── CONTENT ─── */
+    .rr-content {
+      background: var(--black);
+      padding: 6rem 8% 7rem;
+    }
+    .rr-content-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 6rem;
+      align-items: start;
+    }
+
+    /* ─── BOOK LIST ─── */
+    .rr-intro {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.08rem;
+      line-height: 1.85;
+      color: rgba(255,255,255,0.72);
+      font-weight: 300;
+      border-left: 3px solid var(--gold);
+      padding-left: 1.75rem;
+      margin-bottom: 3.5rem;
+    }
+    .rr-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    .rr-book {
+      display: grid;
+      grid-template-columns: 2.5rem 1fr;
+      gap: 0 1.5rem;
+      padding: 1.75rem 0;
+      border-bottom: 1px solid rgba(184,134,11,0.1);
+      align-items: start;
+      transition: background 0.2s;
+    }
+    .rr-book:first-child { border-top: 1px solid rgba(184,134,11,0.1); }
+    .rr-book:hover { background: rgba(184,134,11,0.03); margin: 0 -1rem; padding-left: 1rem; padding-right: 1rem; }
+    .rr-book-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      font-weight: 900;
+      color: rgba(184,134,11,0.3);
+      padding-top: 0.15rem;
+      line-height: 1;
+    }
+    .rr-book-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.35;
+      margin-bottom: 0.3rem;
+    }
+    .rr-book-author {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 400;
+      letter-spacing: 0.1em;
+      color: var(--gold);
+      text-transform: uppercase;
+    }
+
+    /* ─── SIDEBAR ─── */
+    .rr-sidebar {
+      position: sticky;
+      top: 7rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .rr-sidebar-card {
+      background: rgba(184,134,11,0.05);
+      border: 1px solid rgba(184,134,11,0.18);
+      padding: 1.75rem;
+    }
+    .rr-sidebar-card h4 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.25rem;
+    }
+    .rr-sidebar-card p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.88rem;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.6);
+      font-weight: 300;
+    }
+    .rr-sidebar-card p strong {
+      color: rgba(255,255,255,0.85);
+      font-weight: 500;
+    }
+    .rr-sidebar-email {
+      display: inline-block;
+      margin-top: 1.25rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+      border: 1px solid rgba(184,134,11,0.3);
+      padding: 0.75rem 1.25rem;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+    }
+    .rr-sidebar-email:hover {
+      background: var(--gold);
+      color: var(--black);
+    }
+
+    /* ─── CTA ─── */
+    .rr-cta {
+      background: var(--black-soft);
+      padding: 5rem 8%;
+      text-align: center;
+    }
+    .rr-cta h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 900;
+      color: var(--white);
+      margin-bottom: 0.75rem;
+    }
+    .rr-cta h2 em { font-style: normal; color: var(--gold-bright); }
+    .rr-cta p {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 300;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 2rem;
+      letter-spacing: 0.06em;
+    }
+    .rr-cta-btns {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 900px) {
+      .rr-hero { padding: 7rem 5% 4rem; }
+      .rr-content { padding: 4rem 5% 5rem; }
+      .rr-content-inner { grid-template-columns: 1fr; gap: 3rem; }
+      .rr-sidebar { position: static; }
+      .rr-cta { padding: 4rem 5%; }
+    }
+  </style>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- NAV -->
+  <nav id="main-nav" aria-label="Primary navigation">
+    <a href="index.html" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
+      <img src="gil-crest.png" alt="Gamma Iota Lambda Chapter Crest" class="nav-crest" />
+      <div class="nav-logo-text">
+        <span>Gamma Iota Lambda</span>
+        <span>The Brooklyn Alphas · Chartered 1945</span>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html#about">About</a></li>
+      <li><a href="index.html#meeting">Meetings</a></li>
+      <li class="nav-dropdown">
+        <a href="index.html#history">Chapter &#9662;</a>
+        <ul class="nav-dropdown-menu">
+          <li><a href="index.html#history">Chapter History</a></li>
+          <li><a href="chapter-history.html">Full Chapter History</a></li>
+          <li><a href="alpha-academy.html">Alpha Academy</a></li>
+          <li><a href="executive-board.html">Executive Board</a></li>
+          <li><a href="recommended-readings.html">Recommended Readings</a></li>
+          <li><a href="index.html#programs">Programs</a></li>
+          <li><a href="index.html#scholarship">Scholarship</a></li>
+        </ul>
+      </li>
+      <li><a href="fraternity-history.html">Fraternity</a></li>
+      <li><a href="impact-20.html">Impact $20</a></li>
+      <li><a href="index.html#contact">Contact</a></li>
+    </ul>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="nav-cta">RSVP Meeting</a>
+    <button class="nav-hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <!-- MOBILE MENU -->
+  <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu">&#10005;</button>
+    <a href="index.html#about" class="mobile-nav-link">About</a>
+    <a href="index.html#programs" class="mobile-nav-link">Programs</a>
+    <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
+    <a href="index.html#history" class="mobile-nav-link">Chapter History</a>
+    <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Full Chapter History</a>
+    <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Alpha Academy</a>
+    <a href="executive-board.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Executive Board</a>
+    <a href="recommended-readings.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Recommended Readings</a>
+    <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
+    <a href="impact-20.html" class="mobile-nav-link">Impact $20</a>
+    <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
+    <a href="index.html#contact" class="mobile-nav-link">Contact</a>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
+  </div>
+
+  <main id="main-content">
+
+    <!-- HERO -->
+    <div class="rr-hero">
+      <div class="rr-hero-bg"></div>
+      <div class="rr-hero-watermark" aria-hidden="true">Read</div>
+      <div class="rr-hero-content">
+        <a href="index.html" class="rr-back">Back to Home</a>
+        <div class="rr-eyebrow"><span>Gamma Iota Lambda Chapter · Curated Library</span></div>
+        <h1>Recommended<br><em>Readings</em></h1>
+        <p class="rr-hero-sub">Essential texts in Black history, leadership &amp; fraternal excellence</p>
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="rr-content">
+      <div class="rr-content-inner">
+
+        <!-- BOOK LIST -->
+        <div>
+          <p class="rr-intro reveal">A curated library of essential texts in Black history, leadership, and social justice — selected to shape informed, empowered brothers and community members.</p>
+
+          <div class="rr-list">
+
+            <div class="rr-book reveal">
+              <div class="rr-book-num">01</div>
+              <div>
+                <div class="rr-book-title">Black Greek 101</div>
+                <div class="rr-book-author">Walter M. Dr. Kimbrough</div>
+              </div>
+            </div>
+
+            <div class="rr-book reveal">
+              <div class="rr-book-num">02</div>
+              <div>
+                <div class="rr-book-title">The Divine Nine</div>
+                <div class="rr-book-author">Lawrence C. Ross Jr.</div>
+              </div>
+            </div>
+
+            <div class="rr-book reveal">
+              <div class="rr-book-num">03</div>
+              <div>
+                <div class="rr-book-title">Dr McKenzie's Essay in Alpha Phi Alpha — A legacy of greatness, the demands of transcendence</div>
+                <div class="rr-book-author">Gregory S. Parks</div>
+              </div>
+            </div>
+
+            <div class="rr-book reveal">
+              <div class="rr-book-num">04</div>
+              <div>
+                <div class="rr-book-title">A Stolen Legacy: Greek Philosophy is Stolen Egyptian Philosophy</div>
+                <div class="rr-book-author">George J.M. James</div>
+              </div>
+            </div>
+
+            <div class="rr-book reveal">
+              <div class="rr-book-num">05</div>
+              <div>
+                <div class="rr-book-title">African American Fraternities and Sororities: The Legacy and the Vision</div>
+                <div class="rr-book-author">Tamara L. Brown, Gregory S. Parks, Clarenda M. Phillips</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- SIDEBAR -->
+        <aside class="rr-sidebar">
+          <div class="rr-sidebar-card reveal">
+            <h4>For More Information</h4>
+            <p>Have a recommendation or question about our reading list? Reach out to the chapter directly.</p>
+            <a href="mailto:membership@gil1906.org" class="rr-sidebar-email">membership@gil1906.org</a>
+          </div>
+          <div class="rr-sidebar-card reveal">
+            <h4>About This List</h4>
+            <p>These texts were selected by the brothers of Gamma Iota Lambda Chapter to support <strong>intellectual growth</strong>, deepen understanding of <strong>Black fraternal history</strong>, and strengthen our commitment to <strong>service and leadership</strong>.</p>
+          </div>
+        </aside>
+
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="rr-cta reveal">
+      <h2>Continue the <em>Journey</em></h2>
+      <p>Gamma Iota Lambda Chapter · Brooklyn – Long Island · Est. 1945</p>
+      <div class="rr-cta-btns">
+        <a href="index.html#programs" class="btn-primary">Our Programs</a>
+        <a href="index.html#contact" class="btn-outline">Get Involved</a>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer role="contentinfo">
+    <div class="footer-left">
+      <strong>Gamma Iota Lambda Chapter · ΑΦΑ</strong>
+      © 2026 Alpha Phi Alpha Fraternity, Inc. All rights reserved.
+    </div>
+    <nav class="footer-center" aria-label="Footer navigation">
+      <a href="index.html#about">About</a>
+      <a href="index.html#programs">Programs</a>
+      <a href="index.html#meeting">Meetings</a>
+      <a href="index.html#scholarship">Scholarship</a>
+      <a href="index.html#contact">Contact</a>
+      <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer">Full Site</a>
+    </nav>
+    <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('main-nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobile-menu');
+    hamburger.addEventListener('click', () => {
+      const isOpen = mobileMenu.classList.toggle('open');
+      hamburger.classList.toggle('open', isOpen);
+      hamburger.setAttribute('aria-expanded', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    });
+    const closeBtn = document.getElementById('mobile-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    }
+    mobileMenu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    });
+    document.querySelectorAll('.reveal').forEach(el => {
+      new IntersectionObserver(([entry], obs) => {
+        if (entry.isIntersecting) {
+          el.classList.add('visible');
+          obs.disconnect();
+        }
+      }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
+    });
+  </script>
+</body>
+</html>
