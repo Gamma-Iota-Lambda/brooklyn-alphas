@@ -346,6 +346,7 @@
 
   <!-- MOBILE MENU -->
   <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu"><div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">#10005;</button>
     <a href="index.html#about" class="mobile-nav-link">About</a>
     <a href="index.html#programs" class="mobile-nav-link">Programs</a>
     <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
@@ -449,7 +450,7 @@
       <h2>Have <em>Questions?</em></h2>
       <p>For questions or concerns about Alpha Academy, send us an email.</p>
       <p style="color:rgba(255,255,255,0.35); font-size:0.8rem; letter-spacing:0.08em;">Use subject line: <strong style="color:rgba(255,255,255,0.55);">"Alpha Academy application"</strong></p>
-      <a href="/cdn-cgi/l/email-protection#88edecfdebe9fce1e7e6c8efe1e4b9b1b8bea6e7faef" class="aa-contact-email"><span class="__cf_email__" data-cfemail="3c5958495f5d485553527c5b55500d050c0a12534e5b">[email&#160;protected]</span></a>
+      <a href="mailto:info@gil1906.org" class="aa-contact-email">info@gil1906.org</a>
       <div class="aa-contact-note">Gamma Iota Lambda Chapter · Alpha Phi Alpha Fraternity, Inc.</div>
     </div>
 
@@ -472,7 +473,7 @@
     <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
   </footer>
 
-  <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+  <script>
     const nav = document.getElementById('main-nav');
     window.addEventListener('scroll', () => {
       nav.classList.toggle('scrolled', window.scrollY > 60);
@@ -485,6 +486,15 @@
       hamburger.setAttribute('aria-expanded', isOpen);
       document.body.style.overflow = isOpen ? 'hidden' : '';
     });
+    const closeBtn = document.getElementById('mobile-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    }
     mobileMenu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
