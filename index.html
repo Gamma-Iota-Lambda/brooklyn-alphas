@@ -98,6 +98,7 @@
   </nav>
 
   <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu"><div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">#10005;</button>
     <a href="#about" class="mobile-nav-link">About</a>
     <a href="#programs" class="mobile-nav-link">Programs</a>
     <a href="#meeting" class="mobile-nav-link">Meetings</a>
@@ -455,6 +456,15 @@
       hamburger.setAttribute('aria-expanded', isOpen);
       document.body.style.overflow = isOpen ? 'hidden' : '';
     });
+    const closeBtn = document.getElementById('mobile-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    }
     mobileMenu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
