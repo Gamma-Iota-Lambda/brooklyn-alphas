@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Judge Myles A. Paige Scholarship | Gamma Iota Lambda | The Brooklyn Alphas</title>
+  <meta name="description" content="The Judge Myles A. Paige Scholarship supports graduating high school seniors as they matriculate into college. Presented by Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc." />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <style>
+
+    /* ─── HERO ─── */
+    .sc-hero {
+      min-height: 58vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 9rem 8% 5rem;
+      position: relative;
+      overflow: hidden;
+      background: var(--black-soft);
+    }
+    .sc-hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 60%, rgba(184,134,11,0.13) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 30%, rgba(184,134,11,0.06) 0%, transparent 50%);
+    }
+    .sc-hero-watermark {
+      position: absolute;
+      right: -1rem;
+      bottom: -1rem;
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(6rem, 20vw, 18rem);
+      font-weight: 900;
+      font-style: italic;
+      color: transparent;
+      -webkit-text-stroke: 1px rgba(184,134,11,0.07);
+      line-height: 0.85;
+      user-select: none;
+      pointer-events: none;
+      letter-spacing: -0.03em;
+    }
+    .sc-hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 760px;
+    }
+    .sc-back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      text-decoration: none;
+      margin-bottom: 2.5rem;
+      transition: gap 0.2s;
+    }
+    .sc-back:hover { gap: 0.8rem; }
+    .sc-back::before { content: '←'; }
+    .sc-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .sc-eyebrow::before {
+      content: '';
+      width: 36px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .sc-eyebrow span {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 400;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .sc-hero h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.4rem, 6vw, 5rem);
+      font-weight: 900;
+      line-height: 1.0;
+      color: var(--white);
+      margin-bottom: 1rem;
+    }
+    .sc-hero h1 em {
+      font-style: italic;
+      color: var(--gold-bright);
+    }
+    .sc-hero-sub {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.45);
+      text-transform: uppercase;
+    }
+
+    /* ─── PROFILE SECTION ─── */
+    .sc-profile {
+      background: var(--black);
+      padding: 5rem 8%;
+      border-bottom: 1px solid rgba(184,134,11,0.12);
+    }
+    .sc-profile-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 5rem;
+      align-items: center;
+    }
+    .sc-portrait {
+      position: relative;
+      display: flex;
+      justify-content: center;
+    }
+    .sc-portrait-ring {
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      border: 3px solid var(--gold);
+      overflow: hidden;
+      position: relative;
+      background: rgba(184,134,11,0.08);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sc-portrait-ring img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: top center;
+      filter: grayscale(100%);
+      display: block;
+    }
+    .sc-portrait-placeholder {
+      font-family: 'Playfair Display', serif;
+      font-size: 5rem;
+      font-weight: 900;
+      color: rgba(184,134,11,0.3);
+      user-select: none;
+    }
+    .sc-portrait-label {
+      position: absolute;
+      bottom: -1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--gold);
+      color: var(--black);
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.6rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      padding: 0.35rem 1rem;
+      white-space: nowrap;
+    }
+    .sc-profile-text h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.6rem, 3.5vw, 2.8rem);
+      font-weight: 900;
+      color: var(--white);
+      line-height: 1.15;
+      margin-bottom: 1.5rem;
+    }
+    .sc-profile-text h2 em {
+      font-style: normal;
+      color: var(--gold-bright);
+    }
+    .sc-profile-text p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1rem;
+      line-height: 1.85;
+      color: rgba(255,255,255,0.72);
+      font-weight: 300;
+      margin-bottom: 1rem;
+    }
+
+    /* ─── CONTENT BODY ─── */
+    .sc-content {
+      background: var(--black);
+      padding: 5rem 8% 7rem;
+    }
+    .sc-content-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 5rem;
+      align-items: start;
+    }
+
+    /* ─── REQUIREMENTS ─── */
+    .sc-section-heading {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .sc-section-heading::before {
+      content: '';
+      width: 28px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .sc-requirements-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-bottom: 3.5rem;
+      border-top: 1px solid rgba(184,134,11,0.12);
+    }
+    .sc-requirements-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 1.25rem;
+      padding: 1.1rem 0;
+      border-bottom: 1px solid rgba(184,134,11,0.08);
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      color: rgba(255,255,255,0.75);
+      font-weight: 300;
+    }
+    .sc-req-num {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      font-weight: 900;
+      color: rgba(184,134,11,0.3);
+      flex-shrink: 0;
+      line-height: 1.4;
+      min-width: 1.5rem;
+    }
+
+    /* ─── ESSAY TOPIC ─── */
+    .sc-essay-block {
+      background: rgba(184,134,11,0.05);
+      border: 1px solid rgba(184,134,11,0.2);
+      border-left: 3px solid var(--gold);
+      padding: 2rem 2.25rem;
+      margin-bottom: 3.5rem;
+    }
+    .sc-essay-block .sc-section-heading {
+      margin-bottom: 1rem;
+    }
+    .sc-essay-prompt {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.05rem;
+      font-style: italic;
+      line-height: 1.75;
+      color: rgba(255,255,255,0.85);
+      font-weight: 700;
+    }
+    .sc-essay-note {
+      margin-top: 0.75rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 400;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.35);
+    }
+
+    /* ─── APPLICATION BLOCK ─── */
+    .sc-apply-block {
+      margin-bottom: 2rem;
+    }
+    .sc-apply-block p {
+      font-family: 'Barlow', sans-serif;
+      font-size: 0.95rem;
+      line-height: 1.75;
+      color: rgba(255,255,255,0.7);
+      font-weight: 300;
+      margin-bottom: 0.75rem;
+    }
+    .sc-apply-block strong {
+      color: var(--white);
+      font-weight: 500;
+    }
+    .sc-apply-link {
+      color: var(--gold);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(184,134,11,0.4);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .sc-apply-link:hover {
+      color: var(--gold-bright);
+      border-color: var(--gold-bright);
+    }
+
+    /* ─── SIDEBAR ─── */
+    .sc-sidebar {
+      position: sticky;
+      top: 7rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .sc-sidebar-card {
+      background: rgba(184,134,11,0.05);
+      border: 1px solid rgba(184,134,11,0.18);
+      padding: 1.75rem;
+    }
+    .sc-sidebar-card h4 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.25rem;
+    }
+    .sc-deadline-date {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--gold-bright);
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+    .sc-deadline-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+    }
+    .sc-status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 0.4rem 0.9rem;
+    }
+    .sc-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: rgba(184,134,11,0.5);
+      box-shadow: 0 0 0 2px rgba(184,134,11,0.15);
+    }
+    .sc-contact-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .sc-contact-info p {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 300;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.6;
+    }
+    .sc-contact-info p strong {
+      color: rgba(255,255,255,0.8);
+      font-weight: 600;
+      display: block;
+      font-size: 0.68rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 0.2rem;
+    }
+    .sc-contact-info a {
+      color: var(--gold);
+      text-decoration: none;
+      font-size: 0.82rem;
+    }
+    .sc-contact-info a:hover { color: var(--gold-bright); }
+    .sc-apply-cta {
+      display: block;
+      text-align: center;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      font-size: 0.78rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--black);
+      background: var(--gold);
+      padding: 1rem;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .sc-apply-cta:hover { background: var(--gold-bright); transform: translateY(-2px); }
+
+    /* ─── CTA STRIP ─── */
+    .sc-cta {
+      background: var(--black-soft);
+      padding: 5rem 8%;
+      text-align: center;
+    }
+    .sc-cta h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.8rem, 4vw, 3rem);
+      font-weight: 900;
+      color: var(--white);
+      margin-bottom: 0.75rem;
+    }
+    .sc-cta h2 em { font-style: normal; color: var(--gold-bright); }
+    .sc-cta p {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 300;
+      color: rgba(255,255,255,0.45);
+      margin-bottom: 2rem;
+      letter-spacing: 0.06em;
+    }
+    .sc-cta-btns {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    /* ─── RESPONSIVE ─── */
+    @media (max-width: 960px) {
+      .sc-hero { padding: 7rem 5% 4rem; }
+      .sc-profile { padding: 4rem 5%; }
+      .sc-profile-inner { grid-template-columns: 1fr; gap: 3rem; text-align: center; }
+      .sc-portrait { justify-content: center; }
+      .sc-content { padding: 4rem 5% 5rem; }
+      .sc-content-inner { grid-template-columns: 1fr; gap: 3rem; }
+      .sc-sidebar { position: static; }
+      .sc-cta { padding: 4rem 5%; }
+    }
+  </style>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- NAV -->
+  <nav id="main-nav" aria-label="Primary navigation">
+    <a href="index.html" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
+      <img src="gil-crest.png" alt="Gamma Iota Lambda Chapter Crest" class="nav-crest" />
+      <div class="nav-logo-text">
+        <span>Gamma Iota Lambda</span>
+        <span>The Brooklyn Alphas · Chartered 1945</span>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="index.html#about">About</a></li>
+      <li><a href="index.html#meeting">Meetings</a></li>
+      <li class="nav-dropdown">
+        <a href="index.html#history">Chapter &#9662;</a>
+        <ul class="nav-dropdown-menu">
+          <li><a href="index.html#history">Chapter History</a></li>
+          <li><a href="executive-board.html">Executive Board</a></li>
+          <li><a href="chapter-history.html">Full Chapter History</a></li>
+          <li><a href="alpha-academy.html">Alpha Academy</a></li>
+          <li><a href="recommended-readings.html">Recommended Readings</a></li>
+          <li><a href="scholarship.html">Scholarship</a></li>
+          <li><a href="index.html#programs">Programs</a></li>
+        </ul>
+      </li>
+      <li><a href="fraternity-history.html">Fraternity</a></li>
+      <li><a href="impact-20.html">Impact $20</a></li>
+      <li><a href="index.html#contact">Contact</a></li>
+    </ul>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="nav-cta">RSVP Meeting</a>
+    <button class="nav-hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+  </nav>
+
+  <!-- MOBILE MENU -->
+  <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu">&#10005;</button>
+    <a href="index.html#about" class="mobile-nav-link">About</a>
+    <a href="index.html#programs" class="mobile-nav-link">Programs</a>
+    <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
+    <a href="index.html#history" class="mobile-nav-link">Chapter History</a>
+    <a href="executive-board.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Executive Board</a>
+    <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Full Chapter History</a>
+    <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Alpha Academy</a>
+    <a href="recommended-readings.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Recommended Readings</a>
+    <a href="scholarship.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Scholarship</a>
+    <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
+    <a href="impact-20.html" class="mobile-nav-link">Impact $20</a>
+    <a href="index.html#contact" class="mobile-nav-link">Contact</a>
+    <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
+  </div>
+
+  <main id="main-content">
+
+    <!-- HERO -->
+    <div class="sc-hero">
+      <div class="sc-hero-bg"></div>
+      <div class="sc-hero-watermark" aria-hidden="true">1945</div>
+      <div class="sc-hero-content">
+        <a href="index.html" class="sc-back">Back to Home</a>
+        <div class="sc-eyebrow"><span>Gamma Iota Lambda Chapter · Annual Award</span></div>
+        <h1>Judge Myles A. Paige<br><em>Scholarship</em></h1>
+        <p class="sc-hero-sub">Presented by Gamma Iota Lambda Chapter · Alpha Phi Alpha Fraternity, Inc.</p>
+      </div>
+    </div>
+
+    <!-- PROFILE -->
+    <div class="sc-profile">
+      <div class="sc-profile-inner">
+
+        <div class="sc-portrait reveal">
+          <div class="sc-portrait-ring">
+            <img src="judge-paige.jpg" alt="Portrait of Judge Myles A. Paige"
+              onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />
+            <div class="sc-portrait-placeholder" style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">MAP</div>
+          </div>
+          <div class="sc-portrait-label">Judge Myles A. Paige</div>
+        </div>
+
+        <div class="sc-profile-text reveal">
+          <h2>2025 Judge Myles A. Paige <em>Scholarship</em></h2>
+          <p>Judge Myles A. Paige, a former General President of Alpha Phi Alpha Fraternity, Incorporated and a charter member of Gamma Iota Lambda, was the first African American to be appointed to a New York City Criminal Court. Judge Paige had a decorated legal, civil rights, and philanthropic career.</p>
+          <p>The Myles A. Paige Scholarship was established to provide financial support to graduating high school seniors as they matriculate into college.</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="sc-content">
+      <div class="sc-content-inner">
+
+        <!-- MAIN CONTENT -->
+        <div>
+
+          <!-- REQUIREMENTS -->
+          <div class="sc-section-heading reveal">Scholarship Requirements</div>
+          <ul class="sc-requirements-list reveal">
+            <li><span class="sc-req-num">1</span><span>Applicants must be a 2025 graduating male high school senior</span></li>
+            <li><span class="sc-req-num">2</span><span>Applicants must have a cumulative GPA of 2.5 or above on a 4.0 scale or equivalent</span></li>
+            <li><span class="sc-req-num">3</span><span>Applicants must provide a copy of high school transcript</span></li>
+            <li><span class="sc-req-num">4</span><span>Applicants must be enrolling as a full-time student in an accredited college or university for the 2025–2026 school year</span></li>
+            <li><span class="sc-req-num">5</span><span>Applicants must complete a 500-word essay</span></li>
+          </ul>
+
+          <!-- ESSAY TOPIC -->
+          <div class="sc-essay-block reveal">
+            <div class="sc-section-heading">Essay Topic</div>
+            <p class="sc-essay-prompt">"Black male college enrollment is on the decline. What do you think contributes to this plunge and, despite those factors, why is college still an important investment for you?"</p>
+            <p class="sc-essay-note">500 word minimum</p>
+          </div>
+
+          <!-- APPLICATION -->
+          <div class="sc-section-heading reveal">Application</div>
+          <div class="sc-apply-block reveal">
+            <p>Use the application link to submit your application. The deadline for submission is <strong>May 26, 2025</strong>.</p>
+            <p>Please direct any questions or comments to <a href="mailto:gilbkli1906@gmail.com" class="sc-apply-link">gilbkli1906@gmail.com</a> with the subject <strong>GIL Scholarship 2025</strong>.</p>
+          </div>
+
+          <a href="https://www.gil1906.org/judge-myles-a-paige-scholarship" target="_blank" rel="noopener noreferrer" class="btn-primary">Apply Now &#8594;</a>
+
+        </div>
+
+        <!-- SIDEBAR -->
+        <aside class="sc-sidebar">
+
+          <div class="sc-sidebar-card reveal">
+            <h4>Application Deadline</h4>
+            <div class="sc-deadline-date">May 26</div>
+            <div class="sc-deadline-label">2025 · Applications Close</div>
+            <div class="sc-status-pill">
+              <div class="sc-status-dot"></div>
+              Now Accepting Applications
+            </div>
+          </div>
+
+          <div class="sc-sidebar-card reveal">
+            <h4>Submit Your Application</h4>
+            <a href="https://www.gil1906.org/judge-myles-a-paige-scholarship" target="_blank" rel="noopener noreferrer" class="sc-apply-cta">Apply Online &#8594;</a>
+          </div>
+
+          <div class="sc-sidebar-card reveal">
+            <h4>Questions?</h4>
+            <div class="sc-contact-info">
+              <p>
+                <strong>Email</strong>
+                <a href="mailto:gilbkli1906@gmail.com">gilbkli1906@gmail.com</a>
+              </p>
+              <p>
+                <strong>Subject Line</strong>
+                GIL Scholarship 2025
+              </p>
+            </div>
+          </div>
+
+          <div class="sc-sidebar-card reveal">
+            <h4>About the Award</h4>
+            <div class="sc-contact-info">
+              <p>
+                <strong>Presented by</strong>
+                Gamma Iota Lambda Chapter<br>Alpha Phi Alpha Fraternity, Inc.
+              </p>
+              <p>
+                <strong>Named For</strong>
+                Judge Myles A. Paige — 19th General President of Alpha Phi Alpha · Charter Member of Gamma Iota Lambda
+              </p>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="sc-cta reveal">
+      <h2>Investing in <em>Brooklyn's</em> Future</h2>
+      <p>Gamma Iota Lambda Chapter · Brooklyn – Long Island · Est. 1945</p>
+      <div class="sc-cta-btns">
+        <a href="https://www.gil1906.org/judge-myles-a-paige-scholarship" target="_blank" rel="noopener noreferrer" class="btn-primary">Apply for Scholarship &#8594;</a>
+        <a href="index.html#contact" class="btn-outline">Contact Us</a>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer role="contentinfo">
+    <div class="footer-left">
+      <strong>Gamma Iota Lambda Chapter · ΑΦΑ</strong>
+      © 2026 Alpha Phi Alpha Fraternity, Inc. All rights reserved.
+    </div>
+    <nav class="footer-center" aria-label="Footer navigation">
+      <a href="index.html#about">About</a>
+      <a href="index.html#programs">Programs</a>
+      <a href="index.html#meeting">Meetings</a>
+      <a href="scholarship.html">Scholarship</a>
+      <a href="index.html#contact">Contact</a>
+      <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer">Full Site</a>
+    </nav>
+    <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('main-nav');
+    window.addEventListener('scroll', () => {
+      nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+    const hamburger = document.getElementById('hamburger');
+    const mobileMenu = document.getElementById('mobile-menu');
+    hamburger.addEventListener('click', () => {
+      const isOpen = mobileMenu.classList.toggle('open');
+      hamburger.classList.toggle('open', isOpen);
+      hamburger.setAttribute('aria-expanded', isOpen);
+      document.body.style.overflow = isOpen ? 'hidden' : '';
+    });
+    const closeBtn = document.getElementById('mobile-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    }
+    mobileMenu.querySelectorAll('a').forEach(link => {
+      link.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    });
+    document.querySelectorAll('.reveal').forEach(el => {
+      new IntersectionObserver(([entry], obs) => {
+        if (entry.isIntersecting) {
+          el.classList.add('visible');
+          obs.disconnect();
+        }
+      }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
+    });
+  </script>
+</body>
+</html>
