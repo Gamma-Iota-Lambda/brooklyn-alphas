@@ -1158,19 +1158,26 @@ footer {
   z-index: 150;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 2.5rem;
+  justify-content: flex-start;
+  gap: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 5rem 2rem 3rem;
 }
 .nav-mobile-menu.open { display: flex; }
 .nav-mobile-menu a,
 .mobile-nav-link {
   font-family: 'Playfair Display', serif;
-  font-size: clamp(1.8rem, 7vw, 2.5rem);
+  font-size: clamp(1.2rem, 5vw, 1.7rem);
   font-weight: 700;
   color: var(--white);
   text-decoration: none;
   letter-spacing: 0.02em;
   transition: color 0.2s;
+  padding: 0.55rem 0;
+  width: 100%;
+  text-align: center;
 }
 .mobile-nav-link[style] {
   font-family: 'Barlow Condensed', sans-serif !important;
