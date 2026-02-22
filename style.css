@@ -1275,3 +1275,100 @@ footer {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─── PAGE TRANSITION ─── */
+body {
+  animation: pageIn 0.35s ease both;
+}
+@keyframes pageIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+a[href]:not([href^="#"]):not([href^="mailto"]):not([href^="tel"]):not([target="_blank"]) {
+  /* links that navigate to a new page get the fade-out on click */
+}
+.page-out {
+  animation: pageOut 0.22s ease forwards;
+  pointer-events: none;
+}
+@keyframes pageOut {
+  to { opacity: 0; transform: translateY(-6px); }
+}
+
+/* ─── ACTIVE NAV STATE ─── */
+/* Desktop: highlight current page link in gold */
+[data-page="index"]        .nav-links a[href="index.html"],
+[data-page="index"]        .nav-links a[href="#about"],
+[data-page="chapter"]      .nav-links a[href="index.html#history"],
+[data-page="exec-board"]   .nav-links a[href="index.html#history"],
+[data-page="chapter-full"] .nav-links a[href="index.html#history"],
+[data-page="alpha-academy"].nav-links a[href="index.html#history"],
+[data-page="readings"]     .nav-links a[href="index.html#history"],
+[data-page="scholarship"]  .nav-links a[href="index.html#history"],
+[data-page="fraternity"]   .nav-links a[href="fraternity-history.html"],
+[data-page="impact"]       .nav-links a[href="impact-20.html"] {
+  color: var(--gold-bright) !important;
+  border-bottom: 1px solid var(--gold);
+  padding-bottom: 1px;
+}
+/* Chapter dropdown parent also gets gold when on any chapter subpage */
+[data-page="chapter"]      .nav-dropdown > a,
+[data-page="exec-board"]   .nav-dropdown > a,
+[data-page="chapter-full"] .nav-dropdown > a,
+[data-page="alpha-academy"].nav-dropdown > a,
+[data-page="readings"]     .nav-dropdown > a,
+[data-page="scholarship"]  .nav-dropdown > a {
+  color: var(--gold-bright) !important;
+  text-decoration: underline;
+  text-decoration-color: var(--gold);
+  text-underline-offset: 3px;
+}
+/* Active item inside the dropdown */
+[data-page="exec-board"]   .nav-dropdown-menu a[href="executive-board.html"],
+[data-page="chapter-full"] .nav-dropdown-menu a[href="chapter-history.html"],
+[data-page="alpha-academy"].nav-dropdown-menu a[href="alpha-academy.html"],
+[data-page="readings"]     .nav-dropdown-menu a[href="recommended-readings.html"],
+[data-page="scholarship"]  .nav-dropdown-menu a[href="scholarship.html"] {
+  color: var(--gold-bright) !important;
+  background: rgba(184,134,11,0.1);
+}
+
+/* ─── BACK TO TOP BUTTON ─── */
+.back-to-top {
+  position: fixed;
+  bottom: 2rem;
+  right: 2rem;
+  width: 44px;
+  height: 44px;
+  background: var(--gold);
+  color: var(--black);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  transition: opacity 0.3s, transform 0.3s, visibility 0.3s, background 0.2s;
+  z-index: 90;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 700;
+}
+.back-to-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.back-to-top:hover {
+  background: var(--gold-bright);
+}
+@media (max-width: 600px) {
+  .back-to-top {
+    bottom: 1.25rem;
+    right: 1.25rem;
+    width: 40px;
+    height: 40px;
+  }
+}
