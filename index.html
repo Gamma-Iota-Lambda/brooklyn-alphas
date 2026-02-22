@@ -62,7 +62,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-page="index">
 
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
@@ -85,7 +85,6 @@
           <li><a href="chapter-history.html">Full Chapter History</a></li>
           <li><a href="alpha-academy.html">Alpha Academy</a></li>
           <li><a href="recommended-readings.html">Recommended Readings</a></li>
-          <li><a href="#programs">Programs</a></li>
           <li><a href="scholarship.html">Scholarship</a></li>
         </ul>
       </li>
@@ -109,9 +108,9 @@
     <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Full Chapter History</a>
     <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Alpha Academy</a>
     <a href="recommended-readings.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Recommended Readings</a>
+    <a href="scholarship.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Scholarship</a>
     <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
     <a href="impact-20.html" class="mobile-nav-link">Impact $20</a>
-    <a href="scholarship.html" class="mobile-nav-link">Scholarship</a>
     <a href="#contact" class="mobile-nav-link">Contact</a>
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
   </div>
@@ -360,7 +359,7 @@
         <div class="badge-divider"></div>
         <div class="badge-amount">Apply</div>
         <div class="badge-amount-label">Applications Now Open</div>
-        <a href="https://www.gil1906.org/judge-myles-a-paige-scholarship" target="_blank" rel="noopener noreferrer" class="btn-primary" style="margin-top:2rem;">Learn More &amp; Apply &#8594;</a>
+        <a href="scholarship.html" class="btn-primary" style="margin-top:2rem;">Learn More &amp; Apply &#8594;</a>
       </div>
       <div class="scholarship-right reveal">
         <div class="section-label">Scholarship</div>
@@ -370,11 +369,12 @@
           <p>The scholarship supports deserving students from Brooklyn who demonstrate academic achievement, community involvement, and the qualities of leadership that define the Alpha man.</p>
         </div>
         <ul class="eligibility-list">
-          <li>Brooklyn resident or enrolled in a Brooklyn-area institution</li>
-          <li>Demonstrated academic achievement and community involvement</li>
-          <li>Commitment to service and leadership development</li>
-          <li>Applications reviewed by a chapter scholarship committee</li>
+          <li>2025 graduating male high school senior</li>
+          <li>Cumulative GPA of 2.5 or above on a 4.0 scale</li>
+          <li>Enrolling full-time at an accredited college or university for 2025–2026</li>
+          <li>500-word essay on Black male college enrollment</li>
         </ul>
+        <a href="scholarship.html" class="btn-outline" style="margin-top:1.5rem;">View Full Requirements &#8594;</a>
       </div>
     </div>
   </section>
@@ -488,6 +488,25 @@
         }
       }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
     });
+
+    // Back to top
+    const btt = document.getElementById('back-to-top');
+    if (btt) {
+      window.addEventListener('scroll', () => { btt.classList.toggle('visible', window.scrollY > 400); });
+      btt.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    }
+    // Page transitions
+    document.querySelectorAll('a[href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto') || href.startsWith('tel') || link.getAttribute('target') === '_blank') return;
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        document.body.classList.add('page-out');
+        setTimeout(() => { window.location.href = href; }, 220);
+      });
+    });
   </script>
+
+  <button id="back-to-top" class="back-to-top" aria-label="Back to top">&#8593;</button>
 </body>
 </html>
