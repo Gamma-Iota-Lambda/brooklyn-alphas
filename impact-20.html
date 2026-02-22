@@ -394,7 +394,7 @@
     }
   </style>
 </head>
-<body>
+<body data-page="impact">
 
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
@@ -414,11 +414,13 @@
         <a href="index.html#history">Chapter &#9662;</a>
         <ul class="nav-dropdown-menu">
           <li><a href="index.html#history">Chapter History</a></li>
-          <li><a href="executive-board.html">Executive Board</a></li>
           <li><a href="chapter-history.html">Full Chapter History</a></li>
           <li><a href="alpha-academy.html">Alpha Academy</a></li>
+          <li><a href="executive-board.html">Executive Board</a></li>
           <li><a href="recommended-readings.html">Recommended Readings</a></li>
           <li><a href="scholarship.html">Scholarship</a></li>
+          <li><a href="index.html#programs">Programs</a></li>
+          <li><a href="index.html#scholarship">Scholarship</a></li>
         </ul>
       </li>
       <li><a href="fraternity-history.html">Fraternity</a></li>
@@ -433,18 +435,19 @@
 
   <!-- MOBILE MENU -->
   <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
-    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu">&#10005;</button>
+    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu"><div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">#10005;</button>
     <a href="index.html#about" class="mobile-nav-link">About</a>
     <a href="index.html#programs" class="mobile-nav-link">Programs</a>
     <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
     <a href="index.html#history" class="mobile-nav-link">Chapter History</a>
-    <a href="executive-board.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Executive Board</a>
     <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Full Chapter History</a>
     <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Alpha Academy</a>
+    <a href="executive-board.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Executive Board</a>
     <a href="recommended-readings.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Recommended Readings</a>
     <a href="scholarship.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Scholarship</a>
     <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
     <a href="impact-20.html" class="mobile-nav-link">Impact $20</a>
+    <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
     <a href="index.html#contact" class="mobile-nav-link">Contact</a>
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
   </div>
@@ -570,7 +573,7 @@
         <div class="i20-donate-left">
           <h2>Your Gift Matters And It's Tax-Deductible</h2>
           <div class="i20-donate-qr">
-            <div class="i20-donate-qr-box">QR Code<br>Coming Soon</div>
+            <img src="zelle-qr.png" alt="Zelle QR code to donate to Gamma Iota Lambda Foundation" class="i20-donate-qr-box" style="object-fit:contain;background:#fff;padding:8px;" onerror="this.outerHTML='<div class=\'i20-donate-qr-box\'>QR Code<br>Coming Soon</div>'" />
             <div class="i20-donate-zelle">Zelle®</div>
           </div>
         </div>
@@ -622,6 +625,15 @@
       hamburger.setAttribute('aria-expanded', isOpen);
       document.body.style.overflow = isOpen ? 'hidden' : '';
     });
+    const closeBtn = document.getElementById('mobile-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        mobileMenu.classList.remove('open');
+        hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+      });
+    }
     mobileMenu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
         mobileMenu.classList.remove('open');
@@ -648,6 +660,25 @@
         }
       }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
     });
+
+    // Back to top
+    const btt = document.getElementById('back-to-top');
+    if (btt) {
+      window.addEventListener('scroll', () => { btt.classList.toggle('visible', window.scrollY > 400); });
+      btt.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    }
+    // Page transitions
+    document.querySelectorAll('a[href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto') || href.startsWith('tel') || link.getAttribute('target') === '_blank') return;
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        document.body.classList.add('page-out');
+        setTimeout(() => { window.location.href = href; }, 220);
+      });
+    });
   </script>
+
+  <button id="back-to-top" class="back-to-top" aria-label="Back to top">&#8593;</button>
 </body>
 </html>
