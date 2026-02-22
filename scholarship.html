@@ -452,7 +452,7 @@
     }
   </style>
 </head>
-<body>
+<body data-page="scholarship">
 
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
@@ -477,6 +477,7 @@
           <li><a href="alpha-academy.html">Alpha Academy</a></li>
           <li><a href="recommended-readings.html">Recommended Readings</a></li>
           <li><a href="scholarship.html">Scholarship</a></li>
+          <li><a href="index.html#programs">Programs</a></li>
         </ul>
       </li>
       <li><a href="fraternity-history.html">Fraternity</a></li>
@@ -506,7 +507,7 @@
     <a href="index.html#contact" class="mobile-nav-link">Contact</a>
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
   </div>
-  
+
   <main id="main-content">
 
     <!-- HERO -->
@@ -536,7 +537,7 @@
 
         <div class="sc-profile-text reveal">
           <h2>2025 Judge Myles A. Paige <em>Scholarship</em></h2>
-          <p>Judge Myles A. Paige, a former General President of Alpha Phi Alpha Fraternity, Inc. and a charter member of Gamma Iota Lambda, was the first African American to be appointed to a New York City Criminal Court. Judge Paige had a decorated legal, civil rights, and philanthropic career.</p>
+          <p>Judge Myles A. Paige, a former General President of Alpha Phi Alpha Fraternity, Incorporated and a charter member of Gamma Iota Lambda, was the first African American to be appointed to a New York City Criminal Court. Judge Paige had a decorated legal, civil rights, and philanthropic career.</p>
           <p>The Myles A. Paige Scholarship was established to provide financial support to graduating high school seniors as they matriculate into college.</p>
         </div>
 
@@ -571,7 +572,7 @@
           <div class="sc-section-heading reveal">Application</div>
           <div class="sc-apply-block reveal">
             <p>Use the application link to submit your application. The deadline for submission is <strong>May 26, 2025</strong>.</p>
-            <p>Please direct any questions or comments to <a href="mailto:gilbkli1906@gmail.com" class="sc-apply-link">gilbkli1906@gmail.com</a> with the subject <strong>GIL Scholarship 2025</strong>.</p>
+            <p>Please direct any questions or comments to <a href="/cdn-cgi/l/email-protection#86e1efeae4edeaefb7bfb6b0c6e1ebe7efeaa8e5e9eb" class="sc-apply-link"><span class="__cf_email__" data-cfemail="fa9d939698919693cbc3caccba9d979b9396d4999597">[email&#160;protected]</span></a> with the subject <strong>GIL Scholarship 2025</strong>.</p>
           </div>
 
           <a href="https://www.gil1906.org/judge-myles-a-paige-scholarship" target="_blank" rel="noopener noreferrer" class="btn-primary">Apply Now &#8594;</a>
@@ -601,7 +602,7 @@
             <div class="sc-contact-info">
               <p>
                 <strong>Email</strong>
-                <a href="mailto:gilbkli1906@gmail.com">gilbkli1906@gmail.com</a>
+                <a href="/cdn-cgi/l/email-protection#eb8c828789808782dad2dbddab8c868a8287c5888486"><span class="__cf_email__" data-cfemail="07606e6b656c6b6e363e373147606a666e6b2964686a">[email&#160;protected]</span></a>
               </p>
               <p>
                 <strong>Subject Line</strong>
@@ -657,11 +658,11 @@
     <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
   </footer>
 
+  <button id="back-to-top" class="back-to-top" aria-label="Back to top">&#8593;</button>
+
   <script>
     const nav = document.getElementById('main-nav');
-    window.addEventListener('scroll', () => {
-      nav.classList.toggle('scrolled', window.scrollY > 60);
-    });
+    window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', window.scrollY > 60); });
     const hamburger = document.getElementById('hamburger');
     const mobileMenu = document.getElementById('mobile-menu');
     hamburger.addEventListener('click', () => {
@@ -673,27 +674,36 @@
     const closeBtn = document.getElementById('mobile-close');
     if (closeBtn) {
       closeBtn.addEventListener('click', () => {
-        mobileMenu.classList.remove('open');
-        hamburger.classList.remove('open');
-        hamburger.setAttribute('aria-expanded', 'false');
-        document.body.style.overflow = '';
+        mobileMenu.classList.remove('open'); hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false'); document.body.style.overflow = '';
       });
     }
     mobileMenu.querySelectorAll('a').forEach(link => {
       link.addEventListener('click', () => {
-        mobileMenu.classList.remove('open');
-        hamburger.classList.remove('open');
-        hamburger.setAttribute('aria-expanded', 'false');
-        document.body.style.overflow = '';
+        mobileMenu.classList.remove('open'); hamburger.classList.remove('open');
+        hamburger.setAttribute('aria-expanded', 'false'); document.body.style.overflow = '';
       });
     });
     document.querySelectorAll('.reveal').forEach(el => {
       new IntersectionObserver(([entry], obs) => {
-        if (entry.isIntersecting) {
-          el.classList.add('visible');
-          obs.disconnect();
-        }
+        if (entry.isIntersecting) { el.classList.add('visible'); obs.disconnect(); }
       }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
+    });
+    // Back to top
+    const btt = document.getElementById('back-to-top');
+    if (btt) {
+      window.addEventListener('scroll', () => { btt.classList.toggle('visible', window.scrollY > 400); });
+      btt.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+    }
+    // Page transitions
+    document.querySelectorAll('a[href]').forEach(link => {
+      const href = link.getAttribute('href');
+      if (!href || href.startsWith('#') || href.startsWith('mailto') || href.startsWith('tel') || link.getAttribute('target') === '_blank') return;
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        document.body.classList.add('page-out');
+        setTimeout(() => { window.location.href = href; }, 220);
+      });
     });
   </script>
 </body>
