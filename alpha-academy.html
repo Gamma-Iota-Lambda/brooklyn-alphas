@@ -1,15 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-4YESGMG3TC"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-  
-    gtag('config', 'G-4YESGMG3TC');
-  </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Alpha Academy | Gamma Iota Lambda | The Brooklyn Alphas</title>
@@ -316,6 +307,15 @@
       .aa-contact { padding: 4rem 5%; }
     }
   </style>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-4YESGMG3TC"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-4YESGMG3TC');
+  </script>
 </head>
 <body data-page="alpha-academy">
 
@@ -519,7 +519,7 @@
       });
     });
       document.querySelectorAll('.reveal').forEach(el => {
-      new IntersectionObsery], obs) => {
+      new IntersectionObserver(([entry], obs) => {
         if (entry.isIntersecting) {
           el.classList.add('visible');
           obs.disconnect();
