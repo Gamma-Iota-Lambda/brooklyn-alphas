@@ -46,10 +46,254 @@ body {
   overflow-x: hidden;
 }
 
+/* ─── TOP BAR ─── */
+#top-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 101;
+  height: 36px;
+  background: rgba(6,6,6,0.98);
+  border-bottom: 1px solid rgba(184,134,11,0.18);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2rem;
+  gap: 1rem;
+}
+.top-bar-social {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+.top-bar-social a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  color: rgba(255,255,255,0.45);
+  text-decoration: none;
+  transition: color 0.2s;
+  border-radius: 2px;
+}
+.top-bar-social a:hover { color: var(--gold-bright); }
+.top-bar-social svg { width: 14px; height: 14px; fill: currentColor; }
+.top-bar-subscribe {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.top-bar-subscribe span {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+  white-space: nowrap;
+}
+.top-bar-sub-btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--black);
+  background: var(--gold);
+  border: none;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+.top-bar-sub-btn:hover { background: var(--gold-bright); }
+
+/* ─── SUBSTACK MODAL ─── */
+.sub-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 500;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.sub-modal-overlay.open { display: flex; }
+.sub-modal {
+  background: #111;
+  border: 1px solid rgba(184,134,11,0.3);
+  padding: 2.5rem 2rem;
+  max-width: 420px;
+  width: 100%;
+  position: relative;
+  animation: pageIn 0.25s ease both;
+}
+.sub-modal-close {
+  position: absolute;
+  top: 1rem; right: 1rem;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.5);
+  width: 28px; height: 28px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: color 0.2s, border-color 0.2s;
+}
+.sub-modal-close:hover { color: var(--gold-bright); border-color: var(--gold); }
+.sub-modal-eyebrow {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 0.75rem;
+}
+.sub-modal h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: var(--white);
+  line-height: 1.15;
+  margin-bottom: 0.75rem;
+}
+.sub-modal h3 em { font-style: italic; color: var(--gold-bright); }
+.sub-modal p {
+  font-family: 'Barlow', sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.55);
+  font-weight: 300;
+  margin-bottom: 1.5rem;
+}
+.sub-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.sub-modal-form input[type="email"] {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(184,134,11,0.25);
+  color: var(--white);
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  padding: 0.8rem 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+.sub-modal-form input[type="email"]:focus { border-color: var(--gold); }
+.sub-modal-form input[type="email"]::placeholder { color: rgba(255,255,255,0.25); }
+.sub-modal-form button {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--black);
+  background: var(--gold);
+  border: none;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sub-modal-form button:hover { background: var(--gold-bright); }
+.sub-modal-alt {
+  margin-top: 1rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.25);
+  text-align: center;
+}
+.sub-modal-alt a {
+  color: var(--gold);
+  text-decoration: none;
+}
+.sub-modal-alt a:hover { color: var(--gold-bright); }
+.sub-modal-success {
+  display: none;
+  text-align: center;
+  padding: 1rem 0;
+}
+.sub-modal-success .checkmark {
+  font-size: 2rem;
+  margin-bottom: 0.75rem;
+  display: block;
+}
+.sub-modal-success p {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  margin-bottom: 0;
+}
+
+/* Mobile social in mobile menu */
+.mobile-social-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  padding: 0.75rem 0 0.25rem;
+  border-top: 1px solid rgba(184,134,11,0.15);
+  margin-top: 0.5rem;
+  width: 100%;
+}
+.mobile-social-row a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px; height: 40px;
+  border: 1px solid rgba(184,134,11,0.2);
+  color: rgba(255,255,255,0.5);
+  text-decoration: none;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  font-family: inherit !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  padding: 0 !important;
+  width: 40px !important;
+}
+.mobile-social-row a:hover {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: rgba(184,134,11,0.08);
+}
+.mobile-social-row svg { width: 16px; height: 16px; fill: currentColor; }
+.mobile-sub-btn {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--black);
+  background: var(--gold);
+  border: none;
+  padding: 0.75rem 2rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  width: 100%;
+  margin-top: 0.75rem;
+  text-align: center;
+}
+.mobile-sub-btn:hover { background: var(--gold-bright); }
+
+@media (max-width: 900px) {
+  #top-bar { padding: 0 1rem; }
+  .top-bar-subscribe span { display: none; }
+}
+@media (max-width: 480px) {
+  #top-bar { height: 32px; }
+}
+
 /* ─── NAV ─── */
 #main-nav {
   position: fixed;
-  top: 0; left: 0; right: 0;
+  top: 36px; left: 0; right: 0;
   z-index: 100;
   display: flex;
   align-items: center;
