@@ -105,6 +105,61 @@
       filter: brightness(1.05);
     }
 
+    /* ─── VIDEO SECTION ─── */
+    .aa-video-section {
+      background: var(--black-soft);
+      padding: 5rem 8%;
+      border-bottom: 1px solid rgba(184,134,11,0.12);
+    }
+    .aa-video-inner {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .aa-video-label {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1.5rem;
+    }
+    .aa-video-label::before {
+      content: '';
+      width: 28px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .aa-video-wrap {
+      position: relative;
+      width: 100%;
+      padding-bottom: 56.25%; /* 16:9 */
+      height: 0;
+      overflow: hidden;
+      border: 1px solid rgba(184,134,11,0.25);
+      box-shadow: 0 0 0 1px rgba(184,134,11,0.08), 8px 8px 0 rgba(184,134,11,0.06);
+    }
+    .aa-video-wrap iframe {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+    }
+    .aa-video-caption {
+      margin-top: 1rem;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 300;
+      letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+    }
+
     /* ─── CONTENT ─── */
     .aa-content {
       background: var(--black);
@@ -302,6 +357,7 @@
     /* ─── RESPONSIVE ─── */
     @media (max-width: 900px) {
       .aa-hero { padding: 7rem 5% 4rem; }
+      .aa-video-section { padding: 3rem 5%; }
       .aa-content { grid-template-columns: 1fr; padding: 4rem 5% 5rem; gap: 3rem; }
       .aa-sidebar { position: static; }
       .aa-contact { padding: 4rem 5%; }
@@ -313,7 +369,6 @@
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-
     gtag('config', 'G-4YESGMG3TC');
   </script>
 </head>
@@ -343,6 +398,7 @@
           <li><a href="recommended-readings.html">Recommended Readings</a></li>
           <li><a href="scholarship.html">Scholarship</a></li>
           <li><a href="index.html#programs">Programs</a></li>
+          <li><a href="index.html#scholarship">Scholarship</a></li>
         </ul>
       </li>
       <li><a href="fraternity-history.html">Fraternity</a></li>
@@ -357,7 +413,7 @@
 
   <!-- MOBILE MENU -->
   <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
-    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu"><div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">#10005;</button>
+    <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu">&#10005;</button>
     <a href="index.html#about" class="mobile-nav-link">About</a>
     <a href="index.html#programs" class="mobile-nav-link">Programs</a>
     <a href="index.html#meeting" class="mobile-nav-link">Meetings</a>
@@ -369,6 +425,7 @@
     <a href="scholarship.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Scholarship</a>
     <a href="fraternity-history.html" class="mobile-nav-link">Fraternity History</a>
     <a href="impact-20.html" class="mobile-nav-link">Impact $20</a>
+    <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
     <a href="index.html#contact" class="mobile-nav-link">Contact</a>
     <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform" target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
   </div>
@@ -389,6 +446,22 @@
     <!-- LOGO -->
     <div class="aa-logo-section">
       <img src="alpha-academy-logo.png" alt="Alpha Academy Mentorship Program Logo" />
+    </div>
+
+    <!-- VIDEO -->
+    <div class="aa-video-section reveal">
+      <div class="aa-video-inner">
+        <div class="aa-video-label">Program Overview</div>
+        <div class="aa-video-wrap">
+          <iframe
+            src="https://www.youtube.com/embed/4gHvl-OoeDk"
+            title="Alpha Academy — Gamma Iota Lambda Chapter"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowfullscreen>
+          </iframe>
+        </div>
+        <p class="aa-video-caption">Alpha Academy · Gamma Iota Lambda Chapter · Alpha Phi Alpha Fraternity, Inc.</p>
+      </div>
     </div>
 
     <!-- CONTENT -->
@@ -463,7 +536,7 @@
       <h2>Have <em>Questions?</em></h2>
       <p>For questions or concerns about Alpha Academy, send us an email.</p>
       <p style="color:rgba(255,255,255,0.35); font-size:0.8rem; letter-spacing:0.08em;">Use subject line: <strong style="color:rgba(255,255,255,0.55);">"Alpha Academy application"</strong></p>
-      <a href="/cdn-cgi/l/email-protection#543130213735203d3b3a14333d38656d64627a3b2633" class="aa-contact-email"><span class="__cf_email__" data-cfemail="f69392839597829f9998b6919f9ac7cfc6c0d8998491">[email&#160;protected]</span></a>
+      <a href="mailto:info@gil1906.org" class="aa-contact-email">info@gil1906.org</a>
       <div class="aa-contact-note">Gamma Iota Lambda Chapter · Alpha Phi Alpha Fraternity, Inc.</div>
     </div>
 
@@ -486,7 +559,7 @@
     <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
   </footer>
 
-  <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+  <script>
     const nav = document.getElementById('main-nav');
     window.addEventListener('scroll', () => {
       nav.classList.toggle('scrolled', window.scrollY > 60);
@@ -516,7 +589,7 @@
         document.body.style.overflow = '';
       });
     });
-      document.querySelectorAll('.reveal').forEach(el => {
+    document.querySelectorAll('.reveal').forEach(el => {
       new IntersectionObserver(([entry], obs) => {
         if (entry.isIntersecting) {
           el.classList.add('visible');
@@ -524,14 +597,11 @@
         }
       }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
     });
-
-    // Back to top
     const btt = document.getElementById('back-to-top');
     if (btt) {
       window.addEventListener('scroll', () => { btt.classList.toggle('visible', window.scrollY > 400); });
       btt.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
     }
-    // Page transitions
     document.querySelectorAll('a[href]').forEach(link => {
       const href = link.getAttribute('href');
       if (!href || href.startsWith('#') || href.startsWith('mailto') || href.startsWith('tel') || link.getAttribute('target') === '_blank') return;
