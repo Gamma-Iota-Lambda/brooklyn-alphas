@@ -4,278 +4,54 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Page Not Found | Gamma Iota Lambda | The Brooklyn Alphas</title>
+  <meta name="description" content="The page you're looking for doesn't exist. Return to the Gamma Iota Lambda Chapter website." />
+  <meta name="robots" content="noindex, follow" />
+  <link rel="canonical" href="https://www.gil1906.org/" />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#0A0A0A" />
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-4YESGMG3TC"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-4YESGMG3TC');
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/png" href="favicon.png" />
-  <meta name="theme-color" content="#0A0A0A" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --gold: #B8860B;
-      --gold-bright: #D4AF37;
-      --black: #0A0A0A;
-      --white: #F5F0E8;
-    }
-
-    body {
-      background: var(--black);
-      color: var(--white);
-      font-family: 'Barlow Condensed', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 2rem;
-      animation: fadeIn 0.5s ease both;
-      overflow: hidden;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(12px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* Background texture */
-    body::before {
-      content: '';
-      position: fixed;
-      inset: 0;
-      background: radial-gradient(ellipse at 50% 40%, rgba(184,134,11,0.08) 0%, transparent 65%);
-      pointer-events: none;
-    }
-
-    /* Watermark number */
-    .watermark {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      font-family: 'Playfair Display', serif;
-      font-size: clamp(18rem, 40vw, 30rem);
-      font-weight: 900;
-      font-style: italic;
-      color: transparent;
-      -webkit-text-stroke: 1px rgba(184,134,11,0.06);
-      user-select: none;
-      pointer-events: none;
-      line-height: 1;
-      letter-spacing: -0.05em;
-    }
-
-    /* Top logo bar */
-    .top-bar {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      height: 4px;
-      background: var(--gold);
-    }
-
-    .logo-link {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      text-decoration: none;
-      margin-bottom: 3rem;
-      position: relative;
-      z-index: 2;
-    }
-
-    .logo-img {
-      width: 48px;
-      height: 48px;
-      object-fit: contain;
-    }
-
-    .logo-text {
-      text-align: left;
-    }
-
-    .logo-text span:first-child {
-      display: block;
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 1rem;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--white);
-    }
-
-    .logo-text span:last-child {
-      display: block;
-      font-size: 0.65rem;
-      font-weight: 400;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--gold);
-    }
-
-    /* Main content */
-    .content {
-      position: relative;
-      z-index: 2;
-      max-width: 560px;
-    }
-
-    .eyebrow {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.75rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .eyebrow::before,
-    .eyebrow::after {
-      content: '';
-      width: 32px;
-      height: 1px;
-      background: var(--gold);
-    }
-
-    .eyebrow span {
-      font-size: 0.65rem;
-      font-weight: 600;
-      letter-spacing: 0.28em;
-      text-transform: uppercase;
-      color: var(--gold);
-    }
-
-    h1 {
-      font-family: 'Playfair Display', serif;
-      font-size: clamp(2rem, 7vw, 3.5rem);
-      font-weight: 900;
-      line-height: 1.1;
-      color: var(--white);
-      margin-bottom: 1.25rem;
-    }
-
-    h1 em {
-      font-style: italic;
-      color: var(--gold-bright);
-    }
-
-    .subtitle {
-      font-size: 0.95rem;
-      font-weight: 300;
-      letter-spacing: 0.06em;
-      color: rgba(255,255,255,0.5);
-      margin-bottom: 2.5rem;
-      line-height: 1.7;
-    }
-
-    /* Nav links */
-    .nav-grid {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 0.75rem;
-      margin-bottom: 2.5rem;
-    }
-
-    .nav-pill {
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 0.72rem;
-      font-weight: 600;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.6);
-      text-decoration: none;
-      border: 1px solid rgba(255,255,255,0.1);
-      padding: 0.55rem 1.1rem;
-      transition: color 0.2s, border-color 0.2s, background 0.2s;
-    }
-
-    .nav-pill:hover {
-      color: var(--gold-bright);
-      border-color: var(--gold);
-      background: rgba(184,134,11,0.07);
-    }
-
-    /* CTA button */
-    .btn-home {
-      display: inline-block;
-      font-family: 'Barlow Condensed', sans-serif;
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--black);
-      background: var(--gold);
-      padding: 1rem 2.5rem;
-      text-decoration: none;
-      transition: background 0.2s, transform 0.2s;
-    }
-
-    .btn-home:hover {
-      background: var(--gold-bright);
-      transform: translateY(-2px);
-    }
-
-    /* Bottom tag */
-    .bottom-tag {
-      position: fixed;
-      bottom: 1.5rem;
-      left: 0; right: 0;
-      font-size: 0.6rem;
-      font-weight: 400;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: rgba(255,255,255,0.18);
-      text-align: center;
-    }
-
-    @media (max-width: 480px) {
-      .logo-link { margin-bottom: 2rem; }
-      .nav-grid { gap: 0.5rem; }
-    }
+    .err-page { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:4rem 5%; background:var(--black); position:relative; overflow:hidden; }
+    .err-bg { position:absolute; inset:0; background:radial-gradient(ellipse at 50% 50%, rgba(184,134,11,0.08) 0%, transparent 65%); pointer-events:none; }
+    .err-number { font-family:'Playfair Display',serif; font-size:clamp(8rem,22vw,18rem); font-weight:900; font-style:italic; color:transparent; -webkit-text-stroke:1px rgba(184,134,11,0.18); line-height:0.85; letter-spacing:-0.03em; user-select:none; }
+    .err-eyebrow { display:flex; align-items:center; justify-content:center; gap:1rem; margin:2rem 0 1rem; }
+    .err-eyebrow::before, .err-eyebrow::after { content:''; width:28px; height:1px; background:var(--gold); }
+    .err-eyebrow span { font-family:'Barlow Condensed',sans-serif; font-size:0.68rem; font-weight:400; letter-spacing:0.26em; text-transform:uppercase; color:var(--gold); }
+    .err-title { font-family:'Playfair Display',serif; font-size:clamp(1.8rem,4vw,3rem); font-weight:900; color:var(--white); margin-bottom:1rem; }
+    .err-sub { font-family:'Barlow Condensed',sans-serif; font-size:0.95rem; font-weight:300; letter-spacing:0.08em; color:rgba(255,255,255,0.45); margin-bottom:2.5rem; }
+    .err-links { display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; }
+    .err-links a { font-family:'Barlow Condensed',sans-serif; font-size:0.72rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold); text-decoration:none; border:1px solid rgba(184,134,11,0.3); padding:0.75rem 1.5rem; transition:background 0.2s, color 0.2s; }
+    .err-links a:hover { background:var(--gold); color:var(--black); }
+    .err-links a.primary { background:var(--gold); color:var(--black); }
+    .err-links a.primary:hover { background:var(--gold-bright); }
   </style>
 </head>
 <body>
-
-  <div class="top-bar"></div>
-  <div class="watermark" aria-hidden="true">404</div>
-
-  <a href="index.html" class="logo-link">
-    <img src="gil-crest.png" alt="GIL Crest" class="logo-img"
-      onerror="this.style.display='none'" />
-    <div class="logo-text">
-      <span>Gamma Iota Lambda</span>
-      <span>The Brooklyn Alphas · Est. 1945</span>
+  <div class="err-page">
+    <div class="err-bg"></div>
+    <div class="err-number" aria-hidden="true">404</div>
+    <div class="err-eyebrow"><span>Gamma Iota Lambda Chapter</span></div>
+    <h1 class="err-title">Page Not Found</h1>
+    <p class="err-sub">The page you're looking for doesn't exist or has been moved.</p>
+    <div class="err-links">
+      <a href="index.html" class="primary">Go to Home</a>
+      <a href="alpha-academy.html">Alpha Academy</a>
+      <a href="scholarship.html">Scholarship</a>
+      <a href="impact-20.html">Impact $20</a>
+      <a href="index.html#contact">Contact</a>
     </div>
-  </a>
-
-  <div class="content">
-
-    <div class="eyebrow"><span>Error 404</span></div>
-
-    <h1>Page <em>Not</em><br>Found</h1>
-
-    <p class="subtitle">
-      The page you're looking for doesn't exist or may have moved.<br>
-      Head back home or use the links below to find what you need.
-    </p>
-
-    <div class="nav-grid">
-      <a href="index.html#about" class="nav-pill">About</a>
-      <a href="index.html#programs" class="nav-pill">Programs</a>
-      <a href="index.html#meeting" class="nav-pill">Meetings</a>
-      <a href="executive-board.html" class="nav-pill">Executive Board</a>
-      <a href="scholarship.html" class="nav-pill">Scholarship</a>
-      <a href="alpha-academy.html" class="nav-pill">Alpha Academy</a>
-      <a href="fraternity-history.html" class="nav-pill">Fraternity</a>
-      <a href="impact-20.html" class="nav-pill">Impact $20</a>
-      <a href="index.html#contact" class="nav-pill">Contact</a>
-    </div>
-
-    <a href="index.html" class="btn-home">← Back to Home</a>
-
   </div>
-
-  <p class="bottom-tag">Gamma Iota Lambda Chapter · Alpha Phi Alpha Fraternity, Inc. · Brooklyn, NY</p>
-
 </body>
 </html>
