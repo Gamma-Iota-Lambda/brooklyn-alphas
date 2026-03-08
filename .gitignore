@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+package-lock.json
+package.json
+
+# Image compression backups
+originals/
+headshots/originals/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+npm-debug.log*
+*.log
+
+# Environment / secrets
+.env
+.env.local
+
+# Build artifacts
+dist/
+build/
