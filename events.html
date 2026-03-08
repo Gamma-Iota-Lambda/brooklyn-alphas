@@ -623,7 +623,7 @@
           <div class="ev-header-left">
             <div class="ev-tag">Annual Program</div>
             <h2 class="ev-title">MLK Day <em>of Service</em></h2>
-            <div class="ev-meta">January 2025 · Brooklyn, NY · 11th Annual</div>
+            <div class="ev-meta">January 19, 2026 · Brooklyn, NY · 11th Annual</div>
           </div>
           <p class="ev-desc">Our annual Martin Luther King Jr. Day of Service — free haircuts, hot meals, clothing drives, and community health screenings across Brooklyn. One of the borough's most impactful days of civic action.</p>
         </div>
@@ -633,7 +633,7 @@
             <!-- ADD MLK DAY PHOTOS HERE -->
             <!-- Example:
             <div class="ev-carousel-slide active">
-              <img src="events/mlk-2025/photo1.jpg" alt="Brothers providing free haircuts at MLK Day of Service 2026" loading="lazy" />
+              <img src="events/mlk-2025/photo1.jpg" alt="Brothers providing free haircuts at MLK Day of Service 2025" loading="lazy" />
             </div>
             -->
             <div class="ev-carousel-slide active">
@@ -696,7 +696,6 @@
             </div>
           </div>
         </div>
-        <p class="ev-add-notice">Add photos to <code>assets/chapter-life/</code> and run <code>node generate-manifests.js</code></p>
       </div>
     </div>
 
@@ -873,12 +872,14 @@
         if (Math.abs(diff) > 40) diff > 0 ? goTo(current + 1) : goTo(current - 1);
       }, { passive: true });
 
-      // Autoplay — 4 seconds per slide, pauses on hover/focus
+      // Autoplay — 4 seconds per slide, pauses on hover/focus/out of view
       if (total > 1) {
         let autoplay = null;
         let paused = false;
+        let inView = false;
 
         const startAutoplay = () => {
+          if (!inView) return;
           clearInterval(autoplay);
           autoplay = setInterval(() => goTo(current + 1), 4000);
         };
@@ -889,17 +890,21 @@
 
         // Pause on hover/focus, resume on leave
         carousel.addEventListener('mouseenter', () => { paused = true;  stopAutoplay(); });
-        carousel.addEventListener('mouseleave', () => { paused = false; startAutoplay(); });
+        carousel.addEventListener('mouseleave', () => { paused = false; if (inView) startAutoplay(); });
         carousel.addEventListener('focusin',    () => { paused = true;  stopAutoplay(); });
-        carousel.addEventListener('focusout',   () => { paused = false; startAutoplay(); });
+        carousel.addEventListener('focusout',   () => { paused = false; if (inView) startAutoplay(); });
+
+        // Pause when scrolled out of view, resume when back in
+        new IntersectionObserver(entries => {
+          inView = entries[0].isIntersecting;
+          if (inView && !paused) startAutoplay();
+          else stopAutoplay();
+        }, { threshold: 0.25 }).observe(carousel);
 
         // Manual navigation resets the timer so the next slide waits a full 4s
-        prevBtn?.addEventListener('click', () => { if (!paused) startAutoplay(); });
-        nextBtn?.addEventListener('click', () => { if (!paused) startAutoplay(); });
-        thumbs.forEach(thumb => thumb.addEventListener('click', () => { if (!paused) startAutoplay(); }));
-
-        // Kick off
-        startAutoplay();
+        prevBtn?.addEventListener('click', () => { if (!paused && inView) startAutoplay(); });
+        nextBtn?.addEventListener('click', () => { if (!paused && inView) startAutoplay(); });
+        thumbs.forEach(thumb => thumb.addEventListener('click', () => { if (!paused && inView) startAutoplay(); }));
       }
     }
 
