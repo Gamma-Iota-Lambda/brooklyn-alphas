@@ -874,22 +874,33 @@
         if (Math.abs(diff) > 40) diff > 0 ? goTo(current + 1) : goTo(current - 1);
       }, { passive: true });
 
-      // Autoplay — 4 seconds, pauses on hover/focus, stops if only one slide
+      // Autoplay — 4 seconds per slide, pauses on hover/focus
       if (total > 1) {
-        let autoplay = setInterval(() => goTo(current + 1), 4000);
+        let autoplay = null;
+        let paused = false;
 
-        const pauseAutoplay  = () => clearInterval(autoplay);
-        const resumeAutoplay = () => { autoplay = setInterval(() => goTo(current + 1), 4000); };
+        const startAutoplay = () => {
+          clearInterval(autoplay);
+          autoplay = setInterval(() => goTo(current + 1), 4000);
+        };
+        const stopAutoplay = () => {
+          clearInterval(autoplay);
+          autoplay = null;
+        };
 
-        carousel.addEventListener('mouseenter', pauseAutoplay);
-        carousel.addEventListener('mouseleave', resumeAutoplay);
-        carousel.addEventListener('focusin',    pauseAutoplay);
-        carousel.addEventListener('focusout',   resumeAutoplay);
+        // Pause on hover/focus, resume on leave
+        carousel.addEventListener('mouseenter', () => { paused = true;  stopAutoplay(); });
+        carousel.addEventListener('mouseleave', () => { paused = false; startAutoplay(); });
+        carousel.addEventListener('focusin',    () => { paused = true;  stopAutoplay(); });
+        carousel.addEventListener('focusout',   () => { paused = false; startAutoplay(); });
 
-        // Also pause when user manually navigates
-        prevBtn?.addEventListener('click', () => { pauseAutoplay(); resumeAutoplay(); });
-        nextBtn?.addEventListener('click', () => { pauseAutoplay(); resumeAutoplay(); });
-        thumbs.forEach(thumb => thumb.addEventListener('click', () => { pauseAutoplay(); resumeAutoplay(); }));
+        // Manual navigation resets the timer so the next slide waits a full 4s
+        prevBtn?.addEventListener('click', () => { if (!paused) startAutoplay(); });
+        nextBtn?.addEventListener('click', () => { if (!paused) startAutoplay(); });
+        thumbs.forEach(thumb => thumb.addEventListener('click', () => { if (!paused) startAutoplay(); }));
+
+        // Kick off
+        startAutoplay();
       }
     }
 
