@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Events | Gamma Iota Lambda | The Brooklyn Alphas</title>
+    <meta name="description"
+        content="Photos and highlights from recent events hosted by Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc. — The Brooklyn Alphas." />
+    <link rel="canonical" href="https://www.gil1906.org/events.html" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.gil1906.org/events.html" />
+    <meta property="og:title" content="Events | Gamma Iota Lambda | The Brooklyn Alphas" />
+    <meta property="og:description"
+        content="Photos and highlights from recent events hosted by Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc. — The Brooklyn Alphas." />
+    <meta property="og:image" content="https://www.gil1906.org/og-image.jpg" />
+    <meta property="og:site_name" content="Gamma Iota Lambda Chapter — Alpha Phi Alpha" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Events | Gamma Iota Lambda | The Brooklyn Alphas" />
+    <meta name="twitter:description"
+        content="Photos and highlights from recent events hosted by Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc." />
+    <meta name="twitter:image" content="https://www.gil1906.org/og-image.jpg" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="theme-color" content="#0A0A0A" />
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-4YESGMG3TC"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', 'G-4YESGMG3TC');
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@300;400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* ─── HERO ─── */
+        .ev-hero {
+            min-height: 55vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 9rem 8% 5rem;
+            position: relative;
+            overflow: hidden;
+            background: var(--black-soft);
+        }
+
+        .ev-hero-bg {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at 65% 40%, rgba(184, 134, 11, 0.12) 0%, transparent 65%);
+        }
+
+        .ev-hero-watermark {
+            position: absolute;
+            right: 3%;
+            bottom: -1rem;
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(6rem, 18vw, 16rem);
+            font-weight: 900;
+            font-style: italic;
+            color: transparent;
+            -webkit-text-stroke: 1px rgba(184, 134, 11, 0.08);
+            line-height: 0.85;
+            user-select: none;
+            pointer-events: none;
+            letter-spacing: -0.03em;
+        }
+
+        .ev-hero-content {
+            position: relative;
+            z-index: 2;
+            max-width: 760px;
+        }
+
+        .ev-back {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--gold);
+            text-decoration: none;
+            margin-bottom: 2.5rem;
+            transition: gap 0.2s;
+        }
+
+        .ev-back:hover {
+            gap: 0.8rem;
+        }
+
+        .ev-back::before {
+            content: '←';
+        }
+
+        .ev-eyebrow {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .ev-eyebrow::before {
+            content: '';
+            width: 36px;
+            height: 1px;
+            background: var(--gold);
+        }
+
+        .ev-eyebrow span {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.68rem;
+            font-weight: 400;
+            letter-spacing: 0.26em;
+            text-transform: uppercase;
+            color: var(--gold);
+        }
+
+        .ev-hero h1 {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(2.8rem, 7vw, 5.5rem);
+            font-weight: 900;
+            line-height: 1.0;
+            color: var(--white);
+            margin-bottom: 1rem;
+        }
+
+        .ev-hero h1 em {
+            font-style: italic;
+            color: var(--gold-bright);
+        }
+
+        .ev-hero-sub {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            letter-spacing: 0.08em;
+            color: rgba(255, 255, 255, 0.45);
+            text-transform: uppercase;
+        }
+
+        /* ─── EVENT SECTIONS ─── */
+        .ev-section {
+            padding: 6rem 8%;
+            border-bottom: 1px solid rgba(184, 134, 11, 0.1);
+        }
+
+        .ev-section:nth-child(odd) {
+            background: var(--black);
+        }
+
+        .ev-section:nth-child(even) {
+            background: var(--black-soft);
+        }
+
+        .ev-section:last-of-type {
+            border-bottom: none;
+        }
+
+        .ev-section-inner {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+
+        /* ─── EVENT HEADER ─── */
+        .ev-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 2rem;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .ev-header-left {}
+
+        .ev-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: var(--gold);
+            margin-bottom: 0.75rem;
+        }
+
+        .ev-tag::before {
+            content: '';
+            width: 24px;
+            height: 1px;
+            background: var(--gold);
+        }
+
+        .ev-title {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(1.6rem, 3.5vw, 2.8rem);
+            font-weight: 900;
+            color: var(--white);
+            line-height: 1.15;
+            margin-bottom: 0.5rem;
+        }
+
+        .ev-title em {
+            font-style: italic;
+            color: var(--gold-bright);
+        }
+
+        .ev-meta {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 300;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.4);
+            text-transform: uppercase;
+        }
+
+        .ev-desc {
+            max-width: 500px;
+            font-family: 'Barlow', sans-serif;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            color: rgba(255, 255, 255, 0.55);
+            font-weight: 300;
+        }
+
+        /* ─── CAROUSEL ─── */
+        .ev-carousel {
+            position: relative;
+            overflow: hidden;
+            background: rgba(184, 134, 11, 0.04);
+            border: 1px solid rgba(184, 134, 11, 0.12);
+        }
+
+        /* Main display area */
+        .ev-carousel-stage {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .ev-carousel-slide {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ev-carousel-slide.active {
+            opacity: 1;
+        }
+
+        .ev-carousel-slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            display: block;
+        }
+
+        /* Placeholder for events with no photos yet */
+        .ev-slide-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            background: rgba(184, 134, 11, 0.04);
+        }
+
+        .ev-slide-placeholder-icon {
+            font-family: 'Playfair Display', serif;
+            font-size: 4rem;
+            color: rgba(184, 134, 11, 0.2);
+            line-height: 1;
+        }
+
+        .ev-slide-placeholder-text {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Caption bar */
+        .ev-carousel-caption {
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            border-top: 1px solid rgba(184, 134, 11, 0.12);
+            min-height: 3.5rem;
+        }
+
+        .ev-caption-text {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 300;
+            letter-spacing: 0.08em;
+            color: rgba(255, 255, 255, 0.45);
+            flex: 1;
+            font-style: italic;
+        }
+
+        .ev-counter {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.18em;
+            color: rgba(255, 255, 255, 0.3);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .ev-counter span {
+            color: var(--gold);
+            font-weight: 700;
+        }
+
+        /* Controls */
+        .ev-carousel-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+
+        .ev-btn {
+            width: 36px;
+            height: 36px;
+            background: rgba(184, 134, 11, 0.1);
+            border: 1px solid rgba(184, 134, 11, 0.25);
+            color: var(--gold);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            transition: background 0.2s, color 0.2s, border-color 0.2s;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .ev-btn:hover {
+            background: var(--gold);
+            color: var(--black);
+            border-color: var(--gold);
+        }
+
+        .ev-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .ev-btn:disabled:hover {
+            background: rgba(184, 134, 11, 0.1);
+            color: var(--gold);
+            border-color: rgba(184, 134, 11, 0.25);
+        }
+
+        /* Thumbnails */
+        .ev-thumbnails {
+            display: flex;
+            gap: 6px;
+            padding: 0.75rem 1.5rem;
+            overflow-x: auto;
+            scrollbar-width: none;
+            border-top: 1px solid rgba(184, 134, 11, 0.08);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .ev-thumbnails::-webkit-scrollbar {
+            display: none;
+        }
+
+        .ev-thumb {
+            width: 72px;
+            height: 48px;
+            flex-shrink: 0;
+            overflow: hidden;
+            cursor: pointer;
+            opacity: 0.45;
+            border: 1px solid transparent;
+            transition: opacity 0.2s, border-color 0.2s;
+            position: relative;
+            background: rgba(184, 134, 11, 0.08);
+        }
+
+        .ev-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .ev-thumb.active {
+            opacity: 1;
+            border-color: var(--gold);
+        }
+
+        .ev-thumb:hover {
+            opacity: 0.8;
+        }
+
+        /* Thumbnail placeholder */
+        .ev-thumb-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: rgba(184, 134, 11, 0.3);
+        }
+
+        /* ─── ADDING PHOTOS NOTICE ─── */
+        .ev-add-notice {
+            margin-top: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.72rem;
+            font-weight: 400;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.25);
+        }
+
+        .ev-add-notice::before {
+            content: '◆';
+            color: rgba(184, 134, 11, 0.3);
+            font-size: 0.4rem;
+        }
+
+        /* ─── CTA ─── */
+        .ev-cta {
+            background: var(--black-soft);
+            padding: 5rem 8%;
+            text-align: center;
+        }
+
+        .ev-cta h2 {
+            font-family: 'Playfair Display', serif;
+            font-size: clamp(1.8rem, 4vw, 3rem);
+            font-weight: 900;
+            color: var(--white);
+            margin-bottom: 0.75rem;
+        }
+
+        .ev-cta h2 em {
+            font-style: normal;
+            color: var(--gold-bright);
+        }
+
+        .ev-cta p {
+            font-family: 'Barlow Condensed', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.45);
+            margin-bottom: 2rem;
+            letter-spacing: 0.06em;
+        }
+
+        .ev-cta-btns {
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        /* ─── RESPONSIVE ─── */
+        @media (max-width: 860px) {
+            .ev-hero {
+                padding: 7rem 5% 4rem;
+            }
+
+            .ev-section {
+                padding: 4rem 5%;
+            }
+
+            .ev-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .ev-desc {
+                max-width: 100%;
+            }
+
+            .ev-carousel-stage {
+                aspect-ratio: 4 / 3;
+            }
+
+            .ev-cta {
+                padding: 4rem 5%;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .ev-carousel-stage {
+                aspect-ratio: 1 / 1;
+            }
+
+            .ev-thumb {
+                width: 56px;
+                height: 38px;
+            }
+        }
+    </style>
+</head>
+
+<body data-page="events">
+
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+
+    <nav id="main-nav" aria-label="Primary navigation">
+        <a href="index.html" class="nav-logo" aria-label="Gamma Iota Lambda Chapter — Home">
+            <img src="gil-crest.png" alt="Gamma Iota Lambda Chapter Crest" class="nav-crest" />
+            <div class="nav-logo-text">
+                <span>Gamma Iota Lambda</span>
+                <span>The Brooklyn Alphas · Chartered 1945</span>
+            </div>
+        </a>
+        <ul class="nav-links">
+            <li><a href="index.html#about">About</a></li>
+            <li class="nav-dropdown">
+                <a href="index.html#history">History &#9662;</a>
+                <ul class="nav-dropdown-menu">
+                    <li><a href="chapter-history.html">Full Chapter History</a></li>
+                    <li><a href="fraternity-history.html">Fraternity History</a></li>
+                </ul>
+            </li>
+            <li class="nav-dropdown">
+                <a href="index.html#history">Chapter &#9662;</a>
+                <ul class="nav-dropdown-menu">
+                    <li><a href="executive-board.html">Executive Board</a></li>
+                    <li><a href="index.html#meeting">Meetings</a></li>
+                </ul>
+            </li>
+            <li class="nav-dropdown">
+                <a href="index.html#programs">Programs &amp; Initiatives &#9662;</a>
+                <ul class="nav-dropdown-menu">
+                    <li><a href="alpha-academy.html">Alpha Academy</a></li>
+                    <li><a href="impact-20.html">Impact $20</a></li>
+                </ul>
+            </li>
+            <li class="nav-dropdown">
+                <a href="index.html#scholarship">Scholarship &#9662;</a>
+                <ul class="nav-dropdown-menu">
+                    <li><a href="scholarship.html">Scholarship</a></li>
+                    <li><a href="recommended-readings.html">Recommended Readings</a></li>
+                </ul>
+            </li>
+            <li><a href="events.html" style="color:var(--gold-bright);">Events</a></li>
+            <li><a href="index.html#contact">Contact</a></li>
+        </ul>
+        <div class="nav-social" aria-label="Social media links">
+            <a href="https://www.instagram.com/gil1906/" target="_blank" rel="noopener noreferrer"
+                aria-label="Instagram"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
+                </svg></a>
+            <a href="https://www.threads.com/gil1906" target="_blank" rel="noopener noreferrer"
+                aria-label="Threads"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.749-1.752-2.979-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 012.581.188v-.592c0-.881-.287-1.593-.853-2.109-.566-.517-1.355-.78-2.34-.784-1.716.009-2.87.672-3.43 1.97l-1.93-.668C8.24 3.09 9.836 1.93 12.02 1.917c1.482.007 2.705.406 3.636 1.186.93.779 1.402 1.851 1.402 3.185v.046c.433.113.843.266 1.228.457.944.468 1.665 1.161 2.143 2.059.74 1.395.898 3.26-.006 5.154-1.139 2.398-3.266 3.652-6.237 3.696zm-.124-8.558c-.06 0-.12.002-.18.005-1.045.059-1.896.378-2.401.893-.438.446-.637.993-.608 1.604.036.666.398 1.209.984 1.578.566.357 1.283.506 2.013.464 1.086-.059 1.975-.493 2.496-1.181.498-.657.784-1.624.852-2.884a10.95 10.95 0 00-2.156-.479z" />
+                </svg></a>
+            <a href="https://www.facebook.com/blkAlphas" target="_blank" rel="noopener noreferrer"
+                aria-label="Facebook"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg></a>
+            <a href="https://x.com/gil1906" target="_blank" rel="noopener noreferrer" aria-label="X (Twitter)"><svg
+                    viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg></a>
+            <a href="https://substack.com/gil1906" target="_blank" rel="noopener noreferrer" aria-label="Substack"><svg
+                    viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 17.764 22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z" />
+                </svg></a>
+        </div>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform"
+            target="_blank" rel="noopener noreferrer" class="nav-cta">RSVP Meeting</a>
+        <button class="nav-hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
+    </nav>
+
+    <div class="nav-mobile-menu" id="mobile-menu" role="dialog" aria-label="Navigation menu">
+        <button class="mobile-menu-close" id="mobile-close" aria-label="Close menu">&#10005;</button>
+        <a href="index.html#about" class="mobile-nav-link">About</a>
+        <a href="index.html#history" class="mobile-nav-link">History</a>
+        <a href="chapter-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Full
+            Chapter History</a>
+        <a href="fraternity-history.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627;
+            Fraternity History</a>
+        <a href="index.html#history" class="mobile-nav-link">Chapter</a>
+        <a href="executive-board.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627;
+            Executive Board</a>
+        <a href="index.html#meeting" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627;
+            Meetings</a>
+        <a href="index.html#programs" class="mobile-nav-link">Programs &amp; Initiatives</a>
+        <a href="alpha-academy.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Alpha
+            Academy</a>
+        <a href="impact-20.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627; Impact
+            $20</a>
+        <a href="index.html#scholarship" class="mobile-nav-link">Scholarship</a>
+        <a href="scholarship.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627;
+            Scholarship</a>
+        <a href="recommended-readings.html" class="mobile-nav-link" style="padding-left:2rem;font-size:0.85rem;">&#8627;
+            Recommended Readings</a>
+        <a href="events.html" class="mobile-nav-link">Events</a>
+        <a href="index.html#contact" class="mobile-nav-link">Contact</a>
+        <div class="mobile-social-row">
+            <a href="https://www.instagram.com/gil1906/" target="_blank" rel="noopener noreferrer"
+                aria-label="Instagram"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z" />
+                </svg></a>
+            <a href="https://www.threads.com/gil1906" target="_blank" rel="noopener noreferrer"
+                aria-label="Threads"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M12.186 24h-.007c-3.581-.024-6.334-1.205-8.184-3.509C2.35 18.44 1.5 15.586 1.472 12.01v-.017c.03-3.579.879-6.43 2.525-8.482C5.845 1.205 8.6.024 12.18 0h.014c2.746.02 5.043.725 6.826 2.098 1.677 1.29 2.858 3.13 3.509 5.467l-2.04.569c-1.104-3.96-3.898-5.984-8.304-6.015-2.91.022-5.11.936-6.54 2.717C4.307 6.504 3.616 8.914 3.589 12c.027 3.086.718 5.496 2.057 7.164 1.43 1.783 3.631 2.698 6.54 2.717 2.623-.02 4.358-.631 5.8-2.045 1.647-1.613 1.618-3.593 1.09-4.798-.31-.71-.873-1.3-1.634-1.75-.192 1.352-.622 2.446-1.284 3.272-.886 1.102-2.14 1.704-3.73 1.79-1.202.065-2.361-.218-3.259-.801-1.063-.689-1.685-1.749-1.752-2.979-.065-1.19.408-2.285 1.33-3.082.88-.76 2.119-1.207 3.583-1.291a13.853 13.853 0 012.581.188v-.592c0-.881-.287-1.593-.853-2.109-.566-.517-1.355-.78-2.34-.784-1.716.009-2.87.672-3.43 1.97l-1.93-.668C8.24 3.09 9.836 1.93 12.02 1.917c1.482.007 2.705.406 3.636 1.186.93.779 1.402 1.851 1.402 3.185v.046c.433.113.843.266 1.228.457.944.468 1.665 1.161 2.143 2.059.74 1.395.898 3.26-.006 5.154-1.139 2.398-3.266 3.652-6.237 3.696zm-.124-8.558c-.06 0-.12.002-.18.005-1.045.059-1.896.378-2.401.893-.438.446-.637.993-.608 1.604.036.666.398 1.209.984 1.578.566.357 1.283.506 2.013.464 1.086-.059 1.975-.493 2.496-1.181.498-.657.784-1.624.852-2.884a10.95 10.95 0 00-2.156-.479z" />
+                </svg></a>
+            <a href="https://www.facebook.com/blkAlphas" target="_blank" rel="noopener noreferrer"
+                aria-label="Facebook"><svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg></a>
+            <a href="https://x.com/gil1906" target="_blank" rel="noopener noreferrer" aria-label="X"><svg
+                    viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.253 5.622 5.911-5.622zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg></a>
+            <a href="https://substack.com/gil1906" target="_blank" rel="noopener noreferrer" aria-label="Substack"><svg
+                    viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M22.539 8.242H1.46V5.406h21.08v2.836zM1.46 10.812V24L12 17.764 22.54 24V10.812H1.46zM22.54 0H1.46v2.836h21.08V0z" />
+                </svg></a>
+        </div>
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSdRLSqXN5o_GMZ9cEpGKq9od-P7yu6SdO2P2rdpIeDL6o6ohw/viewform"
+            target="_blank" rel="noopener noreferrer" class="mobile-cta">RSVP Meeting</a>
+    </div>
+
+    <main id="main-content">
+
+        <!-- HERO -->
+        <div class="ev-hero">
+            <div class="ev-hero-bg"></div>
+            <div class="ev-hero-watermark" aria-hidden="true">Events</div>
+            <div class="ev-hero-content">
+                <a href="index.html" class="ev-back">Back to Home</a>
+                <div class="ev-eyebrow"><span>Gamma Iota Lambda Chapter · Brooklyn, NY</span></div>
+                <h1>Chapter <em>Events</em></h1>
+                <p class="ev-hero-sub">Brotherhood in Action · Serving Brooklyn Since 1945</p>
+            </div>
+        </div>
+
+        <!--
+    ═══════════════════════════════════════════════════════════
+    HOW TO ADD PHOTOS TO A CAROUSEL
+    ═══════════════════════════════════════════════════════════
+
+    1. Add your photos to the appropriate folder in the repo
+       e.g. events/mlk-2025/photo1.jpg
+
+    2. For each photo, add a slide inside .ev-carousel-stage:
+       <div class="ev-carousel-slide">
+         <img src="events/mlk-2025/photo1.jpg" alt="Description" loading="lazy" />
+       </div>
+
+    3. Add a matching thumbnail inside .ev-thumbnails:
+       <div class="ev-thumb">
+         <img src="events/mlk-2025/photo1.jpg" alt="" loading="lazy" />
+       </div>
+
+    4. Update the caption text as needed.
+
+    The carousel JavaScript initializes automatically.
+    ═══════════════════════════════════════════════════════════
+    -->
+
+        <!-- ─── SECTION DIVIDER: Social Events ─── -->
+        <div style="background:var(--black);padding:4rem 8% 0;">
+            <div style="max-width:1300px;margin:0 auto;">
+                <div style="display:flex;align-items:center;gap:1.5rem;">
+                    <div
+                        style="font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:0.36em;text-transform:uppercase;color:var(--gold);white-space:nowrap;">
+                        Social Events</div>
+                    <div style="flex:1;height:1px;background:rgba(184,134,11,0.2);"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── EVENT: Roots & Proofs ─── -->
+        <div class="ev-section reveal">
+            <div class="ev-section-inner">
+                <div class="ev-header">
+                    <div class="ev-header-left">
+                        <div class="ev-tag">Signature Social Event</div>
+                        <h2 class="ev-title">Roots &amp; Proofs: <em>The Culture Amplified</em></h2>
+                        <div class="ev-meta">February 28, 2026 · Brooklyn, NY</div>
+                    </div>
+                    <p class="ev-desc">Our signature social event — a celebration of culture, brotherhood, and
+                        community. Roots &amp; Proofs brought together brothers, friends, and the Brooklyn community for
+                        a night that honored who we are and where we come from.</p>
+                </div>
+
+                <div class="ev-carousel" data-carousel data-event="roots-and-proofs-2026">
+                    <div class="ev-carousel-stage">
+                        <!-- ADD ROOTS & PROOFS PHOTOS HERE -->
+                        <div class="ev-carousel-slide active">
+                            <div class="ev-slide-placeholder">
+                                <div class="ev-slide-placeholder-icon">◆</div>
+                                <div class="ev-slide-placeholder-text">Photos Coming Soon</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ev-carousel-caption">
+                        <span class="ev-caption-text">Roots &amp; Proofs: The Culture Amplified · 2025 · Brooklyn,
+                            NY</span>
+                        <div class="ev-carousel-controls">
+                            <button class="ev-btn ev-prev" aria-label="Previous photo">&#8592;</button>
+                            <span class="ev-counter"><span class="ev-current">1</span> / <span
+                                    class="ev-total">1</span></span>
+                            <button class="ev-btn ev-next" aria-label="Next photo">&#8594;</button>
+                        </div>
+                    </div>
+                    <div class="ev-thumbnails">
+                        <div class="ev-thumb active">
+                            <div class="ev-thumb-placeholder">◆</div>
+                        </div>
+                    </div>
+                </div>
+                <p class="ev-add-notice">Add photos to <code>assets/roots-and-proofs-2026/</code> and run
+                    <code>node generate-manifests.js</code></p>
+            </div>
+        </div>
+
+        <!-- ─── SECTION DIVIDER: Community Programs ─── -->
+        <div style="background:var(--black-soft);padding:4rem 8% 0;">
+            <div style="max-width:1300px;margin:0 auto;">
+                <div style="display:flex;align-items:center;gap:1.5rem;">
+                    <div
+                        style="font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;font-weight:700;letter-spacing:0.36em;text-transform:uppercase;color:var(--gold);white-space:nowrap;">
+                        Community Programs</div>
+                    <div style="flex:1;height:1px;background:rgba(184,134,11,0.2);"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ─── EVENT 1: MLK Day of Service ─── -->
+        <div class="ev-section reveal">
+            <div class="ev-section-inner">
+                <div class="ev-header">
+                    <div class="ev-header-left">
+                        <div class="ev-tag">Annual Program</div>
+                        <h2 class="ev-title">MLK Day <em>of Service</em></h2>
+                        <div class="ev-meta">January 2025 · Brooklyn, NY · 11th Annual</div>
+                    </div>
+                    <p class="ev-desc">Our annual Martin Luther King Jr. Day of Service — free haircuts, hot meals,
+                        clothing drives, and community health screenings across Brooklyn. One of the borough's most
+                        impactful days of civic action.</p>
+                </div>
+
+                <div class="ev-carousel" data-carousel data-event="mlk-2025">
+                    <div class="ev-carousel-stage">
+                        <!-- ADD MLK DAY PHOTOS HERE -->
+                        <!-- Example:
+            <div class="ev-carousel-slide active">
+              <img src="events/mlk-2025/photo1.jpg" alt="Brothers providing free haircuts at MLK Day of Service 2025" loading="lazy" />
+            </div>
+            -->
+                        <div class="ev-carousel-slide active">
+                            <div class="ev-slide-placeholder">
+                                <div class="ev-slide-placeholder-icon">◆</div>
+                                <div class="ev-slide-placeholder-text">Photos Coming Soon</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ev-carousel-caption">
+                        <span class="ev-caption-text">MLK Day of Service · January 2025 · Brooklyn, NY</span>
+                        <div class="ev-carousel-controls">
+                            <button class="ev-btn ev-prev" aria-label="Previous photo">&#8592;</button>
+                            <span class="ev-counter"><span class="ev-current">1</span> / <span
+                                    class="ev-total">1</span></span>
+                            <button class="ev-btn ev-next" aria-label="Next photo">&#8594;</button>
+                        </div>
+                    </div>
+                    <div class="ev-thumbnails">
+                        <div class="ev-thumb active">
+                            <div class="ev-thumb-placeholder">◆</div>
+                        </div>
+                    </div>
+                </div>
+                <p class="ev-add-notice">Add photos to <code>assets/mlk-2025/</code> and run
+                    <code>node generate-manifests.js</code></p>
+            </div>
+        </div>
+
+        <!-- ─── EVENT 3: Chapter Meetings & Brotherhood ─── -->
+        <div class="ev-section reveal">
+            <div class="ev-section-inner">
+                <div class="ev-header">
+                    <div class="ev-header-left">
+                        <div class="ev-tag">Brotherhood</div>
+                        <h2 class="ev-title">Chapter <em>Life</em></h2>
+                        <div class="ev-meta">2025–2026 · Brooklyn, NY</div>
+                    </div>
+                    <p class="ev-desc">Brotherhood in action — chapter meetings, social events, and the moments that
+                        define One GIL.</p>
+                </div>
+
+                <div class="ev-carousel" data-carousel data-event="chapter-life">
+                    <div class="ev-carousel-stage">
+                        <!-- ADD CHAPTER LIFE PHOTOS HERE -->
+                        <div class="ev-carousel-slide active">
+                            <div class="ev-slide-placeholder">
+                                <div class="ev-slide-placeholder-icon">◆</div>
+                                <div class="ev-slide-placeholder-text">Photos Coming Soon</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ev-carousel-caption">
+                        <span class="ev-caption-text">Chapter Life · Gamma Iota Lambda · 2025–2026</span>
+                        <div class="ev-carousel-controls">
+                            <button class="ev-btn ev-prev" aria-label="Previous photo">&#8592;</button>
+                            <span class="ev-counter"><span class="ev-current">1</span> / <span
+                                    class="ev-total">1</span></span>
+                            <button class="ev-btn ev-next" aria-label="Next photo">&#8594;</button>
+                        </div>
+                    </div>
+                    <div class="ev-thumbnails">
+                        <div class="ev-thumb active">
+                            <div class="ev-thumb-placeholder">◆</div>
+                        </div>
+                    </div>
+                </div>
+                <p class="ev-add-notice">Add photos to <code>assets/chapter-life/</code> and run
+                    <code>node generate-manifests.js</code></p>
+            </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="ev-cta reveal">
+            <h2>Stay <em>Connected</em></h2>
+            <p>Follow us on social media for real-time event updates and chapter news.</p>
+            <div class="ev-cta-btns">
+                <a href="https://www.instagram.com/gil1906/" target="_blank" rel="noopener noreferrer"
+                    class="btn-primary">Instagram &#8594;</a>
+                <a href="index.html#contact" class="btn-outline">Contact Us</a>
+            </div>
+        </div>
+
+    </main>
+
+    <footer role="contentinfo">
+        <div class="footer-left">
+            <strong>Gamma Iota Lambda Chapter · ΑΦΑ</strong>
+            © 2026 Alpha Phi Alpha Fraternity, Inc. All rights reserved.
+        </div>
+        <nav class="footer-center" aria-label="Footer navigation">
+            <a href="index.html#about">About</a>
+            <a href="index.html#programs">Programs</a>
+            <a href="index.html#meeting">Meetings</a>
+            <a href="index.html#scholarship">Scholarship</a>
+            <a href="index.html#contact">Contact</a>
+            <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer">Full Site</a>
+        </nav>
+        <div class="footer-right">The Brooklyn Alphas · Chartered 1945</div>
+    </footer>
+
+    <button id="back-to-top" class="back-to-top" aria-label="Back to top">&#8593;</button>
+
+    <script>
+        /* ─── NAV ─── */
+        const nav = document.getElementById('main-nav');
+        window.addEventListener('scroll', () => { nav.classList.toggle('scrolled', window.scrollY > 60); });
+        const hamburger = document.getElementById('hamburger');
+        const mobileMenu = document.getElementById('mobile-menu');
+        hamburger.addEventListener('click', () => {
+            const isOpen = mobileMenu.classList.toggle('open');
+            hamburger.classList.toggle('open', isOpen);
+            hamburger.setAttribute('aria-expanded', isOpen);
+            document.body.style.overflow = isOpen ? 'hidden' : '';
+        });
+        const closeBtn = document.getElementById('mobile-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                mobileMenu.classList.remove('open');
+                hamburger.classList.remove('open');
+                hamburger.setAttribute('aria-expanded', 'false');
+                document.body.style.overflow = '';
+            });
+        }
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.remove('open');
+                hamburger.classList.remove('open');
+                hamburger.setAttribute('aria-expanded', 'false');
+                document.body.style.overflow = '';
+            });
+        });
+
+        /* ─── CAROUSELS — manifest-driven ─── */
+        async function loadCarousel(carousel) {
+            const eventId = carousel.dataset.event;
+            const stage = carousel.querySelector('.ev-carousel-stage');
+            const thumbWrap = carousel.querySelector('.ev-thumbnails');
+            const captionEl = carousel.querySelector('.ev-caption-text');
+
+            if (!eventId) { initCarouselControls(carousel); return; }
+
+            let manifest;
+            try {
+                const res = await fetch(`assets/${eventId}/photos.json`);
+                if (!res.ok) throw new Error('not found');
+                manifest = await res.json();
+            } catch {
+                initCarouselControls(carousel);
+                return;
+            }
+
+            if (!manifest.photos || manifest.photos.length === 0) {
+                initCarouselControls(carousel);
+                return;
+            }
+
+            // Build slides and thumbnails from manifest
+            stage.innerHTML = '';
+            thumbWrap.innerHTML = '';
+
+            manifest.photos.forEach((photo, i) => {
+                const slide = document.createElement('div');
+                slide.className = 'ev-carousel-slide' + (i === 0 ? ' active' : '');
+                const img = document.createElement('img');
+                img.src = `assets/${eventId}/${photo.file}`;
+                img.alt = photo.caption || '';
+                img.loading = 'lazy';
+                if (photo.caption) img.dataset.caption = photo.caption;
+                slide.appendChild(img);
+                stage.appendChild(slide);
+
+                const thumb = document.createElement('div');
+                thumb.className = 'ev-thumb' + (i === 0 ? ' active' : '');
+                const tImg = document.createElement('img');
+                tImg.src = `assets/${eventId}/${photo.file}`;
+                tImg.alt = '';
+                tImg.loading = 'lazy';
+                thumb.appendChild(tImg);
+                thumbWrap.appendChild(thumb);
+            });
+
+            if (captionEl && manifest.photos[0]?.caption) {
+                captionEl.textContent = manifest.photos[0].caption;
+            }
+
+            initCarouselControls(carousel);
+        }
+
+        function initCarouselControls(carousel) {
+            const slides = Array.from(carousel.querySelectorAll('.ev-carousel-slide'));
+            const thumbs = Array.from(carousel.querySelectorAll('.ev-thumb'));
+            const prevBtn = carousel.querySelector('.ev-prev');
+            const nextBtn = carousel.querySelector('.ev-next');
+            const currentEl = carousel.querySelector('.ev-current');
+            const totalEl = carousel.querySelector('.ev-total');
+            const captionEl = carousel.querySelector('.ev-caption-text');
+
+            let current = 0;
+            const total = slides.length;
+
+            if (totalEl) totalEl.textContent = total;
+            if (currentEl) currentEl.textContent = 1;
+            if (total <= 1) {
+                if (prevBtn) prevBtn.disabled = true;
+                if (nextBtn) nextBtn.disabled = true;
+            }
+
+            function goTo(index) {
+                slides[current].classList.remove('active');
+                thumbs[current]?.classList.remove('active');
+                current = (index + total) % total;
+                slides[current].classList.add('active');
+                thumbs[current]?.classList.add('active');
+                thumbs[current]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                if (currentEl) currentEl.textContent = current + 1;
+                if (totalEl) totalEl.textContent = total;
+                if (prevBtn) prevBtn.disabled = total <= 1;
+                if (nextBtn) nextBtn.disabled = total <= 1;
+                // Update caption
+                const activeImg = slides[current].querySelector('img');
+                if (captionEl && activeImg?.dataset.caption) {
+                    captionEl.textContent = activeImg.dataset.caption;
+                } else if (captionEl && activeImg?.alt) {
+                    captionEl.textContent = activeImg.alt;
+                }
+            }
+
+            prevBtn?.addEventListener('click', () => goTo(current - 1));
+            nextBtn?.addEventListener('click', () => goTo(current + 1));
+            thumbs.forEach((thumb, i) => thumb.addEventListener('click', () => goTo(i)));
+
+            carousel.setAttribute('tabindex', '0');
+            carousel.addEventListener('keydown', e => {
+                if (e.key === 'ArrowLeft') goTo(current - 1);
+                if (e.key === 'ArrowRight') goTo(current + 1);
+            });
+
+            let touchStartX = 0;
+            const stageEl = carousel.querySelector('.ev-carousel-stage');
+            stageEl.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+            stageEl.addEventListener('touchend', e => {
+                const diff = touchStartX - e.changedTouches[0].clientX;
+                if (Math.abs(diff) > 40) diff > 0 ? goTo(current + 1) : goTo(current - 1);
+            }, { passive: true });
+        }
+
+        // Load all carousels on page
+        document.querySelectorAll('[data-carousel]').forEach(loadCarousel);
+
+        /* ─── REVEAL ─── */
+        document.querySelectorAll('.reveal').forEach(el => {
+            new IntersectionObserver(([entry], obs) => {
+                if (entry.isIntersecting) { el.classList.add('visible'); obs.disconnect(); }
+            }, { threshold: 0, rootMargin: '0px 0px -60px 0px' }).observe(el);
+        });
+
+        /* ─── BACK TO TOP ─── */
+        const btt = document.getElementById('back-to-top');
+        if (btt) {
+            window.addEventListener('scroll', () => { btt.classList.toggle('visible', window.scrollY > 400); });
+            btt.addEventListener('click', () => { window.scrollTo({ top: 0, behavior: 'smooth' }); });
+        }
+
+        /* ─── PAGE TRANSITIONS ─── */
+        document.querySelectorAll('a[href]').forEach(link => {
+            const href = link.getAttribute('href');
+            if (!href || href.startsWith('#') || href.startsWith('mailto') || href.startsWith('tel') || link.getAttribute('target') === '_blank') return;
+            link.addEventListener('click', e => {
+                e.preventDefault();
+                document.body.classList.add('page-out');
+                setTimeout(() => { window.location.href = href; }, 220);
+            });
+        });
+    </script>
+</body>
+
+</html>
