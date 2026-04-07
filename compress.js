@@ -141,7 +141,13 @@ async function main() {
     await compress(file);
   }
 
-  const after = allFiles.reduce((sum, f) => sum + fs.statSync(f).size, 0);
+  const after = allFiles.reduce((sum, f) => {
+    const ext = path.extname(f).toLowerCase();
+    const outPath = CONVERT_TO_JPG.has(ext)
+      ? path.join(path.dirname(f), path.basename(f, ext) + '.jpg')
+      : f;
+    return sum + (fs.existsSync(outPath) ? fs.statSync(outPath).size : 0);
+  }, 0);
   const totalSaving = ((1 - after / before) * 100).toFixed(1);
 
   console.log('\n' + '─'.repeat(70));
