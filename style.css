@@ -1410,17 +1410,6 @@ body {
   border-bottom: 1px solid var(--gold);
   padding-bottom: 1px;
 }
-[data-page="chapter"]      .nav-dropdown > a,
-[data-page="exec-board"]   .nav-dropdown > a,
-[data-page="chapter-full"] .nav-dropdown > a,
-[data-page="alpha-academy"].nav-dropdown > a,
-[data-page="readings"]     .nav-dropdown > a,
-[data-page="scholarship"]  .nav-dropdown > a {
-  color: var(--gold-bright) !important;
-  text-decoration: underline;
-  text-decoration-color: var(--gold);
-  text-underline-offset: 3px;
-}
 [data-page="exec-board"]   .nav-dropdown-menu a[href="executive-board.html"],
 [data-page="chapter-full"] .nav-dropdown-menu a[href="chapter-history.html"],
 [data-page="alpha-academy"].nav-dropdown-menu a[href="alpha-academy.html"],
