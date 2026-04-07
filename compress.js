@@ -76,14 +76,14 @@ async function compress(filePath) {
     // HEIC: try sharp first, fall back to macOS sips if libheif isn't built in
     if (HEIC_FORMATS.has(ext)) {
       try {
-        await sharp(filePath).resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg(SETTINGS.jpg).toFile(outPath);
+        await sharp(filePath).rotate().resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg(SETTINGS.jpg).toFile(outPath);
       } catch (heicErr) {
         if (heicErr.message.includes('compression format') || heicErr.message.includes('bad seek')) {
           // Use sips (macOS built-in) to convert HEIC → JPG
           execFileSync('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', String(SETTINGS.jpg.quality), filePath, '--out', outPath]);
-          // Then re-compress through sharp to enforce MAX_WIDTH
+          // Then re-compress through sharp to enforce MAX_WIDTH and auto-rotate
           const tmp = outPath + '.tmp.jpg';
-          await sharp(outPath).resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg(SETTINGS.jpg).toFile(tmp);
+          await sharp(outPath).rotate().resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg(SETTINGS.jpg).toFile(tmp);
           fs.renameSync(tmp, outPath);
         } else {
           throw heicErr;
@@ -91,7 +91,7 @@ async function compress(filePath) {
       }
       if (converting) fs.unlinkSync(filePath);
     } else {
-      let pipeline = sharp(filePath).resize({ width: MAX_WIDTH, withoutEnlargement: true });
+      let pipeline = sharp(filePath).rotate().resize({ width: MAX_WIDTH, withoutEnlargement: true });
       if (outExt === '.png') {
         pipeline = pipeline.png(SETTINGS.png);
       } else {
