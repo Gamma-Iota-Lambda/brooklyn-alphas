@@ -13,6 +13,7 @@
 const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,9 @@ const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', 
 
 // Formats that get converted to JPG (photos). PNG stays PNG. Everything else → JPG.
 const CONVERT_TO_JPG = new Set(['.webp', '.gif', '.heic', '.heif', '.tiff', '.tif', '.avif']);
+
+// Formats where sharp's libheif may lack decode support — use macOS sips as fallback
+const HEIC_FORMATS = new Set(['.heic', '.heif']);
 
 const SETTINGS = {
   jpg:  { quality: 82 },   // 82 is sweet spot — sharp with major size reduction
@@ -69,21 +73,37 @@ async function compress(filePath) {
   const originalSize = fs.statSync(filePath).size;
 
   try {
-    let pipeline = sharp(filePath).resize({ width: MAX_WIDTH, withoutEnlargement: true });
-
-    if (outExt === '.png') {
-      pipeline = pipeline.png(SETTINGS.png);
+    // HEIC: try sharp first, fall back to macOS sips if libheif isn't built in
+    if (HEIC_FORMATS.has(ext)) {
+      try {
+        await sharp(filePath).resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg(SETTINGS.jpg).toFile(outPath);
+      } catch (heicErr) {
+        if (heicErr.message.includes('compression format') || heicErr.message.includes('bad seek')) {
+          // Use sips (macOS built-in) to convert HEIC → JPG
+          execFileSync('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', String(SETTINGS.jpg.quality), filePath, '--out', outPath]);
+          // Then re-compress through sharp to enforce MAX_WIDTH
+          const tmp = outPath + '.tmp.jpg';
+          await sharp(outPath).resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg(SETTINGS.jpg).toFile(tmp);
+          fs.renameSync(tmp, outPath);
+        } else {
+          throw heicErr;
+        }
+      }
+      if (converting) fs.unlinkSync(filePath);
     } else {
-      pipeline = pipeline.jpeg(SETTINGS.jpg);
+      let pipeline = sharp(filePath).resize({ width: MAX_WIDTH, withoutEnlargement: true });
+      if (outExt === '.png') {
+        pipeline = pipeline.png(SETTINGS.png);
+      } else {
+        pipeline = pipeline.jpeg(SETTINGS.jpg);
+      }
+      const compressed = await pipeline.toBuffer();
+      fs.writeFileSync(outPath, compressed);
+      // Remove original if it was converted to a different filename
+      if (converting) fs.unlinkSync(filePath);
     }
 
-    const compressed = await pipeline.toBuffer();
-    fs.writeFileSync(outPath, compressed);
-
-    // Remove original if it was converted to a different filename
-    if (converting) fs.unlinkSync(filePath);
-
-    const newSize = compressed.length;
+    const newSize = fs.statSync(outPath).size;
     const saving = ((1 - newSize / originalSize) * 100).toFixed(1);
     const arrow = newSize < originalSize ? '✅' : '⚠️ ';
     const label = converting ? `${filePath} → ${outBase}` : filePath;
