@@ -6,8 +6,9 @@
  * in each event subfolder listing all image filenames.
  *
  * Usage:
- *   node generate-manifests.js              — scan all events/
- *   node generate-manifests.js mlk-2025     — scan one event only
+ *   node generate-manifests.js                        — scan all assets/ subfolders
+ *   node generate-manifests.js mlk-2025               — scan one event by name
+ *   node generate-manifests.js assets/chapter-life    — scan by full/relative path
  *
  * Scans: assets/<event-name>/
  *
@@ -99,10 +100,26 @@ function processEvent(eventDir, eventName) {
 function main() {
     const targetArg = process.argv[2];
 
-    // Make sure events/ folder exists
+    // If arg looks like a path (contains a separator or starts with . or /), use it directly
+    if (targetArg) {
+        const resolvedPath = path.resolve(targetArg);
+        if (targetArg.includes(path.sep) || targetArg.includes('/') || targetArg.startsWith('.')) {
+            if (!fs.existsSync(resolvedPath) || !fs.statSync(resolvedPath).isDirectory()) {
+                console.log(`Folder not found: ${targetArg}\n`);
+                process.exit(1);
+            }
+            const eventName = path.basename(resolvedPath);
+            console.log(`\nGenerating manifest for 1 event folder...\n`);
+            processEvent(resolvedPath, eventName);
+            console.log('\nDone.\n');
+            return;
+        }
+    }
+
+    // Make sure assets/ folder exists
     if (!fs.existsSync(EVENTS_DIR)) {
         fs.mkdirSync(EVENTS_DIR);
-        console.log(`Created events/ folder — add event subfolders and photos, then re-run.\n`);
+        console.log(`Created assets/ folder — add event subfolders and photos, then re-run.\n`);
         return;
     }
 
@@ -112,7 +129,7 @@ function main() {
         .sort(naturalSort);
 
     if (entries.length === 0) {
-        console.log('No event subfolders found in events/. Create folders like events/mlk-2025/ and add photos.\n');
+        console.log('No event subfolders found in assets/. Create folders like assets/mlk-2025/ and add photos.\n');
         return;
     }
 
@@ -121,7 +138,7 @@ function main() {
         : entries;
 
     if (targets.length === 0) {
-        console.log(`No event folder named "${targetArg}" found in events/.\n`);
+        console.log(`No event folder named "${targetArg}" found in assets/.\n`);
         return;
     }
 
