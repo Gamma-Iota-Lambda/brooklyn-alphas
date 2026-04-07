@@ -21,7 +21,10 @@ const TARGET_FOLDERS = [
   'headshots',  // board member headshots
 ];
 
-const EXTENSIONS = ['.jpg', '.jpeg', '.png'];
+const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif', '.tiff', '.tif', '.avif'];
+
+// Formats that get converted to JPG (photos). PNG stays PNG. Everything else → JPG.
+const CONVERT_TO_JPG = new Set(['.webp', '.gif', '.heic', '.heif', '.tiff', '.tif', '.avif']);
 
 const SETTINGS = {
   jpg:  { quality: 82 },   // 82 is sweet spot — sharp with major size reduction
@@ -50,6 +53,10 @@ async function compress(filePath) {
   const ext = path.extname(filePath).toLowerCase();
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
+  const converting = CONVERT_TO_JPG.has(ext);
+  const outExt = converting ? '.jpg' : ext;
+  const outBase = converting ? base.slice(0, -ext.length) + '.jpg' : base;
+  const outPath = path.join(dir, outBase);
 
   // Back up original
   const backupDir = path.join(dir, BACKUP_FOLDER);
@@ -64,21 +71,25 @@ async function compress(filePath) {
   try {
     let pipeline = sharp(filePath).resize({ width: MAX_WIDTH, withoutEnlargement: true });
 
-    if (ext === '.png') {
+    if (outExt === '.png') {
       pipeline = pipeline.png(SETTINGS.png);
     } else {
       pipeline = pipeline.jpeg(SETTINGS.jpg);
     }
 
     const compressed = await pipeline.toBuffer();
-    fs.writeFileSync(filePath, compressed);
+    fs.writeFileSync(outPath, compressed);
+
+    // Remove original if it was converted to a different filename
+    if (converting) fs.unlinkSync(filePath);
 
     const newSize = compressed.length;
     const saving = ((1 - newSize / originalSize) * 100).toFixed(1);
     const arrow = newSize < originalSize ? '✅' : '⚠️ ';
+    const label = converting ? `${filePath} → ${outBase}` : filePath;
 
     console.log(
-      `${arrow} ${filePath.padEnd(45)} ${formatBytes(originalSize).padStart(9)} → ${formatBytes(newSize).padStart(9)}  (${saving}% smaller)`
+      `${arrow} ${label.padEnd(55)} ${formatBytes(originalSize).padStart(9)} → ${formatBytes(newSize).padStart(9)}  (${saving}% smaller)`
     );
   } catch (err) {
     console.error(`❌ Failed: ${filePath} — ${err.message}`);
