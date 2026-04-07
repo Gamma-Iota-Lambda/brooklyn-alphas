@@ -1395,29 +1395,6 @@ body {
   to { opacity: 0; transform: translateY(-6px); }
 }
 
-/* ─── ACTIVE NAV STATE ─── */
-[data-page="index"]        .nav-links a[href="index.html"],
-[data-page="index"]        .nav-links a[href="#about"],
-[data-page="chapter"]      .nav-links a[href="index.html#history"],
-[data-page="exec-board"]   .nav-links a[href="index.html#history"],
-[data-page="chapter-full"] .nav-links a[href="index.html#history"],
-[data-page="alpha-academy"].nav-links a[href="index.html#history"],
-[data-page="readings"]     .nav-links a[href="index.html#history"],
-[data-page="scholarship"]  .nav-links a[href="index.html#history"],
-[data-page="fraternity"]   .nav-links a[href="fraternity-history.html"],
-[data-page="impact"]       .nav-links a[href="impact-20.html"] {
-  color: var(--gold-bright) !important;
-  border-bottom: 1px solid var(--gold);
-  padding-bottom: 1px;
-}
-[data-page="exec-board"]   .nav-dropdown-menu a[href="executive-board.html"],
-[data-page="chapter-full"] .nav-dropdown-menu a[href="chapter-history.html"],
-[data-page="alpha-academy"].nav-dropdown-menu a[href="alpha-academy.html"],
-[data-page="readings"]     .nav-dropdown-menu a[href="recommended-readings.html"],
-[data-page="scholarship"]  .nav-dropdown-menu a[href="scholarship.html"] {
-  color: var(--gold-bright) !important;
-  background: rgba(184,134,11,0.1);
-}
 
 /* ─── BACK TO TOP BUTTON ─── */
 .back-to-top {
