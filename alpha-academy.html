@@ -813,6 +813,10 @@
           </div>
           <div class="ev-carousel-caption">
             <span class="ev-caption-text">Alpha Academy · Gamma Iota Lambda</span>
+            <div class="ev-video-controls" style="display:none;">
+              <button class="ev-btn ev-play-pause" aria-label="Play">▶</button>
+              <button class="ev-btn ev-vol" aria-label="Mute">🔊</button>
+            </div>
             <div class="ev-carousel-controls">
               <button class="ev-btn ev-prev" aria-label="Previous">&#8592;</button>
               <span class="ev-counter"><span class="ev-current">1</span> / <span class="ev-total">1</span></span>
@@ -949,7 +953,6 @@
         if (isVideo(photo.file)) {
           const video = document.createElement('video');
           video.src = `assets/${eventId}/${photo.file}`;
-          video.muted = true;
           video.playsInline = true;
           video.preload = 'metadata';
           if (photo.caption) video.dataset.caption = photo.caption;
@@ -998,13 +1001,16 @@
     }
 
     function initCarouselControls(carousel) {
-      const slides    = Array.from(carousel.querySelectorAll('.ev-carousel-slide'));
-      const thumbs    = Array.from(carousel.querySelectorAll('.ev-thumb'));
-      const prevBtn   = carousel.querySelector('.ev-prev');
-      const nextBtn   = carousel.querySelector('.ev-next');
-      const currentEl = carousel.querySelector('.ev-current');
-      const totalEl   = carousel.querySelector('.ev-total');
-      const captionEl = carousel.querySelector('.ev-caption-text');
+      const slides        = Array.from(carousel.querySelectorAll('.ev-carousel-slide'));
+      const thumbs        = Array.from(carousel.querySelectorAll('.ev-thumb'));
+      const prevBtn       = carousel.querySelector('.ev-prev');
+      const nextBtn       = carousel.querySelector('.ev-next');
+      const currentEl     = carousel.querySelector('.ev-current');
+      const totalEl       = carousel.querySelector('.ev-total');
+      const captionEl     = carousel.querySelector('.ev-caption-text');
+      const videoControls = carousel.querySelector('.ev-video-controls');
+      const playPauseBtn  = carousel.querySelector('.ev-play-pause');
+      const volBtn        = carousel.querySelector('.ev-vol');
 
       let current = 0;
       const total = slides.length;
@@ -1029,11 +1035,15 @@
         if (prevBtn) prevBtn.disabled = total <= 1;
         if (nextBtn) nextBtn.disabled = total <= 1;
 
-        // Pause leaving video, play entering video
+        // Pause and reset video when leaving its slide
         const leavingVid = slides[prev].querySelector('video');
         if (leavingVid) { leavingVid.pause(); leavingVid.currentTime = 0; }
+
+        // Show/hide video controls and reset play button state
         const enteringVid = slides[current].querySelector('video');
-        if (enteringVid) enteringVid.play().catch(() => {});
+        if (videoControls) videoControls.style.display = enteringVid ? 'flex' : 'none';
+        if (playPauseBtn) playPauseBtn.textContent = '▶';
+        if (volBtn) volBtn.textContent = enteringVid?.muted ? '🔇' : '🔊';
 
         // Update caption
         const activeMedia = slides[current].querySelector('img, video');
@@ -1046,6 +1056,31 @@
 
       // Expose goTo so loadCarousel's 'ended' handler can call it
       carousel._goTo = goTo;
+
+      // Video controls
+      playPauseBtn?.addEventListener('click', () => {
+        const vid = slides[current].querySelector('video');
+        if (!vid) return;
+        if (vid.paused) { vid.play().catch(() => {}); } else { vid.pause(); }
+      });
+      volBtn?.addEventListener('click', () => {
+        const vid = slides[current].querySelector('video');
+        if (!vid) return;
+        vid.muted = !vid.muted;
+        volBtn.textContent = vid.muted ? '🔇' : '🔊';
+      });
+      // Keep play/pause icon in sync with actual video state
+      slides.forEach(slide => {
+        const vid = slide.querySelector('video');
+        if (!vid) return;
+        vid.addEventListener('play',  () => { if (playPauseBtn) playPauseBtn.textContent = '⏸'; });
+        vid.addEventListener('pause', () => { if (playPauseBtn) playPauseBtn.textContent = '▶'; });
+      });
+
+      // Show controls if first slide is a video
+      if (videoControls && slides[0]?.querySelector('video')) {
+        videoControls.style.display = 'flex';
+      }
 
       prevBtn?.addEventListener('click', () => goTo(current - 1));
       nextBtn?.addEventListener('click', () => goTo(current + 1));
