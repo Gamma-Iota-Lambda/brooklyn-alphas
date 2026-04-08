@@ -36,13 +36,13 @@ const path = require('path');
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 const EVENTS_DIR = path.join(__dirname, 'assets');
-const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.mp4'];
 const MANIFEST = 'photos.json';
 const SKIP_FOLDERS = ['originals']; // never scan backup folders
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
-function isImage(filename) {
+function isMedia(filename) {
     return EXTENSIONS.includes(path.extname(filename).toLowerCase());
 }
 
@@ -56,14 +56,14 @@ function processEvent(eventDir, eventName) {
     const files = fs.readdirSync(eventDir)
         .filter(f => {
             if (SKIP_FOLDERS.includes(f)) return false;
-            if (!isImage(f)) return false;
+            if (!isMedia(f)) return false;
             const stat = fs.statSync(path.join(eventDir, f));
             return stat.isFile();
         })
         .sort(naturalSort);
 
     if (files.length === 0) {
-        console.log(`  ⚠  ${eventName} — no images found, skipping`);
+        console.log(`  ⚠  ${eventName} — no media files found, skipping`);
         return;
     }
 
@@ -94,7 +94,7 @@ function processEvent(eventDir, eventName) {
     };
 
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-    console.log(`  ✅ ${eventName.padEnd(35)} ${photos.length} photo(s) → ${MANIFEST}`);
+    console.log(`  ✅ ${eventName.padEnd(35)} ${photos.length} media file(s) → ${MANIFEST}`);
 }
 
 function main() {
