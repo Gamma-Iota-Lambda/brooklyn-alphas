@@ -36,7 +36,7 @@ const path = require('path');
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 
 const EVENTS_DIR = path.join(__dirname, 'assets');
-const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.mp4'];
+const EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov'];
 const MANIFEST = 'photos.json';
 const SKIP_FOLDERS = ['originals']; // never scan backup folders
 
