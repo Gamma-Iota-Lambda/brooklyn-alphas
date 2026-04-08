@@ -389,6 +389,204 @@
       letter-spacing: 0.08em;
     }
 
+    /* ─── GALLERY SECTION ─── */
+    .aa-gallery {
+      padding: 5rem 8%;
+      background: var(--black-soft);
+      border-top: 1px solid rgba(184,134,11,0.1);
+    }
+    .aa-gallery-inner { max-width: 1300px; margin: 0 auto; }
+
+    /* ─── EYEBROW / TITLE (shared with events) ─── */
+    .ev-eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+    .ev-eyebrow::before {
+      content: '';
+      width: 36px;
+      height: 1px;
+      background: var(--gold);
+    }
+    .ev-eyebrow span {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.68rem;
+      font-weight: 400;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+    .ev-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.6rem, 3.5vw, 2.8rem);
+      font-weight: 900;
+      color: var(--white);
+      line-height: 1.15;
+      margin-bottom: 0.5rem;
+    }
+    .ev-title em { font-style: italic; color: var(--gold-bright); }
+
+    /* ─── CAROUSEL ─── */
+    .ev-carousel {
+      position: relative;
+      overflow: hidden;
+      background: rgba(184,134,11,0.04);
+      border: 1px solid rgba(184,134,11,0.12);
+    }
+    .ev-carousel-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      background: #0a0a0a;
+    }
+    .ev-carousel-slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .ev-carousel-slide.active { opacity: 1; }
+    .ev-carousel-slide img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center;
+      display: block;
+    }
+    .ev-carousel-slide video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+    .ev-slide-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      background: rgba(184,134,11,0.04);
+    }
+    .ev-slide-placeholder-icon {
+      font-family: 'Playfair Display', serif;
+      font-size: 4rem;
+      color: rgba(184,134,11,0.2);
+      line-height: 1;
+    }
+    .ev-slide-placeholder-text {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.2);
+    }
+    .ev-carousel-caption {
+      padding: 1rem 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      border-top: 1px solid rgba(184,134,11,0.12);
+      min-height: 3.5rem;
+    }
+    .ev-caption-text {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 300;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.45);
+      flex: 1;
+      font-style: italic;
+    }
+    .ev-counter {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      color: rgba(255,255,255,0.3);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .ev-counter span { color: var(--gold); font-weight: 700; }
+    .ev-carousel-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+    .ev-btn {
+      width: 36px;
+      height: 36px;
+      background: rgba(184,134,11,0.1);
+      border: 1px solid rgba(184,134,11,0.25);
+      color: var(--gold);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .ev-btn:hover { background: var(--gold); color: var(--black); border-color: var(--gold); }
+    .ev-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .ev-btn:disabled:hover {
+      background: rgba(184,134,11,0.1);
+      color: var(--gold);
+      border-color: rgba(184,134,11,0.25);
+    }
+    .ev-thumbnails {
+      display: flex;
+      gap: 6px;
+      padding: 0.75rem 1.5rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+      border-top: 1px solid rgba(184,134,11,0.08);
+      background: rgba(0,0,0,0.2);
+    }
+    .ev-thumbnails::-webkit-scrollbar { display: none; }
+    .ev-thumb {
+      width: 72px;
+      height: 48px;
+      flex-shrink: 0;
+      overflow: hidden;
+      cursor: pointer;
+      opacity: 0.45;
+      border: 1px solid transparent;
+      transition: opacity 0.2s, border-color 0.2s;
+      position: relative;
+      background: rgba(184,134,11,0.08);
+    }
+    .ev-thumb img, .ev-thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .ev-thumb video { pointer-events: none; }
+    .ev-thumb.active { opacity: 1; border-color: var(--gold); }
+    .ev-thumb:hover { opacity: 0.8; }
+    .ev-thumb-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      color: rgba(184,134,11,0.3);
+    }
+
     /* ─── RESPONSIVE ─── */
     @media (max-width: 900px) {
       .aa-hero { padding: 7rem 5% 4rem; }
@@ -396,6 +594,12 @@
       .aa-content { grid-template-columns: 1fr; padding: 4rem 5% 5rem; gap: 3rem; }
       .aa-sidebar { position: static; }
       .aa-contact { padding: 4rem 5%; }
+      .aa-gallery { padding: 4rem 5%; }
+      .ev-carousel-stage { aspect-ratio: 4 / 3; }
+    }
+    @media (max-width: 560px) {
+      .ev-carousel-stage { aspect-ratio: 1 / 1; }
+      .ev-thumb { width: 56px; height: 38px; }
     }
   </style>
   <!-- Google tag (gtag.js) -->
@@ -593,6 +797,35 @@
 
     </div>
 
+    <!-- ALPHA ACADEMY GALLERY -->
+    <section class="aa-gallery reveal">
+      <div class="aa-gallery-inner">
+        <div class="ev-eyebrow" style="margin-bottom:1.25rem;"><span>In the Room</span></div>
+        <h2 class="ev-title" style="margin-bottom:2rem;">Alpha Academy <em>Moments</em></h2>
+        <div class="ev-carousel" data-carousel data-event="alpha-academy">
+          <div class="ev-carousel-stage">
+            <div class="ev-carousel-slide active">
+              <div class="ev-slide-placeholder">
+                <div class="ev-slide-placeholder-icon">◆</div>
+                <div class="ev-slide-placeholder-text">Photos Coming Soon</div>
+              </div>
+            </div>
+          </div>
+          <div class="ev-carousel-caption">
+            <span class="ev-caption-text">Alpha Academy · Gamma Iota Lambda</span>
+            <div class="ev-carousel-controls">
+              <button class="ev-btn ev-prev" aria-label="Previous">&#8592;</button>
+              <span class="ev-counter"><span class="ev-current">1</span> / <span class="ev-total">1</span></span>
+              <button class="ev-btn ev-next" aria-label="Next">&#8594;</button>
+            </div>
+          </div>
+          <div class="ev-thumbnails">
+            <div class="ev-thumb active"><div class="ev-thumb-placeholder">◆</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- CONTACT CTA -->
     <div class="aa-contact reveal">
       <h2>Have <em>Questions?</em></h2>
@@ -673,6 +906,199 @@
         setTimeout(() => { window.location.href = href; }, 220);
       });
     });
+
+    /* ─── CAROUSEL ─── */
+    const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm']);
+    function isVideo(filename) {
+      return VIDEO_EXTS.has('.' + filename.split('.').pop().toLowerCase());
+    }
+
+    async function loadCarousel(carousel) {
+      const eventId   = carousel.dataset.event;
+      const stage     = carousel.querySelector('.ev-carousel-stage');
+      const thumbWrap = carousel.querySelector('.ev-thumbnails');
+      const captionEl = carousel.querySelector('.ev-caption-text');
+
+      if (!eventId) { initCarouselControls(carousel); return; }
+
+      let manifest;
+      try {
+        const res = await fetch(`assets/${eventId}/photos.json`);
+        if (!res.ok) throw new Error('not found');
+        manifest = await res.json();
+      } catch {
+        initCarouselControls(carousel);
+        return;
+      }
+
+      if (!manifest.photos || manifest.photos.length === 0) {
+        initCarouselControls(carousel);
+        return;
+      }
+
+      stage.innerHTML = '';
+      thumbWrap.innerHTML = '';
+
+      manifest.photos.forEach((photo, i) => {
+        const slide = document.createElement('div');
+        slide.className = 'ev-carousel-slide' + (i === 0 ? ' active' : '');
+
+        const thumb = document.createElement('div');
+        thumb.className = 'ev-thumb' + (i === 0 ? ' active' : '');
+
+        if (isVideo(photo.file)) {
+          const video = document.createElement('video');
+          video.src = `assets/${eventId}/${photo.file}`;
+          video.muted = true;
+          video.playsInline = true;
+          video.preload = 'metadata';
+          if (photo.caption) video.dataset.caption = photo.caption;
+          slide.appendChild(video);
+
+          const tVid = document.createElement('video');
+          tVid.src = `assets/${eventId}/${photo.file}`;
+          tVid.muted = true;
+          tVid.preload = 'metadata';
+          thumb.appendChild(tVid);
+        } else {
+          const img = document.createElement('img');
+          img.src = `assets/${eventId}/${photo.file}`;
+          img.alt = photo.caption || '';
+          img.loading = 'lazy';
+          if (photo.caption) img.dataset.caption = photo.caption;
+          slide.appendChild(img);
+
+          const tImg = document.createElement('img');
+          tImg.src = `assets/${eventId}/${photo.file}`;
+          tImg.alt = '';
+          tImg.loading = 'lazy';
+          thumb.appendChild(tImg);
+        }
+
+        stage.appendChild(slide);
+        thumbWrap.appendChild(thumb);
+      });
+
+      if (captionEl && manifest.photos[0]?.caption) {
+        captionEl.textContent = manifest.photos[0].caption;
+      }
+
+      initCarouselControls(carousel);
+
+      // Auto-advance when a video ends
+      Array.from(carousel.querySelectorAll('.ev-carousel-slide')).forEach((slide, i) => {
+        const vid = slide.querySelector('video');
+        if (vid) vid.addEventListener('ended', () => goToSlide(carousel, i + 1));
+      });
+    }
+
+    // goToSlide is a thin wrapper so video 'ended' handlers can call back in
+    function goToSlide(carousel, index) {
+      carousel._goTo && carousel._goTo(index);
+    }
+
+    function initCarouselControls(carousel) {
+      const slides    = Array.from(carousel.querySelectorAll('.ev-carousel-slide'));
+      const thumbs    = Array.from(carousel.querySelectorAll('.ev-thumb'));
+      const prevBtn   = carousel.querySelector('.ev-prev');
+      const nextBtn   = carousel.querySelector('.ev-next');
+      const currentEl = carousel.querySelector('.ev-current');
+      const totalEl   = carousel.querySelector('.ev-total');
+      const captionEl = carousel.querySelector('.ev-caption-text');
+
+      let current = 0;
+      const total = slides.length;
+
+      if (totalEl) totalEl.textContent = total;
+      if (currentEl) currentEl.textContent = 1;
+      if (total <= 1) {
+        if (prevBtn) prevBtn.disabled = true;
+        if (nextBtn) nextBtn.disabled = true;
+      }
+
+      function goTo(index) {
+        const prev = current;
+        slides[prev].classList.remove('active');
+        thumbs[prev]?.classList.remove('active');
+        current = (index + total) % total;
+        slides[current].classList.add('active');
+        thumbs[current]?.classList.add('active');
+        thumbs[current]?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        if (currentEl) currentEl.textContent = current + 1;
+        if (totalEl) totalEl.textContent = total;
+        if (prevBtn) prevBtn.disabled = total <= 1;
+        if (nextBtn) nextBtn.disabled = total <= 1;
+
+        // Pause leaving video, play entering video
+        const leavingVid = slides[prev].querySelector('video');
+        if (leavingVid) { leavingVid.pause(); leavingVid.currentTime = 0; }
+        const enteringVid = slides[current].querySelector('video');
+        if (enteringVid) enteringVid.play().catch(() => {});
+
+        // Update caption
+        const activeMedia = slides[current].querySelector('img, video');
+        if (captionEl && activeMedia?.dataset.caption) {
+          captionEl.textContent = activeMedia.dataset.caption;
+        } else if (captionEl && activeMedia?.alt) {
+          captionEl.textContent = activeMedia.alt;
+        }
+      }
+
+      // Expose goTo so loadCarousel's 'ended' handler can call it
+      carousel._goTo = goTo;
+
+      prevBtn?.addEventListener('click', () => goTo(current - 1));
+      nextBtn?.addEventListener('click', () => goTo(current + 1));
+      thumbs.forEach((thumb, i) => thumb.addEventListener('click', () => goTo(i)));
+
+      carousel.setAttribute('tabindex', '0');
+      carousel.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft') goTo(current - 1);
+        if (e.key === 'ArrowRight') goTo(current + 1);
+      });
+
+      let touchStartX = 0;
+      const stageEl = carousel.querySelector('.ev-carousel-stage');
+      stageEl.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
+      stageEl.addEventListener('touchend', e => {
+        const diff = touchStartX - e.changedTouches[0].clientX;
+        if (Math.abs(diff) > 40) diff > 0 ? goTo(current + 1) : goTo(current - 1);
+      }, { passive: true });
+
+      if (total > 1) {
+        let autoplay = null;
+        let paused = false;
+        let inView = false;
+
+        const startAutoplay = () => {
+          if (!inView) return;
+          clearInterval(autoplay);
+          autoplay = setInterval(() => {
+            // Don't auto-advance while a video is playing
+            const activeVid = slides[current].querySelector('video');
+            if (!activeVid || activeVid.paused) goTo(current + 1);
+          }, 4000);
+        };
+        const stopAutoplay = () => { clearInterval(autoplay); autoplay = null; };
+
+        carousel.addEventListener('mouseenter', () => { paused = true;  stopAutoplay(); });
+        carousel.addEventListener('mouseleave', () => { paused = false; if (inView) startAutoplay(); });
+        carousel.addEventListener('focusin',    () => { paused = true;  stopAutoplay(); });
+        carousel.addEventListener('focusout',   () => { paused = false; if (inView) startAutoplay(); });
+
+        new IntersectionObserver(entries => {
+          inView = entries[0].isIntersecting;
+          if (inView && !paused) startAutoplay();
+          else stopAutoplay();
+        }, { threshold: 0.25 }).observe(carousel);
+
+        prevBtn?.addEventListener('click', () => { if (!paused && inView) startAutoplay(); });
+        nextBtn?.addEventListener('click', () => { if (!paused && inView) startAutoplay(); });
+        thumbs.forEach(thumb => thumb.addEventListener('click', () => { if (!paused && inView) startAutoplay(); }));
+      }
+    }
+
+    document.querySelectorAll('[data-carousel]').forEach(loadCarousel);
   </script>
 
   <button id="back-to-top" class="back-to-top" aria-label="Back to top">&#8593;</button>
