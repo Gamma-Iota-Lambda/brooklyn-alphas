@@ -152,6 +152,24 @@ For a member with no photo, add the `placeholder` class and use `gil-crest.png`:
 
 ---
 
+## Updating the Alpha Academy Page
+
+Each program cycle, update `alpha-academy.html`:
+
+1. Update the school-year references (`2026–2027`) in the status banner, the prose paragraph on the schedule, the apply block heading, and the sidebar **School Year** row
+2. Update the application link `href` if the Google Form URL changes — it appears in **four** places: the apply block button, the sidebar `.aa-apply-card` CTA, the bottom `.aa-contact` CTA, and the JSON-LD `potentialAction.target`
+3. Update the deadline in the apply block (`.aa-apply-deadline-date`), the sidebar card (`.aa-apply-card-date` / `.aa-apply-card-label`), the status banner text, the bottom CTA copy, and the JSON-LD `potentialAction.endTime` (ISO format: `YYYY-MM-DD`)
+4. Update the `<meta name="description">`, `og:description`, and `twitter:description` tags, which mention the open application and deadline
+5. Update `sitemap.xml` — change the `<lastmod>` date for `alpha-academy.html`
+
+**Current application:** 2026–2027 academic year · deadline September 25, 2026 · [Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform)
+
+### When applications close
+
+Swap the banner back to the closed state — drop the `open` class from `.aa-status`, change it from an `<a href="#apply">` back to a `<div>`, and remove the `.aa-status-arrow` span. Then remove the `.aa-apply` block, the sidebar `.aa-apply-card`, and the apply button in the bottom CTA, and set the sidebar **Applications** row to the closed message. The CSS for both states stays in the page's `<style>` block, so reopening next cycle is just markup.
+
+---
+
 ## Updating the Scholarship Page
 
 Each year, update `scholarship.html`:
