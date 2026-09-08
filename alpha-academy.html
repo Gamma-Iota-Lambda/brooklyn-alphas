@@ -10,12 +10,15 @@
   <meta property="og:url" content="https://www.gil1906.org/alpha-academy.html" />
   <meta property="og:title" content="Alpha Academy | Gamma Iota Lambda | The Brooklyn Alphas" />
   <meta property="og:description" content="Applications now open for 2026–2027 — submit by September 25, 2026. Alpha Academy is Gamma Iota Lambda Chapter's signature leadership and college readiness mentorship program for young men of color, grades 9–12, in Brooklyn, NY." />
-  <meta property="og:image" content="https://www.gil1906.org/og-image.jpg" />
+  <meta property="og:image" content="https://www.gil1906.org/assets/alpha-academy/alpha-academy-application2627.jpg" />
+  <meta property="og:image:width" content="1080" />
+  <meta property="og:image:height" content="1080" />
+  <meta property="og:image:alt" content="Alpha Academy Mentorship Program — submit your application by 9/25." />
   <meta property="og:site_name" content="Gamma Iota Lambda Chapter — Alpha Phi Alpha" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Alpha Academy | The Brooklyn Alphas" />
   <meta name="twitter:description" content="2026–2027 applications open through September 25, 2026. Leadership and college readiness mentorship for young men of color, grades 9–12, in Brooklyn, NY." />
-  <meta name="twitter:image" content="https://www.gil1906.org/og-image.jpg" />
+  <meta name="twitter:image" content="https://www.gil1906.org/assets/alpha-academy/alpha-academy-application2627.jpg" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -285,6 +288,24 @@
     }
 
     /* ─── APPLY BLOCK ─── */
+    .aa-apply-grid {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 2.25rem;
+      align-items: start;
+    }
+    .aa-apply-flyer-link {
+      display: block;
+      line-height: 0;
+      border: 1px solid rgba(184,134,11,0.3);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .aa-apply-flyer-link:hover { border-color: var(--gold); transform: translateY(-2px); }
+    .aa-apply-flyer {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
     .aa-apply {
       background: rgba(184,134,11,0.06);
       border: 1px solid rgba(184,134,11,0.28);
@@ -759,11 +780,14 @@
       .aa-contact { padding: 4rem 5%; }
       .aa-gallery { padding: 4rem 5%; }
       .aa-apply { padding: 1.75rem 1.5rem 2rem; }
+      .aa-apply-grid { grid-template-columns: 260px 1fr; gap: 1.75rem; }
       .ev-carousel-stage { aspect-ratio: 4 / 3; }
     }
     @media (max-width: 560px) {
       .ev-carousel-stage { aspect-ratio: 1 / 1; }
       .ev-thumb { width: 56px; height: 38px; }
+      .aa-apply-grid { grid-template-columns: 1fr; gap: 1.75rem; }
+      .aa-apply-flyer-link { max-width: 420px; margin: 0 auto; }
       .aa-status { padding: 1.25rem; gap: 0.9rem; }
       .aa-status-arrow { display: none; }
       .aa-apply-btn, .aa-contact-btns .btn-primary, .aa-contact-btns .btn-outline {
@@ -923,14 +947,21 @@
         <p>The program will run during the 2026–2027 school year, meeting in person one Saturday every month from 10:00 am–1:00 pm, and periodic virtual sessions (date &amp; time TBD). There will also be occasional recreational activities and field trips. Permission forms will be provided.</p>
 
         <div class="aa-apply" id="apply">
-          <div class="aa-apply-label">Applications Now Open</div>
-          <h3>Apply for the <em>2026–2027</em> Academic Year</h3>
-          <p>Our 2026–2027 Alpha Academy Mentoring Program application is now open. Our signature program focuses on leadership, college readiness, and skill building for high school men in the Brooklyn community. Spread the word within your respective communities — we look forward to delivering another impactful program this year.</p>
-          <div class="aa-apply-deadline">
-            <span class="aa-apply-deadline-label">Application Deadline</span>
-            <span class="aa-apply-deadline-date">September 25, 2026</span>
+          <div class="aa-apply-grid">
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="aa-apply-flyer-link" aria-label="Open the Alpha Academy 2026–2027 application form">
+              <img src="assets/alpha-academy/alpha-academy-application2627.jpg" alt="Alpha Academy Mentorship Program — Exposure. Audacity. Opportunity. Submit your application by 9/25." class="aa-apply-flyer" width="1080" height="1080" loading="lazy" />
+            </a>
+            <div class="aa-apply-body">
+              <div class="aa-apply-label">Applications Now Open</div>
+              <h3>Apply for the <em>2026–2027</em> Academic Year</h3>
+              <p>Our 2026–2027 Alpha Academy Mentoring Program application is now open. Our signature program focuses on leadership, college readiness, and skill building for high school men in the Brooklyn community. Spread the word within your respective communities — we look forward to delivering another impactful program this year.</p>
+              <div class="aa-apply-deadline">
+                <span class="aa-apply-deadline-label">Application Deadline</span>
+                <span class="aa-apply-deadline-date">September 25, 2026</span>
+              </div>
+              <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="btn-primary aa-apply-btn">Submit Your Application &#8594;</a>
+            </div>
           </div>
-          <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="btn-primary aa-apply-btn">Submit Your Application &#8594;</a>
           <p class="aa-apply-note">Questions about the application? Email <a href="mailto:education@gil1906.org">education@gil1906.org</a> using the subject line &ldquo;Alpha Academy application&rdquo;.</p>
         </div>
 
