@@ -4,18 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Alpha Academy | Gamma Iota Lambda | The Brooklyn Alphas</title>
-  <meta name="description" content="Alpha Academy is the signature leadership and college readiness mentorship program of Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc." />
+  <meta name="description" content="Applications for the 2026–2027 Alpha Academy Mentoring Program are open through September 25, 2026. Alpha Academy is the signature leadership and college readiness mentorship program of Gamma Iota Lambda Chapter of Alpha Phi Alpha Fraternity, Inc." />
   <link rel="canonical" href="https://www.gil1906.org/alpha-academy.html" />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://www.gil1906.org/alpha-academy.html" />
   <meta property="og:title" content="Alpha Academy | Gamma Iota Lambda | The Brooklyn Alphas" />
-  <meta property="og:description" content="Alpha Academy is Gamma Iota Lambda Chapter's signature leadership and college readiness mentorship program for young men of color, grades 9–12, in Brooklyn, NY." />
-  <meta property="og:image" content="https://www.gil1906.org/og-image.jpg" />
+  <meta property="og:description" content="Applications now open for 2026–2027 — submit by September 25, 2026. Alpha Academy is Gamma Iota Lambda Chapter's signature leadership and college readiness mentorship program for young men of color, grades 9–12, in Brooklyn, NY." />
+  <meta property="og:image" content="https://www.gil1906.org/assets/alpha-academy/alpha-academy-application2627.jpg" />
+  <meta property="og:image:width" content="1080" />
+  <meta property="og:image:height" content="1080" />
+  <meta property="og:image:alt" content="Alpha Academy Mentorship Program — submit your application by 9/25." />
   <meta property="og:site_name" content="Gamma Iota Lambda Chapter — Alpha Phi Alpha" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Alpha Academy | The Brooklyn Alphas" />
-  <meta name="twitter:description" content="Leadership and college readiness mentorship for young men of color, grades 9–12, in Brooklyn, NY." />
-  <meta name="twitter:image" content="https://www.gil1906.org/og-image.jpg" />
+  <meta name="twitter:description" content="2026–2027 applications open through September 25, 2026. Leadership and college readiness mentorship for young men of color, grades 9–12, in Brooklyn, NY." />
+  <meta name="twitter:image" content="https://www.gil1906.org/assets/alpha-academy/alpha-academy-application2627.jpg" />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -33,6 +36,13 @@
       "embedUrl": "https://www.youtube.com/embed/AhiaQc2TWHA",
       "thumbnailUrl": "https://img.youtube.com/vi/AhiaQc2TWHA/maxresdefault.jpg",
       "uploadDate": "2025-01-01"
+    },
+    "potentialAction": {
+      "@type": "ApplyAction",
+      "name": "Apply to Alpha Academy — 2026–2027 Academic Year",
+      "target": "https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform",
+      "startTime": "2026-09-08",
+      "endTime": "2026-09-25"
     }
   }
   </script>
@@ -224,7 +234,7 @@
       padding-left: 1.75rem;
     }
 
-    /* ─── APPLICATIONS CLOSED BANNER ─── */
+    /* ─── APPLICATION STATUS BANNER ─── */
     .aa-status {
       background: rgba(184,134,11,0.07);
       border: 1px solid rgba(184,134,11,0.25);
@@ -250,6 +260,173 @@
       color: rgba(255,255,255,0.7);
       text-transform: uppercase;
     }
+
+    /* Applications open — brighter treatment, banner doubles as a jump link */
+    a.aa-status {
+      text-decoration: none;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    a.aa-status:hover { background: rgba(184,134,11,0.13); border-color: rgba(184,134,11,0.5); }
+    .aa-status.open {
+      background: rgba(184,134,11,0.1);
+      border-color: rgba(184,134,11,0.42);
+    }
+    .aa-status.open .aa-status-dot {
+      background: var(--gold-bright);
+      animation: aaPulse 2.4s ease-in-out infinite;
+    }
+    .aa-status.open .aa-status-text { color: rgba(255,255,255,0.9); }
+    .aa-status-arrow {
+      margin-left: auto;
+      color: var(--gold);
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    @keyframes aaPulse {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(184,134,11,0.22); }
+      50%      { box-shadow: 0 0 0 8px rgba(184,134,11,0.05); }
+    }
+
+    /* ─── APPLY BLOCK ─── */
+    .aa-apply-grid {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      gap: 2.25rem;
+      align-items: start;
+    }
+    .aa-apply-flyer-link {
+      display: block;
+      line-height: 0;
+      border: 1px solid rgba(184,134,11,0.3);
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .aa-apply-flyer-link:hover { border-color: var(--gold); transform: translateY(-2px); }
+    .aa-apply-flyer {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .aa-apply {
+      background: rgba(184,134,11,0.06);
+      border: 1px solid rgba(184,134,11,0.28);
+      border-left: 3px solid var(--gold);
+      padding: 2.25rem 2.25rem 2.5rem;
+      scroll-margin-top: 7rem;
+    }
+    .aa-apply-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 0.85rem;
+    }
+    .aa-apply h3 {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(1.35rem, 3vw, 1.8rem);
+      font-weight: 900;
+      color: var(--white);
+      line-height: 1.2;
+      margin-bottom: 1.25rem;
+    }
+    .aa-apply h3 em { font-style: normal; color: var(--gold-bright); }
+    .aa-prose .aa-apply p {
+      font-size: 1rem;
+      line-height: 1.85;
+      color: rgba(255,255,255,0.72);
+      border-left: none;
+      padding-left: 0;
+      font-weight: 300;
+      margin-bottom: 1.75rem;
+    }
+    .aa-apply-deadline {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      border-top: 1px solid rgba(184,134,11,0.2);
+      border-bottom: 1px solid rgba(184,134,11,0.2);
+      padding: 1.15rem 0;
+      margin-bottom: 1.75rem;
+    }
+    .aa-apply-deadline-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+    }
+    .aa-apply-deadline-date {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: var(--gold-bright);
+      line-height: 1.1;
+    }
+    .aa-prose .aa-apply p.aa-apply-note {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.4);
+      letter-spacing: 0.04em;
+      line-height: 1.7;
+      margin: 1.5rem 0 0;
+    }
+    .aa-apply-note a {
+      color: var(--gold);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(184,134,11,0.4);
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .aa-apply-note a:hover { color: var(--gold-bright); border-color: var(--gold-bright); }
+
+    /* ─── SIDEBAR APPLY CARD ─── */
+    .aa-apply-card {
+      background: rgba(184,134,11,0.1);
+      border: 1px solid rgba(184,134,11,0.35);
+      padding: 1.75rem;
+    }
+    .aa-apply-card h4 {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 1rem;
+    }
+    .aa-apply-card-date {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--gold-bright);
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+    .aa-apply-card-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.72rem;
+      font-weight: 400;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.42);
+      margin-bottom: 1.4rem;
+    }
+    .aa-apply-cta {
+      display: block;
+      text-align: center;
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--black);
+      background: var(--gold);
+      padding: 1rem;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.2s;
+    }
+    .aa-apply-cta:hover { background: var(--gold-bright); transform: translateY(-2px); }
 
     /* ─── SIDEBAR ─── */
     .aa-sidebar {
@@ -380,6 +557,13 @@
     .aa-contact-email:hover {
       background: var(--gold);
       color: var(--black);
+    }
+    .aa-contact-btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 1.75rem;
     }
     .aa-contact-note {
       margin-top: 1rem;
@@ -595,11 +779,23 @@
       .aa-sidebar { position: static; }
       .aa-contact { padding: 4rem 5%; }
       .aa-gallery { padding: 4rem 5%; }
+      .aa-apply { padding: 1.75rem 1.5rem 2rem; }
+      .aa-apply-grid { grid-template-columns: 260px 1fr; gap: 1.75rem; }
       .ev-carousel-stage { aspect-ratio: 4 / 3; }
     }
     @media (max-width: 560px) {
       .ev-carousel-stage { aspect-ratio: 1 / 1; }
       .ev-thumb { width: 56px; height: 38px; }
+      .aa-apply-grid { grid-template-columns: 1fr; gap: 1.75rem; }
+      .aa-apply-flyer-link { max-width: 420px; margin: 0 auto; }
+      .aa-status { padding: 1.25rem; gap: 0.9rem; }
+      .aa-status-arrow { display: none; }
+      .aa-apply-btn, .aa-contact-btns .btn-primary, .aa-contact-btns .btn-outline {
+        display: block;
+        width: 100%;
+        text-align: center;
+      }
+      .aa-contact-btns { flex-direction: column; }
     }
   </style>
   <!-- Google tag (gtag.js) -->
@@ -736,10 +932,11 @@
       <!-- PROSE -->
       <div class="aa-prose reveal">
 
-        <div class="aa-status reveal">
+        <a href="#apply" class="aa-status open reveal">
           <div class="aa-status-dot"></div>
-          <div class="aa-status-text">Applications Currently Closed — Reopening for Next School Year</div>
-        </div>
+          <div class="aa-status-text">Applications Open for 2026–2027 — Submit by September 25, 2026</div>
+          <span class="aa-status-arrow" aria-hidden="true">&#8594;</span>
+        </a>
 
         <p>Alpha Academy is our Signature Leadership and College Readiness program, which educates, empowers, and exposes young men of color, grades 9 through 12 from schools in Brooklyn to the skills, tools, behaviors, and role models necessary for success in life, leadership, and college.</p>
 
@@ -747,20 +944,44 @@
 
         <p>Alpha Academy will discuss the College Admissions process, tips for a strong application, and how to utilize valuable resources when making the transition from high school to college.</p>
 
-        <p>The program will run during the 2025–2026 school year, meeting in person one Saturday every month from 10:00 am–1:00 pm, and periodic virtual sessions (date &amp; time TBD). There will also be occasional recreational activities and field trips. Permission forms will be provided.</p>
+        <p>The program will run during the 2026–2027 school year, meeting in person one Saturday every month from 10:00 am–1:00 pm, and periodic virtual sessions (date &amp; time TBD). There will also be occasional recreational activities and field trips. Permission forms will be provided.</p>
 
-        <p>Currently applications are closed until the following school year.</p>
+        <div class="aa-apply" id="apply">
+          <div class="aa-apply-grid">
+            <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="aa-apply-flyer-link" aria-label="Open the Alpha Academy 2026–2027 application form">
+              <img src="assets/alpha-academy/alpha-academy-application2627.jpg" alt="Alpha Academy Mentorship Program — Exposure. Audacity. Opportunity. Submit your application by 9/25." class="aa-apply-flyer" width="1080" height="1080" loading="lazy" />
+            </a>
+            <div class="aa-apply-body">
+              <div class="aa-apply-label">Applications Now Open</div>
+              <h3>Apply for the <em>2026–2027</em> Academic Year</h3>
+              <p>Our 2026–2027 Alpha Academy Mentoring Program application is now open. Our signature program focuses on leadership, college readiness, and skill building for high school men in the Brooklyn community. Spread the word within your respective communities — we look forward to delivering another impactful program this year.</p>
+              <div class="aa-apply-deadline">
+                <span class="aa-apply-deadline-label">Application Deadline</span>
+                <span class="aa-apply-deadline-date">September 25, 2026</span>
+              </div>
+              <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="btn-primary aa-apply-btn">Submit Your Application &#8594;</a>
+            </div>
+          </div>
+          <p class="aa-apply-note">Questions about the application? Email <a href="mailto:education@gil1906.org">education@gil1906.org</a> using the subject line &ldquo;Alpha Academy application&rdquo;.</p>
+        </div>
 
       </div>
 
       <!-- SIDEBAR -->
       <aside class="aa-sidebar">
+        <div class="aa-apply-card reveal">
+          <h4>Submit Your Application</h4>
+          <div class="aa-apply-card-date">Sept 25</div>
+          <div class="aa-apply-card-label">2026 · Applications Close</div>
+          <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="aa-apply-cta">Apply Online &#8594;</a>
+        </div>
+
         <div class="aa-info-card reveal">
           <h4>Program Details</h4>
           <div class="aa-info-row">
             <div class="aa-info-item">
               <span class="aa-info-label">School Year</span>
-              <span class="aa-info-value">2025–2026</span>
+              <span class="aa-info-value">2026–2027</span>
             </div>
             <div class="aa-info-item">
               <span class="aa-info-label">Eligibility</span>
@@ -776,7 +997,7 @@
             </div>
             <div class="aa-info-item">
               <span class="aa-info-label">Applications</span>
-              <span class="aa-info-value">Closed — reopening next school year</span>
+              <span class="aa-info-value">Open — deadline September 25, 2026</span>
             </div>
           </div>
         </div>
@@ -848,10 +1069,13 @@
 
     <!-- CONTACT CTA -->
     <div class="aa-contact reveal">
-      <h2>Have <em>Questions?</em></h2>
-      <p>For questions or concerns about Alpha Academy, send us an email.</p>
-      <p style="color:rgba(255,255,255,0.35); font-size:0.8rem; letter-spacing:0.08em;">Use subject line: <strong style="color:rgba(255,255,255,0.55);">"Alpha Academy application"</strong></p>
-      <a href="mailto:education@gil1906.org" class="aa-contact-email">education@gil1906.org</a>
+      <h2>Ready to <em>Apply?</em></h2>
+      <p>Applications for the 2026–2027 Alpha Academy Mentoring Program close September 25, 2026.</p>
+      <div class="aa-contact-btns">
+        <a href="https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform" target="_blank" rel="noopener noreferrer" class="btn-primary">Submit Your Application &#8594;</a>
+        <a href="mailto:education@gil1906.org" class="btn-outline">Email Us</a>
+      </div>
+      <p style="color:rgba(255,255,255,0.35); font-size:0.8rem; letter-spacing:0.08em; margin-top:1.75rem;">Questions or concerns? Email <strong style="color:rgba(255,255,255,0.55);">education@gil1906.org</strong> using the subject line <strong style="color:rgba(255,255,255,0.55);">"Alpha Academy application"</strong></p>
       <div class="aa-contact-note">Gamma Iota Lambda Chapter · Alpha Phi Alpha Fraternity, Inc.</div>
     </div>
 
