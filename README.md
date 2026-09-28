@@ -162,11 +162,17 @@ Each program cycle, update `alpha-academy.html`:
 4. Update the `<meta name="description">`, `og:description`, and `twitter:description` tags, which mention the open application and deadline
 5. Update `sitemap.xml` — change the `<lastmod>` date for `alpha-academy.html`
 
-**Current application:** 2026–2027 academic year · deadline September 25, 2026 · [Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform)
+**Current status:** applications closed, reopening at the beginning of the next school year. The 2026–2027 cycle used [this Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform) with a September 25, 2026 deadline. The promo flyer for that cycle is kept at `assets/alpha-academy/alpha-academy-application2627.jpg` — it is not referenced by any page while applications are closed, since it advertises a passed deadline.
 
 ### When applications close
 
-Swap the banner back to the closed state — drop the `open` class from `.aa-status`, change it from an `<a href="#apply">` back to a `<div>`, and remove the `.aa-status-arrow` span. Then remove the `.aa-apply` block, the sidebar `.aa-apply-card`, and the apply button in the bottom CTA, and set the sidebar **Applications** row to the closed message. The CSS for both states stays in the page's `<style>` block, so reopening next cycle is just markup.
+Swap the banner back to the closed state — drop the `open` class from `.aa-status`, change it from an `<a href="#apply">` back to a `<div>`, and remove the `.aa-status-arrow` span. Then remove the `.aa-apply` block, the sidebar `.aa-apply-card`, and the apply button in the bottom CTA, and set the sidebar **Applications** row to the closed message. Also:
+
+- Drop the `potentialAction` block from the page's JSON-LD
+- Point `og:image` and `twitter:image` back at `og-image.jpg` and remove the `og:image:width` / `og:image:height` / `og:image:alt` tags, so shares stop previewing a flyer with a passed deadline
+- Take the open-application wording back out of `<meta name="description">`, `og:description`, and `twitter:description`
+
+The CSS for both states stays in the page's `<style>` block, so reopening next cycle is just markup. When reopening, add a fresh flyer rather than reusing the previous cycle's.
 
 ---
 
