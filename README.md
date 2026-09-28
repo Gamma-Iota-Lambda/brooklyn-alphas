@@ -162,7 +162,7 @@ Each program cycle, update `alpha-academy.html`:
 4. Update the `<meta name="description">`, `og:description`, and `twitter:description` tags, which mention the open application and deadline
 5. Update `sitemap.xml` — change the `<lastmod>` date for `alpha-academy.html`
 
-**Current status:** applications closed. The 2026–2027 cycle used [this Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform) with a September 25, 2026 deadline. The promo flyer for that cycle is kept at `assets/alpha-academy/alpha-academy-application2627.jpg` — it is not referenced by any page while applications are closed, since it advertises a passed deadline.
+**Current status:** applications closed, reopening at the beginning of the next school year. The 2026–2027 cycle used [this Google Form](https://docs.google.com/forms/d/e/1FAIpQLSfI5-bOwPjGmGAE5XhluFAdQ_M-nwJ2laGlwIc04GHZqt-5Kg/viewform) with a September 25, 2026 deadline. The promo flyer for that cycle is kept at `assets/alpha-academy/alpha-academy-application2627.jpg` — it is not referenced by any page while applications are closed, since it advertises a passed deadline.
 
 ### When applications close
 
