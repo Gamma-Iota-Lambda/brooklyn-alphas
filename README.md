@@ -200,7 +200,7 @@ Every page has:
 The canonical domain is `https://www.gil1906.org` (www, HTTPS). Every canonical tag, `og:url`, and sitemap entry uses it. Vercel is set up to:
 - Serve every page over HTTPS (automatic)
 - Redirect `gil1906.org` to `www.gil1906.org` (set under Settings, then Domains, in the Vercel project)
-- Redirect old GitHub Pages paths (`/brooklyn-alphas/...`) and extensionless page addresses (`/events`) to the `.html` pages. These rules are in `vercel.json`.
+- Redirect extensionless page addresses (`/events`) to the `.html` pages, as GitHub Pages did. This rule is in `vercel.json`.
 
 ---
 
@@ -210,13 +210,14 @@ The site is hosted on **Vercel**, connected to this repository. There is no buil
 
 - **Production:** every merge to `main` deploys to www.gil1906.org within a minute or two.
 - **Previews:** every pull request gets its own preview address from Vercel, posted on the pull request. Check your change there before merging.
-- **Settings:** `vercel.json` holds the redirects. Domains are set in the Vercel project under Settings, then Domains.
+- **Settings:** `vercel.json` holds the redirect for extensionless addresses. Domains are set in the Vercel project under Settings, then Domains.
 - **DNS:** the domain is registered at Namecheap, and its DNS records live there (Domain List, then Manage, then Advanced DNS). The apex `gil1906.org` has an A record and `www` has a CNAME record, both with the values Vercel shows on its Domains page. Leave the email records (MX and TXT) alone when editing DNS.
 - **404 page:** Vercel serves `404.html` for any address that doesn't exist.
+- **Usage limit:** on Vercel's free Hobby plan, the account gets 100 GB of data transfer a month. If it goes over, Vercel pauses every project on the account, and visitors see an error page instead of the site. The Events and Alpha Academy pages load many full-size photos and videos, so a busy month after an event can get there. Vercel emails a warning as usage nears the limit; you can also watch it under Usage in the Vercel dashboard. On the Pro plan, going over is billed instead of paused.
 
-The `CNAME` file is left over from GitHub Pages hosting. Once GitHub Pages is turned off (Settings, then Pages), it can be deleted.
+**Keep GitHub Pages turned on.** Before the custom domain was added in April 2026, the site lived at `gamma-iota-lambda.github.io/brooklyn-alphas/`, and links from that time may still be shared or in search results. GitHub forwards them to gil1906.org only while GitHub Pages stays on for this repository with `gil1906.org` as its custom domain. So leave Pages on (Settings, then Pages) and keep the `CNAME` file. GitHub may show a DNS warning there because the domain now points to Vercel; that's expected.
 
-The site is plain files, so it can move to any static host. Carry the redirects in `vercel.json` over to that host's format.
+The site is plain files, so it can move to any static host. Carry the redirect in `vercel.json` over to that host's format.
 
 ---
 
