@@ -17,7 +17,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── index.html                  # Homepage (hero, about, programs, history, meetings, contact)
 ├── alpha-academy.html          # Alpha Academy program page
 ├── chapter-history.html        # Full chapter history
-├── executive-board.html        # 2025–2026 Executive Board
+├── executive-board.html        # 2026–2027 Executive Board, with bios
 ├── fraternity-history.html     # Alpha Phi Alpha fraternity history
 ├── impact-20.html              # Impact $20 donation campaign
 ├── recommended-readings.html   # Curated reading list
@@ -33,19 +33,22 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── gil-crest.png               # Chapter crest — used in nav and as headshot placeholder
 ├── zelle-qr.png                # Zelle QR code (Impact $20 page)
 ├── chapter-photo1.png          # Chapter group photo
-└── headshots/
+└── headshots/                 # Current board first, then photos of past officers
     ├── robert-brissett.jpeg
     ├── lucien-allen.jpg
-    ├── david-williams.jpg
-    ├── sherron-cloyd.jpg
+    ├── sadiqq-elcock.jpg
     ├── dwane-omar-jones.jpg
+    ├── sherron-cloyd.jpg
     ├── andre-mckenzie.jpg
     ├── eugene-aiken.jpg
+    ├── christopher-gooding.jpg
+    ├── remington-allen.jpg
+    ├── jean-louis.jpg
     ├── jessy-dwyer.jpg
-    ├── david-brown.jpg
-    ├── eric-davis.jpeg
     ├── farid-adenuga.jpg
-    └── bryce-tarrant.jpeg
+    ├── musa-abdullah.jpg
+    ├── tommy-atkins.jpg
+    └── (past officers: david-williams.jpg, david-brown.jpg, eric-davis.jpeg, bryce-tarrant.jpeg)
 ```
 
 ---
@@ -97,22 +100,24 @@ All visual styling lives in `style.css`. Page-specific styles are written in `<s
 
 Headshots live in the `headshots/` folder. File naming convention is `firstname-lastname.jpg` (lowercase, hyphenated). Some files use `.jpeg` instead of `.jpg` — preserve the extension exactly as it exists when adding new photos.
 
-**Current status:**
+**Current status (2026–2027 board):**
 | Member | File | Status |
 |---|---|---|
 | Robert Brissett | `robert-brissett.jpeg` | ✓ |
 | Lucien Allen | `lucien-allen.jpg` | ✓ |
-| David Williams | `david-williams.jpg` | ✓ |
+| Sadiqq Elcock | `sadiqq-elcock.jpg` | ✓ |
+| Dwane Omar Jones, Esq. | `dwane-omar-jones.jpg` | ✓ |
 | Sherron Cloyd | `sherron-cloyd.jpg` | ✓ |
-| Dwane Omar Jones | `dwane-omar-jones.jpg` | ✓ |
-| Andre McKenzie | `andre-mckenzie.jpg` | ✓ |
+| Dr. Andre McKenzie | `andre-mckenzie.jpg` | ✓ |
 | Eugene Aiken | `eugene-aiken.jpg` | ✓ |
+| Christopher Gooding | `christopher-gooding.jpg` | ✓ |
+| Remington Allen | `remington-allen.jpg` | ✓ |
+| Jean Louis | `jean-louis.jpg` | ✓ |
 | Jessy Dwyer | `jessy-dwyer.jpg` | ✓ |
-| David Brown | `david-brown.jpg` | ✓ |
-| Eric Davis | `eric-davis.jpeg` | ✓ |
 | Farid Adenuga | `farid-adenuga.jpg` | ✓ |
-| Bryce Tarrant | `bryce-tarrant.jpeg` | ✓ |
-| Daniel Williams | — | ⚠ No photo — shows crest placeholder |
+| Dr. Musa Abdullah | `musa-abdullah.jpg` | ✓ |
+| Tommy Atkins | `tommy-atkins.jpg` | ✓ |
+| Christevane Francois | — | ⚠ No photo — shows crest placeholder |
 
 **To add a new headshot:**
 1. Crop to a square (1:1 ratio), ideally at least 400×400px
@@ -127,7 +132,7 @@ Headshots live in the `headshots/` folder. File naming convention is `firstname-
 
 Each board term, update `executive-board.html`:
 
-1. Update the hero subtitle: `2025–2026 · Servants of All` → new term
+1. Update the hero subtitle (`2026–2027 · Servants of All`) and the large year behind it (`eb-hero-year`) to the new term
 2. Update the `<title>` and meta description year
 3. Update the JSON-LD structured data block (`<script type="application/ld+json">`) with the new member list
 4. Update `sitemap.xml` — change the `<lastmod>` date for `executive-board.html`
@@ -140,8 +145,14 @@ For each member card, the pattern is:
   </div>
   <div class="eb-card-name">Full Name</div>
   <div class="eb-card-role">Role Title</div>
+  <details class="eb-bio">
+    <summary>Read bio<span class="eb-sr">: Full Name</span></summary>
+    <p>A short, conversational bio in the third person.</p>
+  </details>
 </div>
 ```
+
+The bio stays hidden until a visitor presses **Read bio**, which works with a mouse, a finger, or the keyboard. The hidden `eb-sr` text tells screen reader users whose bio the button opens, so keep it matched to the name. If a member has no bio yet, leave out the whole `<details>` block.
 
 For a member with no photo, add the `placeholder` class and use `gil-crest.png`:
 ```html
