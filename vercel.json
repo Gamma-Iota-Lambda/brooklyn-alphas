@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "redirects": [
+    { "source": "/brooklyn-alphas/", "destination": "/", "permanent": true },
+    { "source": "/brooklyn-alphas/:path*", "destination": "/:path*", "permanent": true },
+    { "source": "/:page([A-Za-z0-9_-]+)", "destination": "/:page.html", "permanent": true }
+  ]
+}
