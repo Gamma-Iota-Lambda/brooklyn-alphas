@@ -48,6 +48,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
     ├── farid-adenuga.jpg
     ├── musa-abdullah.jpg
     ├── tommy-atkins.jpg
+    ├── christevane-francois.jpg
     └── (past officers: david-williams.jpg, david-brown.jpg, eric-davis.jpeg, bryce-tarrant.jpeg)
 ```
 
@@ -117,7 +118,7 @@ Headshots live in the `headshots/` folder. File naming convention is `firstname-
 | Farid Adenuga | `farid-adenuga.jpg` | ✓ |
 | Dr. Musa Abdullah | `musa-abdullah.jpg` | ✓ |
 | Tommy Atkins | `tommy-atkins.jpg` | ✓ |
-| Christevane Francois | — | ⚠ No photo — shows crest placeholder |
+| Christevane Francois | `christevane-francois.jpg` | ✓ |
 
 **To add a new headshot:**
 1. Crop to a square (1:1 ratio), ideally at least 400×400px
