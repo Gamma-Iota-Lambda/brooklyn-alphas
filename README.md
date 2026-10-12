@@ -26,7 +26,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── style.css                   # All shared styles (single stylesheet)
 ├── sitemap.xml                 # XML sitemap for Google indexing
 ├── robots.txt                  # Search crawler instructions
-├── _redirects                  # URL redirects (Netlify/Cloudflare Pages)
+├── vercel.json                 # Vercel hosting settings and URL redirects
 ├── favicon.png                 # Browser tab icon (32×32px)
 ├── apple-touch-icon.png        # iOS home screen icon (180×180px)
 ├── og-image.jpg                # Social sharing preview image (1200×630px)
@@ -197,22 +197,26 @@ Every page has:
 - Twitter Card tags
 - JSON-LD structured data appropriate to the page type
 
-The canonical domain is `https://www.gil1906.org` (non-www, HTTPS). The host should be configured to:
-- Force HTTPS on all requests
-- Redirect `www.gil1906.org` → `gil1906.org` (or vice versa — pick one and be consistent)
-- Redirect old GitHub Pages paths (`/brooklyn-alphas/*`) to the new canonical paths — these are defined in `_redirects`
+The canonical domain is `https://www.gil1906.org` (www, HTTPS). Every canonical tag, `og:url`, and sitemap entry uses it. Vercel is set up to:
+- Serve every page over HTTPS (automatic)
+- Redirect `gil1906.org` to `www.gil1906.org` (set under Settings, then Domains, in the Vercel project)
+- Redirect old GitHub Pages paths (`/brooklyn-alphas/...`) and extensionless page addresses (`/events`) to the `.html` pages. These rules are in `vercel.json`.
 
 ---
 
 ## Deployment
 
-The site is static and can be hosted anywhere that serves HTML files. The `_redirects` file is formatted for **Netlify** and **Cloudflare Pages**. If hosting on a different platform:
+The site is hosted on **Vercel**, connected to this repository. There is no build step: Vercel publishes the files in the repository as they are.
 
-- **Apache:** Convert `_redirects` rules to `.htaccess` `Redirect` or `RewriteRule` directives
-- **Nginx:** Add `return 301` rules to the server block
-- **GitHub Pages:** Use a `404.html` fallback (already present) — note that GitHub Pages does not support server-side redirects natively
+- **Production:** every merge to `main` deploys to www.gil1906.org within a minute or two.
+- **Previews:** every pull request gets its own preview address from Vercel, posted on the pull request. Check your change there before merging.
+- **Settings:** `vercel.json` holds the redirects. Domains are set in the Vercel project under Settings, then Domains.
+- **DNS:** the domain is registered at Namecheap, and its DNS records live there (Domain List, then Manage, then Advanced DNS). The apex `gil1906.org` has an A record and `www` has a CNAME record, both with the values Vercel shows on its Domains page. Leave the email records (MX and TXT) alone when editing DNS.
+- **404 page:** Vercel serves `404.html` for any address that doesn't exist.
 
-To deploy: push changes to the connected branch. The site updates automatically if CI/CD is configured.
+The `CNAME` file is left over from GitHub Pages hosting. Once GitHub Pages is turned off (Settings, then Pages), it can be deleted.
+
+The site is plain files, so it can move to any static host. Carry the redirects in `vercel.json` over to that host's format.
 
 ---
 
