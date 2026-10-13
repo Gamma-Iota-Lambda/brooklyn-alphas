@@ -219,7 +219,7 @@ Each year, update `scholarship.html`:
 - `calendar.html` holds the site's nav and footer around the calendar.
 - `assets/calendar/app.js` draws the page; `api-live.js` talks to Supabase and `api-demo.js` runs the demo. Both expose the same methods.
 - `assets/calendar/data.js` lists the categories, programs, formats, platforms, statuses, and committees. The database checks the same keys, so change both together.
-- `assets/calendar/calendar.css` styles the page with the site's colors and fonts. It loads after `style.css`, styles only elements inside `.gc`, and turns off the site's page-in animation on this page so the side panel stays fixed to the screen.
+- `assets/calendar/calendar.css` gives the calendar the look of the original version the media team approved: a light palette with old gold, Cormorant Garamond for headings, and Outfit for everything else. The site's nav and footer keep their own look. It loads after `style.css`, styles only elements inside `.gc`, and turns off the site's page-in animation on this page so the side panel stays fixed to the screen.
 - `assets/calendar/vendor/supabase.js` is the Supabase client (supabase-js 2.117.2), kept in the repository so the page needs no build step.
 
 **Tests:** see the Tests section of [`supabase/README.md`](supabase/README.md). Run them after any change to the calendar.
