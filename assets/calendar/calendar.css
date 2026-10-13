@@ -390,6 +390,39 @@ body[data-page="calendar"] { animation: none; }
 .gc .confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; width: 100%; }
 .gc .confirm span { margin-right: auto; font-size: 14px; }
 
+/* request files: the upload area in the form, and previews in requests and posts */
+.gc .flabel { font-size: 13.5px; font-weight: 500; }
+.gc .drop {
+  display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 14px; border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm); background: var(--ground);
+}
+.gc .drop.over { border-color: var(--gold); background: var(--gold-wash); }
+.gc .drop:focus-within { outline: 2px solid var(--gold-text); outline-offset: 2px; }
+.gc .drop .hint { flex: 1 1 200px; }
+.gc .filelist { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.gc .filelist:empty { display: none; }
+.gc .filerow {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 6px 6px 10px;
+  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); font-size: 13.5px;
+}
+.gc .filekind { padding: 1px 8px; border-radius: 999px; background: var(--raised); color: var(--muted); font-size: 11.5px; }
+.gc .filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc .filesize { color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.gc .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.gc .thumb { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gc .thumb-link { display: block; text-decoration: none; }
+.gc .thumb-link:not([href]) { pointer-events: none; }
+.gc .thumb-img {
+  display: grid; place-items: center; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--line); border-radius: var(--r-sm);
+  background: var(--raised); color: var(--muted); font-size: 12.5px; font-weight: 500;
+}
+.gc .thumb-img img { width: 100%; height: 100%; object-fit: cover; }
+.gc .thumb-link[href]:hover .thumb-img { border-color: var(--gold); }
+.gc .thumb-name { overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.gc .thumb-meta { color: var(--muted); font-size: 12px; }
+.gc .thumb.gone { opacity: 0.55; }
+.gc .tagrow { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+
 /* sign-in and manage access */
 .gc .modes { display: flex; flex-wrap: wrap; gap: 6px; }
 .gc .btnrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -402,6 +435,7 @@ body[data-page="calendar"] { animation: none; }
 .gc .person-meta { color: var(--muted); font-size: 12.5px; }
 .gc .person-act { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .gc .person-act input { width: 9em; padding: 6px 10px; font-size: 15px; }
+.gc .person-act select { width: auto; padding: 6px 30px 6px 10px; font-size: 15px; }
 
 /* toast: above the drawer, and above its buttons while it's open */
 .gc .toast {

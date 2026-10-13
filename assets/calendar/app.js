@@ -3,7 +3,7 @@
 // sign-in, and managing access. With Supabase settings in config.js it runs live (api-live.js);
 // without them it runs the demo (api-demo.js), which keeps everything in this browser.
 import {
-  LEAD_DAYS, CONTACT, CATS, PROGRAMS, FORMATS, PLATFORMS, STATUSES, REQ_STATUS, COMMITTEES, MILESTONES,
+  LEAD_DAYS, CONTACT, CATS, PROGRAMS, FORMATS, PLATFORMS, STATUSES, REQ_STATUS, COMMITTEES, MILESTONES, FILES,
   CAT, PROG, FMT, PLAT, STAT, CAT_ORDER
 } from './data.js';
 import { LiveApi } from './api-live.js';
@@ -18,7 +18,8 @@ const ICON = {
   next: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   close: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
   plus: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
-  down: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  down: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clip: '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20.5 11.5l-8.2 8.2a5 5 0 01-7.1-7.1l8.6-8.6a3.4 3.4 0 014.8 4.8l-8.6 8.6a1.7 1.7 0 01-2.4-2.4l7.9-7.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 };
 
 // ---------------------------------------------------------------- helpers
@@ -36,6 +37,16 @@ const shortDate = (s) => fmt(s, { weekday: 'short', month: 'short', day: 'numeri
 const localDateOf = (ts) => { const d = new Date(ts); return ts && !isNaN(d) ? iso(d) : ''; };
 const safeUrl = (u) => { try { const x = new URL(String(u || '').trim()); return (x.protocol === 'https:' || x.protocol === 'http:') ? x.href : ''; } catch { return ''; } };
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round((n || 0) / 1024))} KB`);
+const fileKind = (f) => (/^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /pdf/.test(f.type) ? 'pdf' : 'file');
+const KIND_LABEL = { image: 'Photo', video: 'Video', pdf: 'PDF', file: 'File' };
+// Some phones and computers leave a file's type blank; fill it in from the name so the bucket accepts it.
+const TYPE_BY_EXT = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
+  heif: 'image/heif', mov: 'video/quicktime', mp4: 'video/mp4', m4v: 'video/x-m4v', pdf: 'application/pdf'
+};
+const typeOf = (file) => file.type || TYPE_BY_EXT[(String(file.name).split('.').pop() || '').toLowerCase()] || '';
+const allowedType = (t) => /^(image|video)\//.test(t) || t === 'application/pdf';
 const reduceMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const store = {
   get(k, d) { try { const v = localStorage.getItem('gilcal:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -48,12 +59,13 @@ const now = new Date();
 const narrow = () => window.matchMedia('(max-width: 760px)').matches;
 const VIEWS = ['calendar', 'agenda', 'requests', 'guide'];
 const hashView = (location.hash || '').replace('#', '');
+const wantsSignin = hashView === 'signin'; // the home page's Sign in button links to calendar.html#signin
 const storedView = store.get('view', '');
 const storedCats = [].concat(store.get('cats', []) || []).filter((k) => CAT[k]);
 const S = {
   role: 'loading', // loading | visitor | member | staff
   me: null, account: null, bootError: '',
-  settings: { public: false, ready: true },
+  settings: { ready: true },
   posts: [], postsById: new Map(), requests: [], reqById: new Map(),
   loaded: { posts: false, requests: false }, loadError: '',
   view: VIEWS.includes(hashView) ? hashView : (VIEWS.includes(storedView) ? storedView : (narrow() ? 'agenda' : 'calendar')),
@@ -66,10 +78,12 @@ const S = {
   access: { members: null, staff: null, error: '', pending: null },
   refreshing: false
 };
+// Roles: visitors see nothing; brothers (member) view; committee chairs also request; the media team runs it.
 const isStaff = () => S.role === 'staff';
+const isChair = () => S.role === 'chair';
 const isMember = () => S.role === 'member';
-const signedIn = () => isStaff() || isMember();
-const canSeePosts = () => signedIn() || !!S.settings.public;
+const signedIn = () => isStaff() || isChair() || isMember();
+const canRequest = () => isStaff() || isChair();
 
 // ---------------------------------------------------------------- data shaping
 function normPost(d) {
@@ -95,11 +109,12 @@ function normReq(d) {
     program: PROG[d.program] ? d.program : '', assetLink: d.assetLink || '', caption: d.caption || '', link: d.link || '',
     youth: !!d.youth, releases: !!d.releases,
     status: REQ_STATUS[d.status] ? d.status : 'new', reviewNote: d.reviewNote || '', postId: d.postId || '',
-    memberId: d.memberId || '', createdAt: d.createdAt || '', updatedAt: d.updatedAt || ''
+    memberId: d.memberId || '', files: Array.isArray(d.files) ? d.files.filter((f) => f && f.path) : [],
+    createdAt: d.createdAt || '', updatedAt: d.updatedAt || ''
   };
 }
 const cmpPost = (a, b) => a.date.localeCompare(b.date) || (CAT_ORDER[a.category] - CAT_ORDER[b.category]) || a.title.localeCompare(b.title);
-const isMine = (r) => isMember() && !!S.me && !!r.memberId && r.memberId === S.me.member_id;
+const isMine = (r) => isChair() && !!S.me && !!r.memberId && r.memberId === S.me.member_id;
 
 function setPosts(rows, loaded = true) {
   S.posts = rows.map(normPost).filter((p) => p.id && p.date).sort(cmpPost);
@@ -169,14 +184,13 @@ function rowHTML(p) {
 function emptyHTML(eyebrow, title, body, extra = '') {
   return `<div class="empty"><p class="eyebrow">${esc(eyebrow)}</p><h2>${esc(title)}</h2><p>${body}</p>${extra}</div>`;
 }
-const signInButtons = () => `<div class="btns"><button class="btn primary" data-act="signin">Sign in</button><button class="btn" data-act="view" data-view="guide">How it works</button></div>`;
 
 // ---------------------------------------------------------------- shell
 const el = {
   demo: $('#gc-demo'), actions: $('#gc-actions'), countdown: $('#gc-countdown'), tabs: $('#gc-tabs'), badge: $('#gc-req-badge'),
   q: $('#gc-q'), search: $('#gc-search'), filters: $('#gc-filters'), cats: $('#gc-cats'), fProgram: $('#gc-f-program'),
   fStatus: $('#gc-f-status'), layout: $('#gc-layout'), view: $('#gc-view'), rail: $('#gc-rail'),
-  drawer: $('#gc-drawer'), scrim: $('#gc-scrim'), toast: $('#gc-toast')
+  drawer: $('#gc-drawer'), scrim: $('#gc-scrim'), toast: $('#gc-toast'), bar: $('#gc-bar')
 };
 
 function buildFilters() {
@@ -187,7 +201,7 @@ function buildFilters() {
 function renderDemoBar() {
   if (!DEMO) { el.demo.hidden = true; return; }
   el.demo.hidden = false;
-  const roles = [['staff', 'Media team'], ['member', 'Brother'], ['visitor', 'Visitor']];
+  const roles = [['staff', 'Media team'], ['chair', 'Chair'], ['member', 'Brother'], ['visitor', 'Visitor']];
   el.demo.innerHTML = `<div class="wrap demo-row">
     <p><b>Demo</b>Sample data. Your changes stay in this browser.</p>
     <div class="demo-ctl" role="group" aria-label="View the demo as"><span>View as</span>
@@ -202,7 +216,7 @@ function renderShell() {
   let a = '';
   if (isStaff()) {
     a = `<button class="btn primary" data-act="add-post">${ICON.plus}Add post</button><button class="btn" data-act="access">Manage access</button>`;
-  } else if (isMember()) {
+  } else if (isChair()) {
     a = `<button class="btn primary" data-act="request-new">${ICON.plus}Request a post</button>`;
   } else if (S.role === 'visitor' && S.account && !S.account.anonymous) {
     // Signed in with an email login that hasn't joined the media team yet.
@@ -210,20 +224,24 @@ function renderShell() {
       <span class="who">Signed in as <b>${esc(S.account.email)}</b><button class="btn link small" data-act="signout">Sign out</button></span>`;
   } else if (S.role === 'visitor') {
     a = '<button class="btn primary" data-act="signin">Sign in</button>';
-    if (S.settings.public) a += '<button class="btn" data-act="view" data-view="guide">How to request a post</button>';
   }
   if (signedIn()) a += `<span class="who">Signed in as <b>${esc(S.me.name)}</b><button class="btn link small" data-act="signout">Sign out</button></span>`;
   el.actions.innerHTML = a;
 
-  for (const b of el.tabs.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.view === S.view));
+  // Visitors get no toolbar at all; brothers get no Requests tab.
+  el.bar.hidden = !signedIn() || !!S.bootError;
+  for (const b of el.tabs.querySelectorAll('.tab')) {
+    b.setAttribute('aria-selected', String(b.dataset.view === S.view));
+    if (b.dataset.view === 'requests') b.hidden = !canRequest();
+  }
   let badge = 0;
   if (isStaff()) badge = S.requests.filter((r) => r.status === 'new').length;
-  else if (isMember()) badge = S.requests.filter((r) => isMine(r) && r.status === 'needs-info').length;
+  else if (isChair()) badge = S.requests.filter((r) => isMine(r) && r.status === 'needs-info').length;
   el.badge.hidden = !badge;
   el.badge.textContent = badge || '';
   el.badge.setAttribute('aria-label', badge ? (isStaff() ? `${badge} new` : `${badge} need your answer`) : '');
 
-  const showFilters = (S.view === 'calendar' || S.view === 'agenda') && canSeePosts() && S.role !== 'loading' && !S.bootError;
+  const showFilters = (S.view === 'calendar' || S.view === 'agenda') && signedIn() && !S.bootError;
   el.filters.hidden = !showFilters;
   el.search.hidden = !showFilters;
   el.layout.classList.toggle('solo', !showFilters);
@@ -234,7 +252,11 @@ function renderShell() {
   el.fStatus.value = S.f.status;
 }
 
-function render() { renderShell(); renderMain(); renderRail(); }
+function render() {
+  // Only chairs and the media team have a Requests view.
+  if (S.view === 'requests' && S.role !== 'loading' && signedIn() && !canRequest()) S.view = narrow() ? 'agenda' : 'calendar';
+  renderShell(); renderMain(); renderRail();
+}
 
 function renderMain() {
   if (S.bootError) {
@@ -245,12 +267,14 @@ function renderMain() {
     el.view.innerHTML = emptyHTML('Loading', 'Opening the 2026-2027 calendar', "Holidays, Divine Nine Founders' Days, national program posts, and chapter events load here in a moment.");
     return;
   }
-  if (S.view === 'guide') return renderGuide();
-  if (S.view === 'requests') return renderRequests();
-  if (!canSeePosts()) {
-    el.view.innerHTML = emptyHTML('Brothers only', 'Sign in to see the calendar', `Brothers sign in with the chapter code the first time, then with their name and PIN. Ask ${esc(CONTACT)} for the code.`, signInButtons());
+  if (!signedIn()) {
+    el.view.innerHTML = emptyHTML('Brothers only', 'Sign in to see the calendar',
+      `The content calendar is for brothers of Gamma Iota Lambda. Sign in with the chapter code the first time, then with your name and PIN. Committee chairs sign in the same way, and the media team turns on requests for them. Ask ${esc(CONTACT)} for the code.`,
+      '<div class="btns"><button class="btn primary" data-act="signin">Sign in</button></div>');
     return;
   }
+  if (S.view === 'guide') return renderGuide();
+  if (S.view === 'requests') return renderRequests();
   if (S.loadError) {
     el.view.innerHTML = emptyHTML('Connection', 'The calendar could not load', `${esc(S.loadError)} Reload the page to try again.`, '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>');
     return;
@@ -337,8 +361,8 @@ function renderAgenda() {
 
 // ---------------------------------------------------------------- requests
 function renderRequests() {
-  if (!signedIn()) {
-    el.view.innerHTML = emptyHTML('Requests', 'Sign in to request a post', 'Committee chairs and brothers sign in with the chapter code, then send requests here and follow them through review.', signInButtons());
+  if (!canRequest()) {
+    el.view.innerHTML = emptyHTML('Requests', 'Requests come from committee chairs', `To get something posted, talk to your committee chair. Chairs who can't send requests yet can ask ${esc(CONTACT)}.`);
     return;
   }
   if (S.loadError && !S.loaded.requests) {
@@ -384,6 +408,7 @@ function reqCard(r) {
       ${r.eventDate ? `<dt>Event</dt><dd>${esc(shortDate(r.eventDate))}</dd>` : ''}
       <dt>From</dt><dd>${esc(r.contactName || 'Not given')}</dd>
       <dt>Format</dt><dd>${esc(FMT[r.format].label)}${r.platforms.length ? ` on ${esc(platList(r.platforms))}` : ''}</dd>
+      ${r.files.length ? `<dt>Files</dt><dd>${plural(r.files.length, 'file')} attached</dd>` : ''}
     </dl>
     ${r.reviewNote ? `<p class="note"><b>Media team:</b> ${esc(r.reviewNote)}</p>` : ''}
     <div class="req-actions">
@@ -401,8 +426,9 @@ function renderGuide() {
     <h2>How it works</h2>
     <div>
       <h3>Requesting a post</h3>
+      <p>Requests come from committee chairs. Brothers who want something posted go through their chair.</p>
       <ol>
-        <li><b>Send it three weeks ahead.</b> Sign in, then use Request a post. The form shows the earliest standard date as you pick one.</li>
+        <li><b>Send it three weeks ahead.</b> Use Request a post. The form shows the earliest standard date as you pick one.</li>
         <li><b>The media team reviews it.</b> Your request shows New until someone looks at it.</li>
         <li><b>Answer any questions.</b> If it says Needs info, open it, read the note, and update the request.</li>
         <li><b>Watch it go out.</b> Approved requests appear on the calendar and move from Planned to Posted.</li>
@@ -411,7 +437,7 @@ function renderGuide() {
     <div>
       <h3>What to include</h3>
       <ul>
-        <li><b>Final, curated photos or a finished flyer,</b> shared as a Google Drive link. Send your best selects rather than a full camera roll.</li>
+        <li><b>Final, curated photos or a finished flyer.</b> Upload them with the form (up to 10 files, 50 MB each), or share a Google Drive link for more or larger files. Send your best selects rather than a full camera roll.</li>
         <li><b>Who, what, when, and where,</b> plus any RSVP, ticket, or registration link.</li>
         <li><b>A draft caption if you have one.</b> The media team edits for voice and length.</li>
         <li><b>Handles to tag:</b> partners, venues, and speakers.</li>
@@ -419,7 +445,7 @@ function renderGuide() {
     </div>
     <div>
       <h3>Why three weeks</h3>
-      <p>Three weeks covers design, review, and scheduling across Instagram, Facebook, Threads, X, gil1906.org, and Substack, with room for district or region approval when a flyer needs it. Shorter notice is still welcome; the media team will tell you whether it can run.</p>
+      <p>Three weeks covers design, review, and scheduling across Instagram, Threads, X, gil1906.org, and Substack, with room for district or region approval when a flyer needs it. Shorter notice is still welcome; the media team will tell you whether it can run.</p>
       <h3>Photos of young people</h3>
       <p>For Alpha Academy, the Alpha Esquires scout troop, and any youth program, share photos only when a signed media release is on file for every young person shown. The request form asks you to confirm.</p>
     </div>
@@ -429,10 +455,11 @@ function renderGuide() {
         <li><b>First time:</b> choose Sign in, then First time here. Enter the chapter code from the media team, your first and last name, and a PIN of 4 to 6 digits.</li>
         <li><b>On another phone or computer:</b> choose I've signed in before and enter your name and PIN. You stay signed in on one device at a time, so the other one signs out.</li>
         <li><b>Forgot your PIN:</b> ask the media team to reset it.</li>
+        <li><b>Committee chairs:</b> sign in like any brother, then the media team marks you as chair so you can send requests.</li>
         <li><b>Media team:</b> sign in with your email and password.</li>
       </ul>
       <h3 class="mt-gap">Who sees what</h3>
-      <p>Signed-in brothers see every post, caption, and note, plus the request queue. When the media team turns on the public calendar, anyone who opens this page sees dates, titles, categories, and post ideas. Captions, notes, creative links, and requests stay with signed-in brothers.</p>
+      <p>Only brothers who sign in can see the calendar. Brothers can view every post. Committee chairs also send requests, attach files, and follow their requests through review. The media team edits the calendar, reviews requests, and decides who is a chair.</p>
       <p>For access or questions, contact ${esc(CONTACT)}.</p>
     </div>
     <div>
@@ -458,7 +485,7 @@ function renderGuide() {
 // ---------------------------------------------------------------- rail
 function renderRail() {
   const legend = `<div class="panel"><h3>Categories</h3><ul class="legend">${CATS.map((c) => `<li class="k-${c.key}"><i class="dot"></i><span>${esc(c.label)}</span></li>`).join('')}</ul></div>`;
-  if (S.role === 'loading' || !canSeePosts() || !S.loaded.posts) { el.rail.innerHTML = legend; return; }
+  if (!signedIn() || !S.loaded.posts) { el.rail.innerHTML = legend; return; }
   const t = todayISO(), horizon = iso(addDays(new Date(), 14));
   const up = visiblePosts().filter((p) => p.date >= t && p.date <= horizon);
   const weekEnd = iso(addDays(new Date(), 7));
@@ -473,16 +500,15 @@ function renderRail() {
       <div class="stats"><div class="stat"><b>${thisWeek}</b><span>posts in 7 days</span></div><div class="stat"><b>${newCount}</b><span>new requests</span></div></div>
       <p>${waiting ? `${plural(waiting, 'upcoming post')} marked Needs info.` : 'No upcoming posts are waiting on info.'}</p>
       <button class="btn small" data-act="view" data-view="requests">Review requests</button></div>`;
-  } else if (isMember()) {
+  } else if (isChair()) {
     const mine = S.requests.filter(isMine);
     const ask = mine.filter((r) => r.status === 'needs-info').length;
     html += `<div class="panel"><h3>Your requests</h3>
       <p>${mine.length ? `${plural(mine.length, 'request')} sent${ask ? `, ${ask} waiting on your answer` : ''}.` : 'Send requests at least three weeks before your post date.'}</p>
       <button class="btn small primary" data-act="request-new">${ICON.plus}Request a post</button></div>`;
   } else {
-    html += `<div class="panel"><h3>Brothers</h3>
-      <p>Sign in to see captions and notes and to request a post.</p>
-      <button class="btn small primary" data-act="signin">Sign in</button></div>`;
+    html += `<div class="panel"><h3>Requests</h3>
+      <p>Requests come from committee chairs. To get something posted, talk to your chair.</p></div>`;
   }
   el.rail.innerHTML = html + legend;
 }
@@ -505,6 +531,10 @@ function drawerHead(eyebrow, title) {
 
 function openDrawer(type, data, trigger) {
   S.drawer = { type, data, snap: '' };
+  if (type === 'request-new' || type === 'request-edit') {
+    const r = type === 'request-edit' ? S.reqById.get(data) : null;
+    S.drawer.files = { kept: r ? r.files.map((f) => ({ ...f })) : [], added: [], removed: [] };
+  }
   if (trigger) S.lastTrigger = trigger;
   el.scrim.hidden = false;
   el.drawer.hidden = false;
@@ -554,6 +584,7 @@ function drawDrawer(focus) {
   S.drawer.snap = item ? JSON.stringify(item) : '';
   el.drawer.innerHTML = html;
   if (type === 'request-new' || type === 'request-edit') updateLeadHint();
+  if (type === 'post' || type === 'request') hydrateFiles();
   if (focus) {
     const target = el.drawer.querySelector('[data-autofocus]') || el.drawer.querySelector('#gc-drawer-title');
     if (target) target.focus();
@@ -578,7 +609,7 @@ function postView(p) {
     ${p.caption ? `<div class="block"><h4>Caption</h4><div class="caption" id="gc-caption-text">${esc(p.caption)}</div><div><button type="button" class="btn small" data-act="copy" data-target="gc-caption-text">Copy caption</button></div></div>` : ''}
     ${p.notes ? `<div class="block"><h4>Notes</h4><p>${esc(p.notes)}</p></div>` : ''}
     ${req ? `<div class="block"><h4>From a request</h4><p>${esc(req.contactName || 'A chair')}, ${esc(req.committee)}. <button type="button" class="btn small link" data-act="req" data-id="${esc(req.id)}">Open request</button></p></div>` : ''}
-    ${!signedIn() ? '<p class="hint">Brothers who sign in also see the caption, notes, and creative links.</p>' : ''}
+    ${req && req.files.length && (isStaff() || isMine(req)) ? filesBlock(req.files, 'Files from the request') : ''}
   </div>
   <div class="dfoot">
     ${isStaff() ? `<label class="sr" for="gc-quick-status">Status</label>${selectHTML('gc-quick-status', STATUSES, p.status, `data-id="${esc(p.id)}" class="autow"`)}<span class="spacer"></span>
@@ -590,7 +621,7 @@ function postView(p) {
 
 function postForm(data) {
   const existing = data && data.id ? S.postsById.get(data.id) : null;
-  const pre = existing || Object.assign(normPost({ id: 'new' }), { date: (data && data.date) || S.sel || todayISO(), platforms: ['instagram', 'facebook', 'threads'], committee: 'Media' }, (data && data.prefill) || {});
+  const pre = existing || Object.assign(normPost({ id: 'new' }), { date: (data && data.date) || S.sel || todayISO(), platforms: ['instagram', 'threads'], committee: 'Media' }, (data && data.prefill) || {});
   const editing = !!existing;
   const fromRequest = (data && data.fromRequest) || '';
   return `<form class="dform" id="gc-form" data-kind="post" data-id="${esc(existing ? existing.id : '')}" data-from-request="${esc(fromRequest)}" novalidate>
@@ -627,7 +658,7 @@ function postForm(data) {
 
 // ---------------------------------------------------------------- requests
 function requestForm(r) {
-  const pre = r || normReq({ id: 'new', contactName: isMember() ? S.me.name : '', committee: isMember() ? S.me.committee : '', platforms: ['instagram', 'facebook'] });
+  const pre = r || normReq({ id: 'new', contactName: isChair() ? S.me.name : '', committee: isChair() ? S.me.committee : '', platforms: ['instagram'] });
   const editing = !!r;
   const earliest = iso(addDays(new Date(), LEAD_DAYS));
   const committees = [...COMMITTEES, ...(pre.committee && !COMMITTEES.includes(pre.committee) ? [pre.committee] : [])];
@@ -650,7 +681,17 @@ function requestForm(r) {
         ${fieldHTML('r-program', 'National program', selectHTML('r-program', [{ key: '', label: 'None' }, ...PROGRAMS.map((p) => ({ key: p.key, label: p.short }))], pre.program))}
       </div>
       ${checksHTML('r-platforms', 'Where should it go?', PLATFORMS, pre.platforms)}
-      ${fieldHTML('r-asset', 'Creative link', inputHTML('r-asset', 'url', pre.assetLink, 'placeholder="https://drive.google.com/..."'), 'Google Drive link to final, curated photos or a finished flyer.')}
+      <div class="field">
+        <span class="flabel" id="gc-files-label">Photos, flyer, or video</span>
+        <div class="drop" id="gc-drop">
+          <input type="file" id="r-files" class="sr" multiple accept="${FILES.accept}" aria-labelledby="gc-files-label" aria-describedby="gc-files-hint">
+          <label for="r-files" class="btn small">${ICON.clip}Choose files</label>
+          <span class="hint" id="gc-files-hint">Or drag them here. Up to ${FILES.max} files, 50 MB each: photos, videos, or PDFs.</span>
+        </div>
+        <ul class="filelist" id="gc-filelist">${fileListHTML()}</ul>
+        <p class="hint bad" id="gc-files-err" role="alert" hidden></p>
+      </div>
+      ${fieldHTML('r-asset', 'Or share a link', inputHTML('r-asset', 'url', pre.assetLink, 'placeholder="https://drive.google.com/..."'), 'A Google Drive folder works for large videos or more than 10 files.')}
       ${fieldHTML('r-caption', 'Draft caption', areaHTML('r-caption', pre.caption, 'maxlength="2200"'), 'Optional. Include handles to tag.')}
       ${fieldHTML('r-link', 'Link for the post', inputHTML('r-link', 'url', pre.link, 'placeholder="https://"'), 'RSVP, tickets, or registration.')}
       <label class="tick"><input type="checkbox" id="r-youth" name="r-youth"${pre.youth ? ' checked' : ''}><span>This request includes photos of young people.</span></label>
@@ -675,6 +716,90 @@ function updateLeadHint() {
   if (n < 0) { hint.textContent = 'That date has passed. Choose a future date.'; hint.classList.add('bad'); return; }
   if (n < LEAD_DAYS) { hint.textContent = `Short notice: ${plural(n, 'day')} away. The media team will confirm whether it can run.`; hint.classList.add('warn'); return; }
   hint.textContent = `${plural(n, 'day')} away. That meets the three-week lead time.`;
+}
+
+// ---------------------------------------------------------------- request files
+// The request form keeps its files on S.drawer.files: kept (already attached), added (chosen in this
+// form, uploaded when it's sent), and removed (attached before, deleted once the update saves).
+function fileListHTML() {
+  const fs = S.drawer && S.drawer.files;
+  if (!fs) return '';
+  const row = (f, kind, i) => `<li class="filerow"><span class="filekind">${esc(KIND_LABEL[fileKind(f)])}</span>
+    <span class="filename" title="${esc(f.name)}">${esc(f.name)}</span><span class="filesize">${esc(fmtSize(f.size))}</span>
+    <button type="button" class="btn small quiet" data-act="file-remove" data-kind="${kind}" data-i="${i}" aria-label="Remove ${esc(f.name)}">Remove</button></li>`;
+  return fs.kept.map((f, i) => row(f, 'kept', i)).join('') +
+    fs.added.map((f, i) => row({ name: f.name, size: f.size, type: typeOf(f) }, 'added', i)).join('');
+}
+
+function renderFileList() {
+  const list = $('#gc-filelist', el.drawer);
+  if (list) list.innerHTML = fileListHTML();
+}
+
+function addFiles(fileList) {
+  const fs = S.drawer && S.drawer.files;
+  if (!fs) return;
+  const problems = [];
+  for (const picked of fileList) {
+    const type = typeOf(picked);
+    if (!allowedType(type)) { problems.push(`${picked.name} isn't a photo, video, or PDF.`); continue; }
+    if (picked.size > FILES.maxBytes) { problems.push(`${picked.name} is over 50 MB. Share large videos as a Google Drive link.`); continue; }
+    if (fs.kept.length + fs.added.length >= FILES.max) { problems.push(`Attach up to ${FILES.max} files. Share the rest as a Google Drive link.`); break; }
+    fs.added.push(type === picked.type ? picked : new File([picked], picked.name, { type }));
+  }
+  renderFileList();
+  const err = $('#gc-files-err', el.drawer);
+  if (err) { err.textContent = problems.join(' '); err.hidden = !problems.length; }
+}
+
+function filesBlock(files, title = 'Files') {
+  return `<div class="block"><h4>${esc(title)}</h4>
+    <ul class="thumbs" data-files>${files.map((f) => `<li class="thumb k-${fileKind(f)}" data-path="${esc(f.path)}" data-name="${esc(f.name)}">
+      <a class="thumb-link" target="_blank" rel="noopener"><span class="thumb-img">${esc(KIND_LABEL[fileKind(f)])}</span></a>
+      <span class="thumb-name" title="${esc(f.name)}">${esc(f.name)}</span>
+      <span class="thumb-meta">${esc(fmtSize(f.size))} <a class="thumb-dl" hidden>Download</a></span></li>`).join('')}</ul>
+    <p class="hint" data-files-note>Getting the files.</p></div>`;
+}
+
+// Signed links last an hour; keep them for 50 minutes so redraws don't ask again.
+const urlCache = new Map();
+async function hydrateFiles() {
+  const box = el.drawer.querySelector('[data-files]');
+  if (!box) return;
+  const note = box.parentElement.querySelector('[data-files-note]');
+  const items = [...box.querySelectorAll('[data-path]')];
+  const fresh = (p) => urlCache.has(p) && Date.now() - urlCache.get(p).at < 50 * 60 * 1000;
+  const missing = items.map((li) => li.dataset.path).filter((p) => !fresh(p));
+  let failed = '';
+  if (missing.length) {
+    try {
+      const got = await api.fileUrls(missing);
+      for (const [path, url] of Object.entries(got)) urlCache.set(path, { url, at: Date.now() });
+    } catch (e) { failed = e.message; }
+  }
+  if (!box.isConnected) return;
+  let gone = 0;
+  for (const li of items) {
+    const hit = fresh(li.dataset.path) && urlCache.get(li.dataset.path);
+    if (!hit) { gone++; li.classList.add('gone'); continue; }
+    const link = li.querySelector('.thumb-link'), dl = li.querySelector('.thumb-dl');
+    link.href = hit.url;
+    link.setAttribute('aria-label', `Open ${li.dataset.name}`);
+    dl.href = hit.url.startsWith('blob:') ? hit.url : `${hit.url}${hit.url.includes('?') ? '&' : '?'}download=${encodeURIComponent(li.dataset.name)}`;
+    dl.setAttribute('download', li.dataset.name);
+    dl.hidden = false;
+    if (li.classList.contains('k-image')) {
+      const img = new Image();
+      img.alt = '';
+      img.loading = 'lazy';
+      img.src = hit.url;
+      li.querySelector('.thumb-img').replaceChildren(img);
+    }
+  }
+  if (note) {
+    note.textContent = failed || (gone ? (gone === items.length ? 'These files are no longer available.' : `${plural(gone, 'file')} no longer available.`) : '');
+    note.hidden = !note.textContent;
+  }
 }
 
 function requestView(r) {
@@ -708,6 +833,7 @@ function requestView(r) {
       ${linkLine('Creative', r.assetLink)}${linkLine('Post link', r.link)}
     </dl>
     ${r.about ? `<div class="block"><h4>Details</h4><p>${esc(r.about)}</p></div>` : ''}
+    ${r.files.length ? (isStaff() || mine ? filesBlock(r.files) : `<div class="block"><h4>Files</h4><p>${plural(r.files.length, 'file')} attached.</p></div>`) : ''}
     ${r.caption ? `<div class="block"><h4>Draft caption</h4><div class="caption" id="gc-caption-text">${esc(r.caption)}</div><div><button type="button" class="btn small" data-act="copy" data-target="gc-caption-text">Copy caption</button></div></div>` : ''}
     <div id="gc-review-box"></div>
   </div>
@@ -735,9 +861,10 @@ function signinView() {
   let body = '', foot = '', kind = mode;
   if (mode === 'join') {
     body = `${notReady ? '<p class="note">Sign-in opens once the media team sets the chapter code.</p>' : ''}
+      <p class="hint m0">Brothers sign in to view the calendar. Committee chairs sign in here too, then the media team turns on requests for them.</p>
       ${fieldHTML('s-code', 'Chapter code', inputHTML('s-code', 'text', '', 'required autocomplete="off" autocapitalize="off" spellcheck="false" data-autofocus'), DEMO ? 'Demo: any code works.' : 'From the media team. You need it only this once.', true)}
       ${fieldHTML('s-name', 'Your name', inputHTML('s-name', 'text', '', 'required maxlength="40" autocomplete="name"'), 'First and last name. You use it with your PIN to sign in on another device.', true)}
-      ${fieldHTML('s-committee', 'Committee', `<select id="s-committee" name="s-committee"><option value="">No committee</option>${COMMITTEES.map((c) => `<option>${esc(c)}</option>`).join('')}</select>`, 'Fills in your request forms.')}
+      ${fieldHTML('s-committee', 'Committee', `<select id="s-committee" name="s-committee"><option value="">No committee</option>${COMMITTEES.map((c) => `<option>${esc(c)}</option>`).join('')}</select>`, 'Chairs: the committee you chair.')}
       ${fieldHTML('s-pin', 'PIN', inputHTML('s-pin', 'password', '', 'required inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password"'), '4 to 6 digits. Keep it to yourself.', true)}`;
     foot = '<button type="button" class="btn quiet" data-act="close">Cancel</button><button type="submit" class="btn primary">Sign in</button>';
   } else if (mode === 'rejoin') {
@@ -779,16 +906,23 @@ function accessView() {
   else if (A.members) {
     people = `<div class="people">${A.members.map((m) => {
       const pending = A.pending && A.pending.id === m.id ? A.pending.kind : '';
-      let act = `<button type="button" class="btn small" data-act="m-reset" data-id="${esc(m.id)}">Reset PIN</button><button type="button" class="btn small danger" data-act="m-remove" data-id="${esc(m.id)}">Remove</button>`;
-      if (pending === 'reset') {
+      let act = `${m.chair
+        ? `<button type="button" class="btn small" data-act="m-viewer" data-id="${esc(m.id)}">Make viewer</button>`
+        : `<button type="button" class="btn small" data-act="m-chair" data-id="${esc(m.id)}">Make chair</button>`}
+        <button type="button" class="btn small" data-act="m-reset" data-id="${esc(m.id)}">Reset PIN</button><button type="button" class="btn small danger" data-act="m-remove" data-id="${esc(m.id)}">Remove</button>`;
+      if (pending === 'chair') {
+        act = `<label class="sr" for="gc-chair-${esc(m.id)}">Committee ${esc(m.name)} chairs</label>
+          <select id="gc-chair-${esc(m.id)}" class="autow"><option value="">Choose the committee</option>${[...COMMITTEES, ...(m.committee && !COMMITTEES.includes(m.committee) ? [m.committee] : [])].map((c) => `<option${c === m.committee ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select>
+          <button type="button" class="btn small primary" data-act="m-chair-save" data-id="${esc(m.id)}">Make chair</button><button type="button" class="btn small quiet" data-act="m-cancel">Cancel</button>`;
+      } else if (pending === 'reset') {
         act = `<label class="sr" for="gc-pin-${esc(m.id)}">New PIN for ${esc(m.name)}</label><input id="gc-pin-${esc(m.id)}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="New PIN">
           <button type="button" class="btn small primary" data-act="m-reset-save" data-id="${esc(m.id)}">Save PIN</button><button type="button" class="btn small quiet" data-act="m-cancel">Cancel</button>`;
       } else if (pending === 'remove') {
         act = `<span class="person-meta">Remove ${esc(m.name)}? Their requests stay.</span><button type="button" class="btn small quiet" data-act="m-cancel">Keep</button><button type="button" class="btn small danger" data-act="m-remove-confirm" data-id="${esc(m.id)}">Remove</button>`;
       }
-      const meta = [m.committee, m.createdAt && `joined ${dateOf(m.createdAt)}`, m.lastSeenAt && `last sign-in ${dateOf(m.lastSeenAt)}`, plural(m.requests, 'request')].filter(Boolean).join(' · ');
+      const meta = [m.chair ? (m.committee ? `${m.committee} chair` : 'Chair') : m.committee, m.createdAt && `joined ${dateOf(m.createdAt)}`, m.lastSeenAt && `last sign-in ${dateOf(m.lastSeenAt)}`, m.chair || m.requests ? plural(m.requests, 'request') : ''].filter(Boolean).join(' · ');
       return `<div class="person">
-        <div class="person-top"><span class="person-name">${esc(m.name)}</span>${m.locked ? '<span class="pill s-locked">Locked</span>' : ''}</div>
+        <div class="person-top"><span class="person-name">${esc(m.name)}</span><span class="tagrow">${m.chair ? '<span class="pill s-posted">Chair</span>' : '<span class="pill s-planned">Viewer</span>'}${m.locked ? '<span class="pill s-locked">Locked</span>' : ''}</span></div>
         <span class="person-meta">${esc(meta)}</span>
         <div class="person-act">${act}</div></div>`;
     }).join('')}</div>`;
@@ -796,12 +930,7 @@ function accessView() {
   const staff = A.staff ? A.staff.map((s) => esc(s.name)).join(', ') : '';
   return `${drawerHead('Media team', 'Manage access')}
   <div class="dbody">
-    <div class="block">
-      <h4>Public calendar</h4>
-      <label class="tick"><input type="checkbox" id="gc-set-public"${S.settings.public ? ' checked' : ''}><span>Show the calendar to anyone who opens this page</span></label>
-      <p class="hint">Visitors see dates, titles, categories, and post ideas. Captions, notes, creative links, and requests stay with signed-in brothers.</p>
-    </div>
-    <div class="divider"></div>
+    <p class="m0 muted">Only signed-in brothers can see the calendar. Brothers view it; mark committee chairs below so they can send requests.</p>
     <form class="block" id="gc-code-form" data-kind="code" novalidate>
       <h4>Chapter code</h4>
       ${fieldHTML('gc-new-code', 'New code', inputHTML('gc-new-code', 'text', '', 'minlength="6" autocomplete="off" autocapitalize="off" spellcheck="false"'), 'Brothers enter it the first time they sign in. Changing it keeps everyone signed in; share the new code at the next meeting.')}
@@ -810,8 +939,8 @@ function accessView() {
     </form>
     <div class="divider"></div>
     <div class="block">
-      <h4>Brothers${A.members ? ` (${A.members.length})` : ''}</h4>
-      <p class="hint">Reset a PIN when a brother forgets it, then tell him the new one privately. Remove signs a brother out; his requests stay.</p>
+      <h4>Brothers and chairs${A.members ? ` (${A.members.length})` : ''}</h4>
+      <p class="hint">A chair joins like any brother, then you make him chair here. Reset a PIN when someone forgets it and tell him the new one privately. Remove signs a brother out; his requests stay.</p>
       ${people}
     </div>
     <div class="divider"></div>
@@ -913,10 +1042,30 @@ async function submitRequest(form) {
   if (bad) return formError('Links need to start with https://.', bad);
   if (d.youth && !d.releases) return formError('Confirm that media releases are on file, or remove photos of young people.', 'r-releases');
   d.eventDate = parse(d.eventDate) ? d.eventDate : '';
+  // Upload new files first, then send the request with all of them. If anything fails, remove what
+  // this attempt uploaded so nothing is left behind, and keep the form as it was.
+  const fs = S.drawer.files;
+  const folder = isChair() ? S.me.member_id : 'staff';
+  const btn = form.querySelector('[type=submit]');
+  const label = btn.textContent;
+  const uploaded = [];
   let saved;
   try {
-    saved = await withBusy(form, () => (existing ? api.updateRequest(existing.id, d) : api.submitRequest(d)));
-  } catch (e) { return formError(e.message); }
+    saved = await withBusy(form, async () => {
+      for (let i = 0; i < fs.added.length; i++) {
+        btn.textContent = fs.added.length > 1 ? `Uploading ${i + 1} of ${fs.added.length}` : 'Uploading';
+        uploaded.push(await api.uploadFile(fs.added[i], folder));
+      }
+      btn.textContent = existing ? 'Updating' : 'Sending';
+      d.files = [...fs.kept, ...uploaded];
+      return existing ? api.updateRequest(existing.id, d) : api.submitRequest(d);
+    });
+  } catch (e) {
+    btn.textContent = label;
+    if (uploaded.length) api.removeFiles(uploaded.map((f) => f.path)).catch(() => {});
+    return formError(e.message);
+  }
+  if (fs.removed.length) api.removeFiles(fs.removed).catch(() => {});
   upsertRequest(saved);
   toast(existing ? 'Request updated' : 'Request sent. Track it under Requests.');
   closeDrawer();
@@ -1044,14 +1193,9 @@ function csvCell(v) { const s = String(v ?? ''); return /[",\n\r]/.test(s) ? `"$
 function exportList() { const t = todayISO(); return visiblePosts().filter((p) => S.f.past || p.date >= t); }
 
 function toCSV(list) {
-  const full = signedIn();
-  const head = ['Date', 'Title', 'Category', 'National program', 'Format', 'Platforms', 'Status', 'Committee', 'Event date', 'Post idea', 'Post link'];
-  if (full) head.push('Caption', 'Creative', 'Notes', 'Source');
-  const rows = [head];
+  const rows = [['Date', 'Title', 'Category', 'National program', 'Format', 'Platforms', 'Status', 'Committee', 'Event date', 'Post idea', 'Post link', 'Caption', 'Creative', 'Notes', 'Source']];
   for (const p of list) {
-    const row = [p.date, p.title, CAT[p.category].label, p.program ? PROG[p.program].label : '', FMT[p.format].label, platList(p.platforms), STAT[p.status].label, p.committee, p.eventDate, p.concept, p.link];
-    if (full) row.push(p.caption, p.assetLink, p.notes, p.source);
-    rows.push(row);
+    rows.push([p.date, p.title, CAT[p.category].label, p.program ? PROG[p.program].label : '', FMT[p.format].label, platList(p.platforms), STAT[p.status].label, p.committee, p.eventDate, p.concept, p.link, p.caption, p.assetLink, p.notes, p.source]);
   }
   return rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
 }
@@ -1194,7 +1338,7 @@ document.addEventListener('click', (e) => {
     case 'req': openDrawer('request', id, S.drawer ? S.lastTrigger : t); break;
     case 'add-post': if (isStaff()) openDrawer('post-edit', { date: t.dataset.date || S.sel || todayISO() }, t); break;
     case 'edit-post': if (isStaff()) openDrawer('post-edit', { id }, S.lastTrigger); break;
-    case 'request-new': if (signedIn()) openDrawer('request-new', null, t); else openDrawer('signin', null, t); break;
+    case 'request-new': if (canRequest()) openDrawer('request-new', null, t); else if (!signedIn()) openDrawer('signin', null, t); break;
     case 'edit-request': openDrawer('request-edit', id, S.drawer ? S.lastTrigger : t); break;
     case 'approve': {
       if (!isStaff()) break;
@@ -1203,7 +1347,7 @@ document.addEventListener('click', (e) => {
       openDrawer('post-edit', {
         fromRequest: r.id, date: r.postDate, prefill: {
           title: r.title, date: r.postDate || todayISO(), category: 'chapter', program: r.program, format: r.format,
-          platforms: r.platforms.length ? r.platforms : ['instagram', 'facebook'], status: 'planned',
+          platforms: r.platforms.length ? r.platforms : ['instagram'], status: 'planned',
           committee: r.committee || 'Other', concept: r.about, caption: r.caption,
           assetLink: r.assetLink, link: r.link, eventDate: r.eventDate,
           notes: `Requested by ${r.contactName || 'a chair'}${r.committee ? ', ' + r.committee : ''}.${r.youth ? ' Includes young people; releases confirmed.' : ''}`
@@ -1239,6 +1383,19 @@ document.addEventListener('click', (e) => {
     case 'm-reset': S.access.pending = { id, kind: 'reset' }; drawDrawer(false); { const f = document.getElementById('gc-pin-' + id); if (f) f.focus(); } break;
     case 'm-remove': S.access.pending = { id, kind: 'remove' }; drawDrawer(false); break;
     case 'm-cancel': S.access.pending = null; drawDrawer(false); break;
+    case 'm-chair': S.access.pending = { id, kind: 'chair' }; drawDrawer(false); { const f = document.getElementById('gc-chair-' + id); if (f) f.focus(); } break;
+    case 'm-chair-save': setChair(id, true); break;
+    case 'm-viewer': setChair(id, false); break;
+    case 'file-remove': {
+      const fs = S.drawer && S.drawer.files;
+      if (!fs) break;
+      const i = Number(t.dataset.i);
+      if (t.dataset.kind === 'kept') { const [f] = fs.kept.splice(i, 1); if (f) fs.removed.push(f.path); } else fs.added.splice(i, 1);
+      renderFileList();
+      const pick = $('#r-files', el.drawer);
+      if (pick) pick.focus();
+      break;
+    }
     case 'm-reset-save': resetPin(id); break;
     case 'm-remove-confirm': removeMember(id); break;
     case 'demo-role': demoRole(t.dataset.role); break;
@@ -1263,10 +1420,19 @@ async function removeMember(id) {
   await loadAccess();
   await loadData();
 }
-async function setPublic(on) {
-  try { S.settings = { ...S.settings, ...(await api.setPublic(on)) }; } catch (e) { toast(e.message); if (S.drawer) drawDrawer(false); return; }
-  toast(S.settings.public ? 'The calendar is public. Captions, notes, and requests stay private.' : 'The calendar is for signed-in brothers only.');
-  render();
+async function setChair(id, chair) {
+  const m = (S.access.members || []).find((x) => x.id === id);
+  let committee = '';
+  if (chair) {
+    const pick = document.getElementById('gc-chair-' + id);
+    committee = pick ? pick.value : '';
+    if (!committee) { toast('Choose the committee he chairs.'); if (pick) pick.focus(); return; }
+  }
+  try { await api.setChair(id, chair, committee); } catch (e) { toast(e.message); return; }
+  S.access.pending = null;
+  const name = m ? m.name : 'He';
+  toast(chair ? `${name} can now send requests for ${committee}.` : `${name} can view the calendar. He no longer sends requests.`);
+  await loadAccess();
 }
 async function setChapterCode(form) {
   const input = $('#gc-new-code', form);
@@ -1283,7 +1449,7 @@ async function demoRole(role) {
   if (S.drawer) closeDrawer();
   await refreshIdentity();
   await loadData();
-  toast(role === 'staff' ? 'Viewing as the media team' : role === 'member' ? 'Viewing as a brother' : 'Viewing as a visitor');
+  toast({ staff: 'Viewing as the media team', chair: 'Viewing as a committee chair', member: 'Viewing as a brother' }[role] || 'Viewing as a visitor');
 }
 
 document.addEventListener('submit', (e) => {
@@ -1302,10 +1468,29 @@ document.addEventListener('change', (e) => {
   else if (t.id === 'gc-f-program') { S.f.program = t.value; renderMain(); renderRail(); }
   else if (t.id === 'gc-f-status') { S.f.status = t.value; renderMain(); renderRail(); }
   else if (t.id === 'r-youth') { const row = $('#gc-releases-row', el.drawer); if (row) row.hidden = !t.checked; }
-  else if (t.id === 'gc-set-public') setPublic(t.checked);
+  else if (t.id === 'r-files') { addFiles([...t.files]); t.value = ''; }
 });
 document.addEventListener('input', (e) => {
   if (e.target.id === 'r-date') updateLeadHint();
+});
+// Drag files onto the request form's upload area.
+const dropZone = (e) => (e.target && e.target.closest ? e.target.closest('#gc-drop') : null);
+document.addEventListener('dragover', (e) => {
+  const zone = dropZone(e);
+  if (!zone) return;
+  e.preventDefault();
+  zone.classList.add('over');
+});
+document.addEventListener('dragleave', (e) => {
+  const zone = dropZone(e);
+  if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove('over');
+});
+document.addEventListener('drop', (e) => {
+  const zone = dropZone(e);
+  if (!zone) return;
+  e.preventDefault();
+  zone.classList.remove('over');
+  if (e.dataTransfer && e.dataTransfer.files.length) addFiles([...e.dataTransfer.files]);
 });
 let qTimer = 0;
 el.q.addEventListener('input', () => { clearTimeout(qTimer); qTimer = setTimeout(() => { S.f.q = el.q.value; renderMain(); renderRail(); }, 140); });
@@ -1337,19 +1522,19 @@ function watchNav() {
 // ---------------------------------------------------------------- loading
 async function refreshIdentity() {
   const [settings, me] = await Promise.all([api.settings(), api.whoami()]);
-  S.settings = { public: !!(settings && settings.public), ready: !settings || settings.ready !== false };
+  S.settings = { ready: !settings || settings.ready !== false };
   S.me = me && me.role ? me : { role: 'visitor' };
-  S.role = S.me.role === 'staff' || S.me.role === 'member' ? S.me.role : 'visitor';
+  S.role = ['staff', 'chair', 'member'].includes(S.me.role) ? S.me.role : 'visitor';
   S.account = api.account ? api.account() : null;
-  if (S.role === 'member') { store.set('was-member', true); store.set('last-name', S.me.name); }
+  if (S.role === 'member' || S.role === 'chair') { store.set('was-member', true); store.set('last-name', S.me.name); }
   if (S.role === 'staff') store.del('was-member');
 }
 
 async function loadData() {
   const jobs = [];
-  if (canSeePosts()) jobs.push(api.posts({ full: signedIn() }).then((rows) => setPosts(rows)));
+  if (signedIn()) jobs.push(api.posts().then((rows) => setPosts(rows)));
   else setPosts([], false);
-  if (signedIn()) jobs.push(api.requests().then((rows) => setRequests(rows)));
+  if (canRequest()) jobs.push(api.requests().then((rows) => setRequests(rows)));
   else setRequests([], false);
   try {
     await Promise.all(jobs);
@@ -1377,10 +1562,12 @@ async function quietRefresh(force) {
   try {
     const before = S.role;
     await refreshIdentity();
-    if (before === 'member' && S.role === 'visitor') {
+    if ((before === 'member' || before === 'chair') && S.role === 'visitor') {
       noticeSignedOut();
       if (S.drawer) closeDrawer();
       toast('You were signed out on this device.');
+    } else if (before === 'member' && S.role === 'chair') {
+      toast('You can now send post requests.');
     }
     await loadData();
   } catch (e) {
@@ -1405,6 +1592,10 @@ async function boot() {
   }
   if (S.role === 'visitor' && store.get('was-member', false)) noticeSignedOut();
   render();
+  if (wantsSignin) {
+    try { history.replaceState(null, '', location.pathname + location.search); } catch { /* file:// previews */ }
+    if (S.role === 'visitor') openDrawer('signin', null, null);
+  }
   await loadData();
   lastRefresh = Date.now();
   setInterval(() => { if (!document.hidden) quietRefresh(true); }, 120000);

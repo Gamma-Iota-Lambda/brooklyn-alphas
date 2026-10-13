@@ -1,5 +1,5 @@
 // Reference lists for the content calendar. The database checks the same keys
-// (supabase/migrations/20261013000100_content_calendar.sql); change both together.
+// (supabase/migrations/); change both together.
 
 export const LEAD_DAYS = 21;
 export const CONTACT = 'Bro. Eugene Aiken, Associate Editor of the Sphinx';
@@ -32,9 +32,10 @@ export const FORMATS = [
   { key: 'text', label: 'Text post' }
 ];
 
+// Facebook is off while the chapter has no access to it. The database still accepts
+// 'facebook', so adding { key: 'facebook', label: 'Facebook' } back here turns it on again.
 export const PLATFORMS = [
   { key: 'instagram', label: 'Instagram' },
-  { key: 'facebook', label: 'Facebook' },
   { key: 'threads', label: 'Threads' },
   { key: 'x', label: 'X' },
   { key: 'website', label: 'gil1906.org' },
@@ -63,6 +64,15 @@ export const COMMITTEES = [
   'Community Service', 'DX Alumni', 'Education', 'Finance', 'Historian', 'Membership',
   'Social & Fundraising', 'E-Board', 'Media', 'Other'
 ];
+
+// Files chairs attach to requests. The storage bucket enforces the same size and types
+// (supabase/migrations/20261013000200_chairs_and_request_files.sql); 50 MB is the Supabase Free
+// plan's limit.
+export const FILES = {
+  max: 10,
+  maxBytes: 50 * 1024 * 1024,
+  accept: 'image/*,video/*,application/pdf'
+};
 
 export const MILESTONES = [
   { date: '2026-12-04', label: "Founders' Day", detail: '120 years' },
