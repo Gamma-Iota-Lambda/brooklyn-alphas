@@ -22,6 +22,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── impact-20.html              # Impact $20 donation campaign
 ├── recommended-readings.html   # Curated reading list
 ├── scholarship.html            # Judge Myles A. Paige Scholarship
+├── calendar.html               # Content calendar for the media team and brothers (not in the nav or sitemap)
 ├── 404.html                    # Custom not-found page
 ├── style.css                   # All shared styles (single stylesheet)
 ├── sitemap.xml                 # XML sitemap for Google indexing
@@ -33,6 +34,9 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── gil-crest.png               # Chapter crest — used in nav and as headshot placeholder
 ├── zelle-qr.png                # Zelle QR code (Impact $20 page)
 ├── chapter-photo1.png          # Chapter group photo
+├── assets/calendar/            # The calendar's script, styles, demo data, and Supabase client
+├── supabase/                   # The calendar's database: migration, seed, setup, and go-live steps
+├── tests/calendar/             # The calendar's database and browser tests
 └── headshots/                 # Current board first, then photos of past officers
     ├── robert-brissett.jpeg
     ├── lucien-allen.jpg
@@ -200,6 +204,28 @@ Each year, update `scholarship.html`:
 
 ---
 
+## Content Calendar
+
+`calendar.html` is the media team's content calendar for the fraternal year: holidays, Divine Nine Founders' Days, national program posts, notable Alpha men, monthly series, and chapter events, with a way for committee chairs to request posts. Bro. Eugene Aiken, Associate Editor of the Sphinx, runs it for the media team.
+
+- **Address:** www.gil1906.org/calendar. It isn't in the nav or the sitemap, and it asks search engines not to index it. Share the link with the chapter directly.
+- **Who sees what:** brothers sign in with the chapter code, their name, and a PIN, then see every post and the request queue. The media team signs in with an email and password and edits everything. Visitors see nothing unless the media team makes the calendar public, and then only dates, titles, and post ideas.
+- **Requests:** chairs send them at least three weeks ahead. The media team asks questions, declines, or adds them to the calendar, and the chair follows the status on the same page. It's built to take over from the Google Form the chapter has used for content requests.
+- **Exports:** the Agenda view downloads a spreadsheet (CSV) or a calendar file (.ics) for Google Calendar, Outlook, or Apple Calendar.
+
+**Demo and live.** With `assets/calendar/config.js` empty, the page runs a demo on sample data saved in each visitor's browser. To go live, follow [`supabase/README.md`](supabase/README.md): create a Supabase project, run three SQL files, change two sign-in settings, and paste the project's address and publishable key into `config.js`.
+
+**Files:**
+- `calendar.html` holds the site's nav and footer around the calendar.
+- `assets/calendar/app.js` draws the page; `api-live.js` talks to Supabase and `api-demo.js` runs the demo. Both expose the same methods.
+- `assets/calendar/data.js` lists the categories, programs, formats, platforms, statuses, and committees. The database checks the same keys, so change both together.
+- `assets/calendar/calendar.css` gives the calendar the look of the original version the media team approved: a light palette with old gold, Cormorant Garamond for headings, and Outfit for everything else. The site's nav and footer keep their own look. It loads after `style.css`, styles only elements inside `.gc`, and turns off the site's page-in animation on this page so the side panel stays fixed to the screen.
+- `assets/calendar/vendor/supabase.js` is the Supabase client (supabase-js 2.117.2), kept in the repository so the page needs no build step.
+
+**Tests:** see the Tests section of [`supabase/README.md`](supabase/README.md). Run them after any change to the calendar.
+
+---
+
 ## SEO Notes
 
 Every page has:
@@ -208,6 +234,8 @@ Every page has:
 - Open Graph tags (`og:title`, `og:description`, `og:image`, `og:url`)
 - Twitter Card tags
 - JSON-LD structured data appropriate to the page type
+
+`calendar.html` is the exception: it's a working page for brothers, so it carries `noindex` and stays out of the sitemap.
 
 The canonical domain is `https://www.gil1906.org` (www, HTTPS). Every canonical tag, `og:url`, and sitemap entry uses it. Vercel is set up to:
 - Serve every page over HTTPS (automatic)
