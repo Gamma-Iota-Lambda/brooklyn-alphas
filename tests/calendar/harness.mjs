@@ -1,4 +1,4 @@
-// Runs the content calendar migration inside PGlite (Postgres compiled to WebAssembly) with a small
+// Runs the content calendar migrations inside PGlite (Postgres compiled to WebAssembly) with a small
 // stand-in for Supabase's auth schema and roles, so row level security and SECURITY DEFINER
 // functions behave the way they do in production. Adapted from the Alpha Academy Trading Floor.
 import { PGlite } from '@electric-sql/pglite';
@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const MIGRATIONS = join(root, 'supabase', 'migrations');
 
 const SUPABASE_STUB = `
 create role anon nologin;
@@ -35,6 +36,37 @@ create function auth.jwt() returns jsonb language sql stable as $$
 $$;
 grant execute on function auth.uid(), auth.jwt() to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
+-- Storage: the bucket and object tables and the folder helper, as Supabase defines them.
+create schema storage;
+grant usage on schema storage to anon, authenticated, service_role;
+create table storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean default false,
+  file_size_limit bigint,
+  allowed_mime_types text[],
+  created_at timestamptz default now()
+);
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets (id),
+  name text not null,
+  owner_id text,
+  metadata jsonb,
+  created_at timestamptz default now(),
+  unique (bucket_id, name)
+);
+alter table storage.objects enable row level security;
+grant all on storage.objects to anon, authenticated, service_role;
+create function storage.foldername(name text) returns text[] language plpgsql immutable as $$
+declare
+  _parts text[];
+begin
+  select string_to_array(name, '/') into _parts;
+  return _parts[1:array_length(_parts, 1) - 1];
+end
+$$;
+grant execute on function storage.foldername(text) to anon, authenticated, service_role;
 -- Supabase grants new public tables and functions to the API roles by default.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
@@ -43,7 +75,9 @@ set timezone = 'UTC';
 
 // postgrestTypes: return dates as YYYY-MM-DD, timestamps as ISO strings, and bigints as numbers,
 // the way the Supabase Data API sends them. The live stand-in (live-server.mjs) uses this.
-export async function createDb({ codes = true, postgrestTypes = false } = {}) {
+// migrations: run only these files from supabase/migrations, to test upgrading a project that ran
+// an earlier set. By default every migration runs, in order.
+export async function createDb({ codes = true, postgrestTypes = false, migrations = null } = {}) {
   const parsers = postgrestTypes
     ? {
         20: (v) => Number(v),
@@ -53,9 +87,9 @@ export async function createDb({ codes = true, postgrestTypes = false } = {}) {
     : undefined;
   const db = new PGlite({ extensions: { pgcrypto }, ...(parsers ? { parsers } : {}) });
   await db.exec(SUPABASE_STUB);
-  const dir = join(root, 'supabase', 'migrations');
-  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql')).sort()) {
-    await db.exec(readFileSync(join(dir, f), 'utf8'));
+  const files = readdirSync(MIGRATIONS).filter((x) => x.endsWith('.sql')).sort();
+  for (const f of migrations ? files.filter((x) => migrations.includes(x)) : files) {
+    await db.exec(readFileSync(join(MIGRATIONS, f), 'utf8'));
   }
   await db.exec(readFileSync(join(root, 'supabase', 'seed.sql'), 'utf8'));
   const h = new Harness(db);
@@ -72,6 +106,11 @@ export const MEDIA_CODE = 'black and old gold media team';
 export class Harness {
   constructor(db) {
     this.db = db;
+  }
+
+  // Runs one migration file, the way the media team pastes it into SQL Editor.
+  async migrate(file) {
+    await this.db.exec(readFileSync(join(MIGRATIONS, file), 'utf8'));
   }
 
   async setNow(iso) {
@@ -131,11 +170,25 @@ export class Harness {
     return (await this.db.query(sql, params)).rows;
   }
 
-  // A brother who has signed in with the chapter code.
+  // A brother who has signed in with the chapter code. He can view the calendar.
   async member(name, pin = '1906', committee = 'Education') {
     const user = await this.createUser({ anon: true });
     const me = await this.rpc1(user, 'cal_join', { p_code: CHAPTER_CODE, p_name: name, p_pin: pin, p_committee: committee });
     return { ...user, memberId: me.member_id, name };
+  }
+
+  // A committee chair: a brother the media team has marked as chair. He can send requests.
+  async chair(name, committee = 'Education', pin = '1906') {
+    const bro = await this.member(name, pin, committee);
+    await this.sql('update public.cal_members set chair = true where id = $1', [bro.memberId]);
+    return bro;
+  }
+
+  // Adds a file record to the calendar-files bucket as the given person, the way Supabase Storage
+  // does on upload, so the storage policies decide.
+  async upload(who, path) {
+    return this.select(who, `insert into storage.objects (bucket_id, name, owner_id) values ('calendar-files', $1, $2) returning name`,
+      [path, who && who.id ? who.id : null]);
   }
 
   // A media team member with an email login.

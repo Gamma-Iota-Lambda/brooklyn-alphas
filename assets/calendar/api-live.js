@@ -1,9 +1,27 @@
-// Live mode: Supabase for sign-in, posts, and requests.
+// Live mode: Supabase for sign-in, posts, requests, and request files.
 // Needs the project URL and publishable key in assets/calendar/config.js.
-// Brothers write through database functions; the media team edits posts directly under row level security.
+// Brothers and chairs write through database functions; the media team edits posts directly under
+// row level security. Request files go to the private calendar-files storage bucket.
 
-const PUBLIC_COLUMNS = 'id,date,title,category,program,format,platforms,status,committee,concept,event_date,link';
 const PAGE = 1000;
+const BUCKET = 'calendar-files';
+const randomId = () => (globalThis.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`).replace(/-/g, '').slice(0, 10);
+
+// Storage errors, in words for chairs.
+function friendlyStorage(error) {
+  const msg = (error && (error.message || error.error)) || '';
+  if (/maximum allowed size|too large|exceeded/i.test(msg)) return 'That file is over 50 MB. For large videos, share a Google Drive link instead.';
+  if (/mime type|not supported/i.test(msg)) return 'That kind of file can\'t be attached. Attach photos, videos, or PDFs.';
+  if (/row-level security|unauthorized|403/i.test(msg)) return 'Only committee chairs and the media team can attach files.';
+  return friendly(error, 'The file could not upload. Try again.');
+}
+
+// A storage-safe file name: letters, digits, dots, dashes, and underscores.
+export function safeFileName(name) {
+  const base = String(name || 'file').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\w.-]+/g, '-').replace(/-+/g, '-').replace(/^[-.]+|-+$/g, '');
+  return (base || 'file').slice(-80);
+}
 
 function loadScript(src) {
   return new Promise((resolve, reject) => {
@@ -54,7 +72,8 @@ export function rowToRequest(r) {
     eventDate: r.event_date || '', about: r.about, format: r.format, platforms: r.platforms || [],
     program: r.program || '', assetLink: r.asset_link || '', caption: r.caption || '', link: r.link || '',
     youth: !!r.youth, releases: !!r.releases, status: r.status, reviewNote: r.review_note || '',
-    postId: r.post_id || '', memberId: r.member_id || '', createdAt: r.created_at || '', updatedAt: r.updated_at || ''
+    postId: r.post_id || '', memberId: r.member_id || '', files: Array.isArray(r.files) ? r.files : [],
+    createdAt: r.created_at || '', updatedAt: r.updated_at || ''
   };
 }
 
@@ -63,7 +82,7 @@ function requestToJson(q) {
     contact_name: q.contactName, committee: q.committee, title: q.title, post_date: q.postDate,
     event_date: q.eventDate || '', about: q.about, format: q.format, platforms: q.platforms,
     program: q.program || '', asset_link: q.assetLink || '', caption: q.caption || '', link: q.link || '',
-    youth: !!q.youth, releases: !!q.releases
+    youth: !!q.youth, releases: !!q.releases, files: q.files || []
   };
 }
 
@@ -117,11 +136,12 @@ export class LiveApi {
     return this.rpc('cal_settings');
   }
 
-  // Returns {role: 'visitor' | 'member' | 'staff', name, member_id, committee}.
+  // Returns {role: 'visitor' | 'member' | 'chair' | 'staff', name, member_id, committee}.
   async whoami() {
     const me = await this.rpc('cal_whoami');
     // A half-finished sign-in, or a name now signed in on another device, leaves an anonymous
-    // session with no brother behind it. Drop it so the public calendar reads work.
+    // session with no brother behind it. Drop it so this device shows the sign-in prompt and the
+    // next sign-in starts fresh.
     if (me.role === 'visitor' && this.session?.user?.is_anonymous) {
       try { await this.client.auth.signOut({ scope: 'local' }); } catch { /* already gone */ }
       this.session = null;
@@ -146,9 +166,9 @@ export class LiveApi {
 
   // ------------------------------------------------------------ reads
 
-  async posts({ full }) {
+  async posts() {
     const rows = await this.allRows(
-      () => this.client.from('cal_posts').select(full ? '*' : PUBLIC_COLUMNS).order('date').order('id'),
+      () => this.client.from('cal_posts').select('*').order('date').order('id'),
       'The calendar could not load.'
     );
     return rows.map(rowToPost);
@@ -239,7 +259,7 @@ export class LiveApi {
   async memberList() {
     const rows = await this.rpc('cal_member_list');
     return rows.map((m) => ({
-      id: m.id, name: m.display_name, committee: m.committee || '', createdAt: m.created_at,
+      id: m.id, name: m.display_name, committee: m.committee || '', chair: !!m.chair, createdAt: m.created_at,
       lastSeenAt: m.last_seen_at, requests: Number(m.requests) || 0, locked: !!m.locked, signedIn: !!m.signed_in
     }));
   }
@@ -260,8 +280,36 @@ export class LiveApi {
     await this.rpc('cal_remove_member', { p_member_id: memberId });
   }
 
-  async setPublic(on) {
-    return this.rpc('cal_set_public', { p_on: !!on });
+  // Marks a brother as a committee chair (chair true) or back to a viewer.
+  async setChair(memberId, chair, committee) {
+    return this.rpc('cal_set_chair', { p_member_id: memberId, p_chair: !!chair, p_committee: committee || null });
+  }
+
+  // ------------------------------------------------------------ request files
+
+  // Uploads one file into requests/<folder>/ and returns what the request stores about it.
+  // folder is the chair's member id, or 'staff' for the media team.
+  async uploadFile(file, folder) {
+    const path = `requests/${folder}/${randomId()}-${safeFileName(file.name)}`;
+    const { error } = await this.client.storage.from(BUCKET).upload(path, file, {
+      contentType: file.type || 'application/octet-stream', upsert: false
+    });
+    if (error) throw new Error(friendlyStorage(error));
+    return { path, name: String(file.name || 'file').slice(0, 200), size: file.size, type: file.type || '' };
+  }
+
+  async removeFiles(paths) {
+    if (!paths.length) return;
+    const { error } = await this.client.storage.from(BUCKET).remove(paths);
+    if (error) throw new Error(friendlyStorage(error));
+  }
+
+  // Links that work for an hour: {path: url}. Files the person may not see are left out.
+  async fileUrls(paths) {
+    if (!paths.length) return {};
+    const { data, error } = await this.client.storage.from(BUCKET).createSignedUrls(paths, 3600);
+    if (error) throw new Error(friendlyStorage(error));
+    return Object.fromEntries((data || []).filter((d) => d.signedUrl && !d.error).map((d) => [d.path, d.signedUrl]));
   }
 
   async setChapterCode(code) {

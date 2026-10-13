@@ -125,6 +125,35 @@ body {
   transition: background 0.2s, transform 0.2s;
 }
 .nav-cta:hover { background: var(--gold-bright); transform: translateY(-1px); }
+/* Sign in: brothers' way into the content calendar (calendar.html) */
+.nav-signin {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  border: 1px solid rgba(184,134,11,0.5);
+  padding: calc(0.6rem - 1px) 1.2rem;
+  margin: 0 0.6rem 0 0.75rem;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color 0.2s, color 0.2s;
+}
+.nav-signin:hover { border-color: var(--gold); color: var(--gold-bright); }
+/* The home page's nav carries the Sign in button. To make room, it drops the social icons below
+   1600px (they stay in the mobile menu and the Contact section) and tightens link spacing on
+   smaller laptops. */
+@media (max-width: 1599px) {
+  #main-nav.has-signin .nav-social { display: none; }
+}
+@media (max-width: 1279px) {
+  #main-nav.has-signin .nav-links { gap: 1.6rem; }
+}
+@media (max-width: 1100px) {
+  #main-nav.has-signin .nav-links { gap: 1.1rem; }
+  #main-nav.has-signin .nav-signin { padding: calc(0.5rem - 1px) 0.75rem; letter-spacing: 0.12em; margin: 0 0.4rem 0 0.6rem; }
+}
 
 /* ─── NAV SOCIAL ICONS ─── */
 .nav-social {
@@ -1268,6 +1297,18 @@ footer {
   margin-top: 1rem;
 }
 
+.nav-mobile-menu .mobile-signin {
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--gold);
+  border: 1px solid rgba(184,134,11,0.5);
+  padding: calc(1rem - 1px) 2.5rem;
+  margin-top: 1rem;
+}
+
 /* Mobile social row in mobile menu */
 .mobile-social-row {
   display: flex;
@@ -1332,6 +1373,7 @@ footer {
   .nav-links { display: none; }
   .nav-hamburger { display: flex; }
   .nav-cta { display: none; }
+  .nav-signin { display: none; }
   .nav-social { display: none; }
   .hero-content { padding: 7rem 1.5rem 4rem; }
   .hero-subtitle { max-width: 100%; }

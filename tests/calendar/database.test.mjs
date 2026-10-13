@@ -16,7 +16,7 @@ const request = (over = {}) => JSON.stringify({
   event_date: '2026-12-18',
   about: 'Promote the December Wine and Chill and toy drive.',
   format: 'flyer',
-  platforms: ['instagram', 'facebook'],
+  platforms: ['instagram', 'threads'],
   program: '',
   asset_link: 'https://drive.google.com/drive/folders/example',
   caption: '',
@@ -28,32 +28,26 @@ const request = (over = {}) => JSON.stringify({
 
 const countPosts = (h, who) => h.select(who, 'select count(*)::int as n from public.cal_posts').then((r) => r[0].n);
 
-test('the migration and seed load the 2026-2027 calendar', async () => {
+test('the migrations and seed load the 2026-2027 calendar', async () => {
   const h = await createDb();
   const rows = await h.sql('select count(*)::int as n, min(date)::text as first, max(date)::text as last from public.cal_posts');
   assert.equal(rows[0].n, 128);
   assert.equal(rows[0].first, '2026-10-15');
   assert.equal(rows[0].last, '2027-08-30');
   const settings = await h.rpc1(null, 'cal_settings');
-  assert.deepEqual(settings, { public: false, lead_days: 21, ready: true });
+  assert.deepEqual(settings, { lead_days: 21, ready: true });
 });
 
-test('visitors see nothing until the media team makes the calendar public, then only public columns', async () => {
+test('visitors who are not signed in see nothing at all', async () => {
   const h = await createDb();
-  assert.equal(await countPosts(h, null), 0);
+  const chair = await h.chair('Farid Adenuga', 'Social & Fundraising');
+  await h.upload(chair, `requests/${chair.memberId}/a1-flyer.jpg`);
   assert.deepEqual(await h.rpc1(null, 'cal_whoami'), { role: 'visitor' });
-
-  const staff = await h.staff();
-  await h.rpc1(staff, 'cal_set_public', { p_on: true });
-  const visible = await h.select(null, 'select id, title, concept from public.cal_posts order by date limit 1');
-  assert.equal(visible.length, 1);
-  assert.equal(visible[0].id, '2026-10-15-gil-brothers-in-nyacoa-leadership');
-  await assert.rejects(() => h.select(null, 'select notes from public.cal_posts limit 1'), /permission denied/);
-  await assert.rejects(() => h.select(null, 'select * from public.cal_posts limit 1'), /permission denied/);
+  await assert.rejects(() => h.select(null, 'select id, title from public.cal_posts limit 1'), /permission denied/);
   await assert.rejects(() => h.select(null, 'select * from public.cal_requests'), /permission denied/);
-
-  await h.rpc1(staff, 'cal_set_public', { p_on: false });
-  assert.equal(await countPosts(h, null), 0);
+  await assert.rejects(() => h.select(null, 'select * from public.cal_members'), /permission denied/);
+  assert.equal((await h.select(null, 'select name from storage.objects')).length, 0, 'visitors see no files');
+  await assert.rejects(() => h.rpc(null, 'cal_submit_request', { p_request: request() }), /permission denied/);
 });
 
 test('a session that has not joined sees no posts, requests, or members', async () => {
@@ -84,10 +78,16 @@ test('joining checks the chapter code, name, and PIN', async () => {
   await assert.rejects(() => h.rpc(other, 'cal_join', { p_code: CHAPTER_CODE, p_name: 'tyler ware', p_pin: '5555' }), /already signed in as/);
 });
 
-test('brothers read the full calendar and requests but cannot change posts directly', async () => {
+test('brothers view the full calendar but cannot change posts, see requests, or send them', async () => {
   const h = await createDb();
+  await h.setNow(NOW);
   const bro = await h.member('David Brown');
+  assert.equal((await h.rpc1(bro, 'cal_whoami')).role, 'member');
   assert.equal(await countPosts(h, bro), 128);
+  const chair = await h.chair('Farid Adenuga', 'Social & Fundraising');
+  await h.rpc1(chair, 'cal_submit_request', { p_request: request() });
+  assert.equal((await h.select(bro, 'select * from public.cal_requests')).length, 0, 'brothers do not see the request queue');
+  await assert.rejects(() => h.rpc(bro, 'cal_submit_request', { p_request: request() }), /Requests come from committee chairs/);
   const notes = await h.select(bro, `select notes from public.cal_posts where id = '2026-11-16-spring-2027-informational-seminar'`);
   assert.match(notes[0].notes, /IMDP/);
 
@@ -139,16 +139,18 @@ test('signing in on a new device needs the right PIN and locks after five misses
   assert.equal(await countPosts(h, first), 0, 'the old device is signed out of the record');
 });
 
-test('requests: brothers send and edit their own, with checks written for chairs', async () => {
+test('requests: chairs send and edit their own, with checks written for chairs', async () => {
   const h = await createDb();
   await h.setNow(NOW);
-  const farid = await h.member('Farid Adenuga', '1906', 'Social & Fundraising');
-  const david = await h.member('David Brown');
+  const farid = await h.chair('Farid Adenuga', 'Social & Fundraising');
+  const david = await h.chair('David Brown', 'Education');
+  assert.equal((await h.rpc1(farid, 'cal_whoami')).role, 'chair');
 
   const r = await h.rpc1(farid, 'cal_submit_request', { p_request: request() });
   assert.equal(r.status, 'new');
   assert.equal(r.member_id, farid.memberId);
-  assert.deepEqual(r.platforms, ['facebook', 'instagram']);
+  assert.deepEqual(r.platforms, ['instagram', 'threads']);
+  assert.deepEqual(r.files, []);
 
   await assert.rejects(() => h.rpc(farid, 'cal_submit_request', { p_request: request({ platforms: [] }) }), /at least one place to post/);
   await assert.rejects(() => h.rpc(farid, 'cal_submit_request', { p_request: request({ post_date: '2026-10-01' }) }), /date has passed/);
@@ -157,14 +159,14 @@ test('requests: brothers send and edit their own, with checks written for chairs
   await assert.rejects(() => h.rpc(farid, 'cal_submit_request', { p_request: request({ platforms: ['myspace'] }) }), /from the list/);
   await assert.rejects(() => h.rpc(farid, 'cal_submit_request', { p_request: request({ post_date: 'next week' }) }), /real dates/);
   const stranger = await h.createUser({ anon: true });
-  await assert.rejects(() => h.rpc(stranger, 'cal_submit_request', { p_request: request() }), /Sign in with the chapter code/);
+  await assert.rejects(() => h.rpc(stranger, 'cal_submit_request', { p_request: request() }), /Sign in as a committee chair/);
 
   const edited = await h.rpc1(farid, 'cal_update_request', { p_id: r.id, p_request: request({ title: 'Wine and Chill flyer, final' }) });
   assert.equal(edited.title, 'Wine and Chill flyer, final');
   await assert.rejects(() => h.rpc(david, 'cal_update_request', { p_id: r.id, p_request: request() }), /only your own/);
 
   const queue = await h.select(david, 'select title from public.cal_requests');
-  assert.equal(queue.length, 1, 'every brother sees the queue');
+  assert.equal(queue.length, 1, 'every chair sees the queue');
   await assert.rejects(() => h.rpc(david, 'cal_review_request', { p_id: r.id, p_status: 'declined', p_note: 'No' }), /Only the media team/);
   await assert.rejects(() => h.rpc(farid, 'cal_approve_request', { p_id: r.id, p_post: JSON.stringify({ date: '2026-11-30', title: 'x' }) }), /Only the media team/);
 });
@@ -173,7 +175,7 @@ test('review: needs info, the chair answers, then approval puts it on the calend
   const h = await createDb();
   await h.setNow(NOW);
   const staff = await h.staff();
-  const farid = await h.member('Farid Adenuga', '1906', 'Social & Fundraising');
+  const farid = await h.chair('Farid Adenuga', 'Social & Fundraising');
   const r = await h.rpc1(farid, 'cal_submit_request', { p_request: request() });
 
   await assert.rejects(() => h.rpc(staff, 'cal_review_request', { p_id: r.id, p_status: 'needs-info' }), /Add a note/);
@@ -221,16 +223,29 @@ test('the media team signs up with an email login and the media code, then edits
   assert.equal(await countPosts(h, email), 128);
 });
 
-test('managing access: list, reset a PIN, remove a brother, change the chapter code', async () => {
+test('managing access: mark chairs, list, reset a PIN, remove a brother, change the chapter code', async () => {
   const h = await createDb();
   await h.setNow(NOW);
   const staff = await h.staff();
   const bro = await h.member('Chris Gooding', '4321', 'Education');
+  const plain = await h.member('Tyler Ware', '2222', '');
+  await assert.rejects(() => h.rpc(bro, 'cal_submit_request', { p_request: request() }), /committee chairs/);
+
+  await assert.rejects(() => h.rpc(bro, 'cal_set_chair', { p_member_id: bro.memberId, p_chair: true }), /Only the media team/);
+  await assert.rejects(() => h.rpc(staff, 'cal_set_chair', { p_member_id: plain.memberId, p_chair: true }), /Choose the committee/);
+  const made = await h.rpc1(staff, 'cal_set_chair', { p_member_id: bro.memberId, p_chair: true });
+  assert.deepEqual([made.role, made.committee], ['chair', 'Education']);
+  const moved = await h.rpc1(staff, 'cal_set_chair', { p_member_id: plain.memberId, p_chair: true, p_committee: 'Membership' });
+  assert.deepEqual([moved.role, moved.committee], ['chair', 'Membership']);
+  await h.rpc1(staff, 'cal_set_chair', { p_member_id: plain.memberId, p_chair: false });
+  assert.equal((await h.rpc1(plain, 'cal_whoami')).role, 'member');
   await h.rpc1(bro, 'cal_submit_request', { p_request: request({ contact_name: 'Chris Gooding', committee: 'Education' }) });
 
   const list = await h.rpc(staff, 'cal_member_list');
-  assert.equal(list.length, 1);
-  assert.equal(list[0].display_name, 'Chris Gooding');
+  assert.equal(list.length, 2);
+  assert.equal(list[0].display_name, 'Chris Gooding', 'chairs come first');
+  assert.equal(list[0].chair, true);
+  assert.equal(list[1].chair, false);
   assert.equal(Number(list[0].requests), 1);
   assert.equal(list[0].signed_in, true);
   await assert.rejects(() => h.rpc(bro, 'cal_member_list'), /Only the media team/);
@@ -241,6 +256,7 @@ test('managing access: list, reset a PIN, remove a brother, change the chapter c
   assert.equal(res.ok, true);
 
   await h.rpc(staff, 'cal_remove_member', { p_member_id: bro.memberId });
+  await h.rpc(staff, 'cal_remove_member', { p_member_id: plain.memberId });
   const kept = await h.sql('select member_id, contact_name from public.cal_requests');
   assert.deepEqual(kept[0], { member_id: null, contact_name: 'Chris Gooding' }, 'requests stay with the name on them');
   assert.equal(await countPosts(h, laptop), 0);
@@ -261,4 +277,92 @@ test('setup guards: placeholder codes are refused and sign-in waits for the code
   await assert.rejects(() => h.rpc(u, 'cal_join', { p_code: 'anything', p_name: 'Sadiqq Elcock', p_pin: '1234' }), /not set up yet/);
   const email = await h.createUser({ email: 'x@example.org' });
   await assert.rejects(() => h.rpc(email, 'cal_claim_staff', { p_code: 'anything at all here', p_name: 'X Person' }), /not set up yet/);
+});
+
+test('request files: chairs upload to their own folder, and only they and the media team can see them', async () => {
+  const h = await createDb();
+  await h.setNow(NOW);
+  const staff = await h.staff();
+  const farid = await h.chair('Farid Adenuga', 'Social & Fundraising');
+  const david = await h.chair('David Brown', 'Education');
+  const bro = await h.member('Tyler Ware');
+  const mine = `requests/${farid.memberId}/a1b2c3-flyer.jpg`;
+  const theirs = `requests/${david.memberId}/d4e5f6-photo.jpg`;
+
+  const bucket = await h.sql(`select public, file_size_limit, allowed_mime_types from storage.buckets where id = 'calendar-files'`);
+  assert.deepEqual(bucket[0], { public: false, file_size_limit: 52428800, allowed_mime_types: ['image/*', 'video/*', 'application/pdf'] });
+
+  await h.upload(farid, mine);
+  await h.upload(david, theirs);
+  await assert.rejects(() => h.upload(farid, `requests/${david.memberId}/x-sneaky.jpg`), /row-level security/);
+  await assert.rejects(() => h.upload(bro, `requests/${bro.memberId}/x-photo.jpg`), /row-level security/);
+  await assert.rejects(() => h.upload(farid, `other/${farid.memberId}/x-photo.jpg`), /row-level security/);
+  await h.upload(staff, 'requests/staff/z9-banner.png');
+
+  const names = async (who) => (await h.select(who, 'select name from storage.objects order by name')).map((r) => r.name);
+  assert.deepEqual(await names(farid), [mine], 'a chair sees only his own files');
+  assert.equal((await names(staff)).length, 3, 'the media team sees every file');
+  assert.deepEqual(await names(bro), [], 'brothers see no files');
+
+  const file = { path: mine, name: 'flyer.jpg', size: 245000, type: 'image/jpeg' };
+  const r = await h.rpc1(farid, 'cal_submit_request', { p_request: request({ files: [file] }) });
+  assert.deepEqual(r.files, [file]);
+  await assert.rejects(
+    () => h.rpc(farid, 'cal_submit_request', { p_request: request({ files: [{ ...file, path: theirs }] }) }),
+    /upload button/
+  );
+  await assert.rejects(
+    () => h.rpc(farid, 'cal_submit_request', { p_request: request({ files: [{ ...file, path: '../../etc/passwd' }] }) }),
+    /didn't upload correctly/
+  );
+  await assert.rejects(
+    () => h.rpc(farid, 'cal_submit_request', { p_request: request({ files: Array.from({ length: 11 }, () => file) }) }),
+    /up to 10 files/
+  );
+  const updated = await h.rpc1(farid, 'cal_update_request', { p_id: r.id, p_request: request({ files: [] }) });
+  assert.deepEqual(updated.files, []);
+  const byStaff = await h.rpc1(staff, 'cal_submit_request', { p_request: request({ files: [{ ...file, path: 'requests/staff/z9-banner.png' }] }) });
+  assert.equal(byStaff.files.length, 1, 'the media team can attach its own uploads');
+
+  const removed = await h.select(farid, `delete from storage.objects where name = $1 returning name`, [theirs]);
+  assert.equal(removed.length, 0, 'a chair cannot remove another chair\'s file');
+  assert.equal((await h.select(farid, `delete from storage.objects where name = $1 returning name`, [mine])).length, 1);
+  assert.equal((await h.select(staff, `delete from storage.objects where name = $1 returning name`, [theirs])).length, 1);
+});
+
+test('upgrading a project that ran the first version keeps its data and switches to chairs and files', async () => {
+  const h = await createDb({ migrations: ['20261013000100_content_calendar.sql'] });
+  await h.setNow(NOW);
+  const staff = await h.staff();
+  // The first version: a public calendar switch, and any brother sends requests.
+  await h.rpc1(staff, 'cal_set_public', { p_on: true });
+  assert.equal((await h.select(null, 'select id from public.cal_posts')).length, 128, 'visitors read the public calendar before');
+  const bro = await h.member('Farid Adenuga', '1906', 'Social & Fundraising');
+  const earlier = await h.rpc1(bro, 'cal_submit_request', { p_request: request() });
+
+  await h.migrate('20261013000200_chairs_and_request_files.sql');
+
+  await assert.rejects(() => h.select(null, 'select id from public.cal_posts limit 1'), /permission denied/);
+  assert.deepEqual(await h.rpc1(null, 'cal_settings'), { lead_days: 21, ready: true });
+  assert.equal((await h.sql(`select key from cal_private.config where key = 'calendar_public'`)).length, 0);
+  await assert.rejects(() => h.rpc(staff, 'cal_set_public', { p_on: true }), /does not exist/);
+
+  assert.equal((await h.rpc1(bro, 'cal_whoami')).role, 'member', 'brothers start as viewers');
+  assert.equal(await countPosts(h, bro), 128);
+  assert.equal((await h.select(bro, 'select id from public.cal_requests')).length, 0);
+  await assert.rejects(() => h.rpc(bro, 'cal_submit_request', { p_request: request() }), /Requests come from committee chairs/);
+  const kept = await h.select(staff, 'select id, files from public.cal_requests');
+  assert.deepEqual(kept.map((r) => [r.id, r.files]), [[earlier.id, []]], 'his earlier request stays, with no files');
+
+  await h.rpc1(staff, 'cal_set_chair', { p_member_id: bro.memberId, p_chair: true });
+  assert.equal((await h.rpc1(bro, 'cal_whoami')).role, 'chair');
+  const path = `requests/${bro.memberId}/a1-flyer.png`;
+  await h.upload(bro, path);
+  const sent = await h.rpc1(bro, 'cal_submit_request', {
+    p_request: request({ files: [{ path, name: 'flyer.png', size: 2048, type: 'image/png' }] })
+  });
+  assert.deepEqual(sent.files, [{ path, name: 'flyer.png', size: 2048, type: 'image/png' }]);
+  assert.equal((await h.select(bro, 'select id from public.cal_requests')).length, 2, 'chairs see the queue');
+  const list = await h.rpc(staff, 'cal_member_list');
+  assert.deepEqual(list.map((m) => [m.display_name, m.chair]), [['Farid Adenuga', true]]);
 });

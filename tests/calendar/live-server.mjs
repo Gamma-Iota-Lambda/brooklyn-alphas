@@ -2,6 +2,7 @@
 //   * Postgres: the real migration and seed in PGlite, with row level security enforced per request
 //   * Data API: the parts of PostgREST the calendar uses (table reads and writes, and RPC)
 //   * Auth: anonymous and email/password sessions
+//   * Storage: uploads, signed links, downloads, and removal, with the storage policies enforced
 //   * Static hosting for the site, with assets/calendar/config.js pointed at this server
 // Adapted from the Alpha Academy Trading Floor's stand-in. live-smoke.mjs drives it.
 import { createServer } from 'node:http';
@@ -35,6 +36,8 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
   };
 
   const users = new Map(); // id -> {id, email, password, is_anonymous, confirmed}
+  const files = new Map(); // 'bucket/name' -> {bytes, type}
+  const signed = new Map(); // signed-link token -> {key, exp}
   const tokens = new Map(); // access token -> user id
   const refresh = new Map(); // refresh token -> user id
 
@@ -186,7 +189,7 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
     const url = new URL(req.url, origin);
     const path = url.pathname;
     try {
-      if (demo && (path.startsWith('/auth/') || path.startsWith('/rest/'))) return send(res, 404, { message: 'demo mode has no backend' });
+      if (demo && /^\/(auth|rest|storage)\//.test(path)) return send(res, 404, { message: 'demo mode has no backend' });
 
       // Auth
       if (path === '/auth/v1/signup' && req.method === 'POST') {
@@ -250,6 +253,70 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
         }
       }
 
+      // Storage (the parts the calendar uses). Object rows go through row level security as the caller.
+      if (path.startsWith('/storage/v1/object/sign/') && req.method === 'POST') {
+        const rest = decodeURIComponent(path.slice('/storage/v1/object/sign/'.length));
+        const [bucket, ...nameParts] = rest.split('/');
+        const b = await body(req);
+        const names = nameParts.length ? [nameParts.join('/')] : (b.paths || []);
+        const visible = new Set((await serial(() => h.select(principal(req),
+          'select name from storage.objects where bucket_id = $1 and name = any($2::text[])', [bucket, names]))).map((r) => r.name));
+        const out = names.map((name) => {
+          if (!visible.has(name)) return { error: 'Either the object does not exist or you do not have access to it', path: name, signedURL: null };
+          const token = randomUUID();
+          signed.set(token, { key: `${bucket}/${name}`, exp: Date.now() + (Number(b.expiresIn) || 60) * 1000 });
+          return { error: null, path: name, signedURL: `/object/sign/${bucket}/${name}?token=${token}` };
+        });
+        return send(res, 200, nameParts.length ? { signedURL: out[0].signedURL } : out);
+      }
+      if (path.startsWith('/storage/v1/object/sign/') && req.method === 'GET') {
+        const key = decodeURIComponent(path.slice('/storage/v1/object/sign/'.length));
+        const grant = signed.get(url.searchParams.get('token'));
+        if (!grant || grant.key !== key || grant.exp < Date.now()) return send(res, 400, { statusCode: '400', error: 'InvalidSignature', message: 'The signature is not valid' });
+        const file = files.get(key);
+        if (!file) return send(res, 404, { statusCode: '404', error: 'not_found', message: 'Object not found' });
+        const headers = { 'Content-Type': file.type, 'Content-Length': file.bytes.length };
+        if (url.searchParams.has('download')) headers['Content-Disposition'] = `attachment; filename="${url.searchParams.get('download') || key.split('/').pop()}"`;
+        res.writeHead(200, headers);
+        return res.end(file.bytes);
+      }
+      if (path.startsWith('/storage/v1/object/') && req.method === 'POST') {
+        const rest = decodeURIComponent(path.slice('/storage/v1/object/'.length));
+        const [bucket, ...nameParts] = rest.split('/');
+        const name = nameParts.join('/');
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const form = await new Request(origin + path, { method: 'POST', headers: { 'content-type': req.headers['content-type'] }, body: Buffer.concat(chunks) }).formData();
+        const file = [...form.values()].find((v) => typeof v !== 'string');
+        if (!file) return send(res, 400, { statusCode: '400', error: 'Error', message: 'No file in the upload' });
+        const [limits] = await serial(() => h.sql('select file_size_limit, allowed_mime_types from storage.buckets where id = $1', [bucket]));
+        if (!limits) return send(res, 400, { statusCode: '404', error: 'Bucket not found', message: 'Bucket not found' });
+        const type = file.type || 'application/octet-stream';
+        if (limits.file_size_limit && file.size > Number(limits.file_size_limit)) {
+          return send(res, 400, { statusCode: '413', error: 'Payload too large', message: 'The object exceeded the maximum allowed size' });
+        }
+        if (limits.allowed_mime_types && !limits.allowed_mime_types.some((m) => (m.endsWith('/*') ? type.startsWith(m.slice(0, -1)) : m === type))) {
+          return send(res, 400, { statusCode: '415', error: 'invalid_mime_type', message: `mime type ${type} is not supported` });
+        }
+        const who = principal(req);
+        try {
+          await serial(() => h.select(who, 'insert into storage.objects (bucket_id, name, owner_id, metadata) values ($1, $2, $3, $4) returning id',
+            [bucket, name, who ? who.id : null, JSON.stringify({ mimetype: type, size: file.size })]));
+        } catch (e) {
+          return send(res, 400, { statusCode: '403', error: 'Unauthorized', message: /row-level security/.test(e.message) ? 'new row violates row-level security policy' : e.message });
+        }
+        files.set(`${bucket}/${name}`, { bytes: Buffer.from(await file.arrayBuffer()), type });
+        return send(res, 200, { Id: randomUUID(), Key: `${bucket}/${name}` });
+      }
+      if (path.startsWith('/storage/v1/object/') && req.method === 'DELETE') {
+        const bucket = decodeURIComponent(path.slice('/storage/v1/object/'.length));
+        const b = await body(req);
+        const rows = await serial(() => h.select(principal(req),
+          'delete from storage.objects where bucket_id = $1 and name = any($2::text[]) returning name', [bucket, b.prefixes || []]));
+        for (const r of rows) files.delete(`${bucket}/${r.name}`);
+        return send(res, 200, rows.map((r) => ({ name: r.name, bucket_id: bucket })));
+      }
+
       // Site
       if (path === '/assets/calendar/config.js') {
         res.writeHead(200, { 'Content-Type': TYPES['.js'] });
@@ -274,6 +341,7 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
     origin,
     h,
     users,
+    files,
     sql: (q, params) => serial(() => h.sql(q, params)),
     close: () => new Promise((resolve) => server.close(resolve))
   };
