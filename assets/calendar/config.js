@@ -8,6 +8,6 @@
 // decides what each person can read and change. Never put a secret or service role key here.
 // supabase/README.md has the full setup.
 window.GIL_CALENDAR_CONFIG = {
-  supabaseUrl: '',
-  supabaseKey: ''
+  supabaseUrl: 'https://uqfoifrpyysqjvwtkgia.supabase.co',
+  supabaseKey: 'sb_publishable_WVmmun9m4VeGnZHqPZ9SwQ_grgz70O-'
 };
