@@ -5,6 +5,8 @@
 - **Demo**, while `assets/calendar/config.js` is empty. The page uses sample data saved only in each visitor's browser, with a switch to view it as the media team, a committee chair, a brother, or a visitor. Files attached in the demo stay in that browser tab. Safe to merge and preview.
 - **Live**, once `config.js` has a Supabase project's address and key. Posts, requests, and request files live in that project, and everyone sees the same calendar.
 
+The live project is **GIL Content Calendar** in the Gamma Iota Lambda organization on Supabase (East US, reference `uqfoifrpyysqjvwtkgia`).
+
 This folder holds everything the live mode needs:
 
 | File | What it does |
