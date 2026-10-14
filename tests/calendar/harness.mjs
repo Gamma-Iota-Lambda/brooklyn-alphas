@@ -67,6 +67,58 @@ begin
 end
 $$;
 grant execute on function storage.foldername(text) to anon, authenticated, service_role;
+-- pg_net: records each request in net.http_calls instead of sending it.
+-- set app.net_fail = 'on' to make it fail the way an unavailable extension would.
+create schema net;
+create table net.http_calls (
+  id bigserial primary key,
+  url text not null,
+  body jsonb,
+  headers jsonb,
+  timeout_milliseconds int,
+  created timestamptz default now()
+);
+create function net.http_post(url text, body jsonb default '{}'::jsonb, params jsonb default '{}'::jsonb,
+  headers jsonb default '{"Content-Type": "application/json"}'::jsonb, timeout_milliseconds int default 5000)
+returns bigint language plpgsql as $$
+declare
+  v_id bigint;
+begin
+  if current_setting('app.net_fail', true) = 'on' then
+    raise exception 'pg_net is not available';
+  end if;
+  insert into net.http_calls (url, body, headers, timeout_milliseconds)
+  values (http_post.url, http_post.body, http_post.headers, http_post.timeout_milliseconds)
+  returning id into v_id;
+  return v_id;
+end
+$$;
+-- Supabase Vault: secrets stored as plain text here; only the database owner can read them.
+create schema vault;
+create table vault.secrets (
+  id uuid primary key default gen_random_uuid(),
+  name text unique,
+  description text not null default '',
+  secret text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create view vault.decrypted_secrets as
+  select id, name, description, secret, secret as decrypted_secret, created_at, updated_at from vault.secrets;
+create function vault.create_secret(new_secret text, new_name text default null, new_description text default '',
+  new_key_id uuid default null)
+returns uuid language sql as $$
+  insert into vault.secrets (secret, name, description) values (new_secret, new_name, coalesce(new_description, ''))
+  returning id
+$$;
+create function vault.update_secret(secret_id uuid, new_secret text default null, new_name text default null,
+  new_description text default null, new_key_id uuid default null)
+returns void language sql as $$
+  update vault.secrets
+  set secret = coalesce(new_secret, secret), name = coalesce(new_name, name),
+      description = coalesce(new_description, description), updated_at = now()
+  where id = secret_id
+$$;
 -- Supabase grants new public tables and functions to the API roles by default.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
