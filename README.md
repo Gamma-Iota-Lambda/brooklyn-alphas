@@ -210,11 +210,11 @@ Each year, update `scholarship.html`:
 
 - **Address:** www.gil1906.org/calendar. The **Sign in** button in the home page's top menu and phone menu opens it at the sign-in panel. It isn't in the sitemap, and it asks search engines not to index it.
 - **Who sees what:** visitors see only a sign-in prompt. Brothers sign in with the chapter code, their name, and a PIN, and view every post. Committee chairs are brothers the media team marks as chairs in Manage access; they also send and follow requests. The media team signs in with an email and password and edits everything.
-- **Requests:** only committee chairs send them, at least three weeks ahead. They attach photos, videos, or PDFs in the form (up to 10 files, 50 MB each) or share a Google Drive link. The media team asks questions, declines, or adds them to the calendar, and the chair follows the status on the same page. It's built to take over from the Google Form the chapter has used for content requests.
+- **Requests:** only committee chairs send them, at least three weeks ahead. They attach photos, videos, or PDFs in the form (up to 10 files, 50 MB each) or share a Google Drive link. Each new request emails the media team through Resend. The media team asks questions, declines, or adds them to the calendar, and the chair follows the status on the same page. It's built to take over from the Google Form the chapter has used for content requests.
 - **Platforms:** Instagram, Threads, X, gil1906.org, Substack, and WhatsApp. Facebook is off while the chapter has no access to it.
 - **Exports:** the Agenda view downloads a spreadsheet (CSV) or a calendar file (.ics) for Google Calendar, Outlook, or Apple Calendar.
 
-**Demo and live.** With `assets/calendar/config.js` empty, the page runs a demo on sample data saved in each visitor's browser. To go live, follow [`supabase/README.md`](supabase/README.md): create a Supabase project, run four SQL files, change two sign-in settings, and paste the project's address and publishable key into `config.js`.
+**Demo and live.** With `assets/calendar/config.js` empty, the page runs a demo on sample data saved in each visitor's browser. To go live, follow [`supabase/README.md`](supabase/README.md): create a Supabase project, run the SQL files in order, change two sign-in settings, and paste the project's address and publishable key into `config.js`.
 
 **Files:**
 - `calendar.html` holds the site's nav and footer around the calendar.
