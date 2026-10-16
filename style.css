@@ -1247,121 +1247,208 @@ footer {
 .nav-hamburger.open span:nth-child(2) { opacity: 0; }
 .nav-hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
 
+/* The phone menu is a full-screen sheet: the crest and close button stay at the top, the
+   links scroll in the middle, and the social icons and buttons stay at the bottom, so
+   Sign in and RSVP are always in reach. */
 .nav-mobile-menu {
   display: none;
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(10,10,10,0.98);
   z-index: 150;
   flex-direction: column;
+  background:
+    radial-gradient(120% 45% at 100% 0%, rgba(184,134,11,0.16), transparent 70%),
+    radial-gradient(90% 35% at 0% 100%, rgba(126,67,0,0.2), transparent 70%),
+    var(--black);
+}
+.nav-mobile-menu.open {
+  display: flex;
+  animation: fadeIn 0.25s ease;
+}
+
+.mobile-menu-head {
+  flex: none;
+  display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 0;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: max(0.85rem, env(safe-area-inset-top)) 1.25rem 0.85rem;
+  border-bottom: 1px solid rgba(184,134,11,0.2);
+}
+.mobile-menu-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  text-decoration: none;
+}
+.mobile-menu-crest {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  mix-blend-mode: lighten;
+  filter: brightness(1.1);
+}
+.mobile-menu-name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  text-transform: uppercase;
+}
+.mobile-menu-name span:first-child {
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  color: var(--gold);
+}
+.mobile-menu-name span:last-child {
+  font-weight: 300;
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  color: rgba(255,255,255,0.6);
+}
+.mobile-menu-close {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  background: none;
+  border: 1px solid rgba(184,134,11,0.45);
+  color: var(--gold-bright);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.mobile-menu-close:active {
+  background: rgba(184,134,11,0.12);
+  border-color: var(--gold);
+}
+
+/* Only this middle part scrolls. min-height: 0 lets it shrink below its content so the
+   overflow lands here instead of pushing the foot off the screen. */
+.mobile-menu-links {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding: 5rem 2rem 3rem;
+  padding: 0.5rem 1.5rem 1.5rem;
+  counter-reset: menu-section;
+  animation: menuLinksIn 0.4s ease backwards;
 }
-.nav-mobile-menu.open { display: flex; }
-.nav-mobile-menu a,
+@keyframes menuLinksIn {
+  from { opacity: 0; transform: translateY(14px); }
+}
 .mobile-nav-link {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  padding: 0.95rem 0 0.75rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
   font-family: 'Playfair Display', serif;
-  font-size: clamp(1.2rem, 5vw, 1.7rem);
+  font-size: clamp(1.35rem, 6vw, 1.7rem);
   font-weight: 700;
+  line-height: 1.2;
   color: var(--white);
   text-decoration: none;
-  letter-spacing: 0.02em;
   transition: color 0.2s;
-  padding: 0.55rem 0;
-  width: 100%;
-  text-align: center;
 }
-.mobile-nav-link[style] {
-  font-family: 'Barlow Condensed', sans-serif !important;
-  font-size: 0.85rem !important;
-  font-weight: 400 !important;
-  color: rgba(255,255,255,0.55) !important;
-  letter-spacing: 0.12em !important;
-}
-.nav-mobile-menu a:hover,
-.mobile-nav-link:hover { color: var(--gold-bright); }
-.nav-mobile-menu .mobile-cta {
+.mobile-nav-link:first-child { border-top: none; }
+/* Each section is numbered 01, 02, … in gold. */
+.mobile-nav-link::before {
+  counter-increment: menu-section;
+  content: counter(menu-section, decimal-leading-zero);
+  flex: none;
+  min-width: 1.4rem;
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--black);
-  background: var(--gold);
-  padding: 1rem 2.5rem;
-  margin-top: 1rem;
-}
-
-.nav-mobile-menu .mobile-signin {
-  font-family: 'Barlow Condensed', sans-serif;
-  font-size: 0.85rem;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
   color: var(--gold);
-  border: 1px solid rgba(184,134,11,0.5);
-  padding: calc(1rem - 1px) 2.5rem;
-  margin-top: 1rem;
 }
+/* The pages under a section hang off a thin gold rule, lined up with the section name. */
+.mobile-nav-link.mobile-nav-sub {
+  margin-left: 2.3rem;
+  padding: 0.65rem 0 0.65rem 1rem;
+  border-top: none;
+  border-left: 1px solid rgba(184,134,11,0.4);
+  font-family: 'Barlow', sans-serif;
+  font-size: 1rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.7);
+}
+.mobile-nav-sub::before { content: none; }
+.mobile-nav-sub + .mobile-nav-link:not(.mobile-nav-sub) { margin-top: 0.6rem; }
+.mobile-nav-link.mobile-nav-featured { color: var(--gold-bright); }
+.mobile-nav-link:active { color: var(--gold-bright); }
 
-/* Mobile social row in mobile menu */
+.mobile-menu-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  padding: 1rem 1.25rem max(1rem, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(184,134,11,0.2);
+  background: rgba(17,17,17,0.9);
+}
 .mobile-social-row {
   display: flex;
-  gap: 0.5rem;
   justify-content: center;
-  padding: 0.75rem 0 0.25rem;
-  border-top: 1px solid rgba(184,134,11,0.15);
-  margin-top: 0.5rem;
-  width: 100%;
+  gap: 0.6rem;
 }
 .mobile-social-row a {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 40px; height: 40px;
-  border: 1px solid rgba(184,134,11,0.2);
-  color: rgba(255,255,255,0.5);
+  border: 1px solid rgba(184,134,11,0.25);
+  color: rgba(255,255,255,0.6);
   text-decoration: none;
   transition: color 0.2s, border-color 0.2s, background 0.2s;
-  font-family: inherit !important;
-  font-size: inherit !important;
-  font-weight: inherit !important;
-  padding: 0 !important;
 }
-.mobile-social-row a:hover {
+.mobile-social-row a:active {
   color: var(--gold-bright);
   border-color: var(--gold);
   background: rgba(184,134,11,0.08);
 }
 .mobile-social-row svg { width: 16px; height: 16px; fill: currentColor; }
-
-/* ─── MOBILE MENU CLOSE BUTTON ─── */
-.mobile-menu-close {
-  position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
-  background: none;
-  border: 1px solid rgba(255,255,255,0.2);
-  color: rgba(255,255,255,0.7);
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  font-size: 1rem;
-  cursor: pointer;
+.mobile-menu-actions {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s, color 0.2s;
+  gap: 0.6rem;
 }
-.mobile-menu-close:hover {
-  background: rgba(184,134,11,0.15);
+.mobile-menu-actions a {
+  flex: 1;
+  padding: 0.95rem 1rem;
+  font-family: 'Barlow Condensed', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  text-align: center;
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.mobile-menu-actions .mobile-signin {
+  padding: calc(0.95rem - 1px) 1rem;
+  border: 1px solid rgba(184,134,11,0.55);
   color: var(--gold-bright);
-  border-color: var(--gold);
+}
+.mobile-menu-actions .mobile-signin:active { border-color: var(--gold); background: rgba(184,134,11,0.12); }
+.mobile-menu-actions .mobile-cta {
+  background: var(--gold);
+  color: var(--black);
+}
+.mobile-menu-actions .mobile-cta:active { background: var(--gold-bright); }
+/* Phones keep :hover stuck on whatever was last tapped, so hover colors only apply where
+   there is a real pointer. */
+@media (hover: hover) {
+  .mobile-menu-close:hover { background: rgba(184,134,11,0.12); border-color: var(--gold); }
+  .mobile-nav-link:hover { color: var(--gold-bright); }
+  .mobile-social-row a:hover { color: var(--gold-bright); border-color: var(--gold); background: rgba(184,134,11,0.08); }
 }
 
 /* ─── RESPONSIVE ─── */
@@ -1369,7 +1456,17 @@ footer {
   .nav-social { display: none; }
 }
 @media (max-width: 900px) {
-  #main-nav { padding: 1rem 1.5rem; }
+  /* The nav stays on screen, so on phones it slims down once the page scrolls, and in-page
+     links stop below it instead of under it. */
+  html { scroll-padding-top: 4.5rem; }
+  #main-nav { padding: 1rem 1.5rem; transition: background 0.4s, padding 0.3s; }
+  #main-nav.scrolled {
+    padding: 0.5rem 1.25rem;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+  }
+  .nav-crest { transition: width 0.3s, height 0.3s; }
+  #main-nav.scrolled .nav-crest { width: 52px; height: 52px; }
   .nav-links { display: none; }
   .nav-hamburger { display: flex; }
   .nav-cta { display: none; }
@@ -1422,19 +1519,22 @@ footer {
 }
 
 /* ─── PAGE TRANSITION ─── */
+/* Fade only. Any transform on <body>, even one that ends at translateY(0), makes it the
+   containing block for position: fixed, so the nav, phone menu, and back-to-top button
+   would scroll away with the page and the phone menu could not scroll at all. */
 body {
   animation: pageIn 0.35s ease both;
 }
 @keyframes pageIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .page-out {
   animation: pageOut 0.22s ease forwards;
   pointer-events: none;
 }
 @keyframes pageOut {
-  to { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 0; }
 }
 
 

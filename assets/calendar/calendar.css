@@ -3,10 +3,6 @@
    else. Loads after style.css and stays inside .gc, so the site's nav, menu, and footer keep
    their own styles. */
 
-/* The site's page-in animation leaves a transform on <body>, which pins position: fixed
-   elements to the page instead of the screen. The drawer and toast need the screen. */
-body[data-page="calendar"] { animation: none; }
-
 .gc {
   --ground: #f6f5f1; --surface: #ffffff; --raised: #f0ede5; --line: #e3ded1; --line-strong: #cbc3b0;
   --fg: #17150f; --muted: #5d5747; --faint: #958d7b;

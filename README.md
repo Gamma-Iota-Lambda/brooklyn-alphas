@@ -71,7 +71,7 @@ All visual styling lives in `style.css`. Page-specific styles are written in `<s
 2. Update the `<title>`, `<meta name="description">`, and `<link rel="canonical">` tags
 3. Update the Open Graph and Twitter Card meta tags
 4. Add a `<url>` entry to `sitemap.xml`
-5. Add a link to it in the nav dropdown on every page (both desktop `nav-links` and mobile `nav-mobile-menu`)
+5. Add a link to it in the nav dropdown on every page (both desktop `nav-links` and mobile `nav-mobile-menu`). In the phone menu, links go inside `mobile-menu-links`: a page that sits under a section gets `class="mobile-nav-link mobile-nav-sub"` and goes right after that section's link, and the sections number themselves.
 
 ---
 
