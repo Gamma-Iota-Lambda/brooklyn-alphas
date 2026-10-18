@@ -15,10 +15,20 @@
 --   the cal_private functions below; the page never sees a token.
 
 -- pg_cron comes with Supabase and creates its own cron schema. The test database stands in for it.
+-- Supabase's setup files the extension itself under pg_catalog, out of the public schema.
+--
+-- Projects that ran the request email migration before Oct. 18, 2026 have pg_net filed under
+-- public, which the Security Advisor flags. pg_net stays in the schema it was created in, so this
+-- turns it off and on again under extensions. Its functions and tables stay in the net schema, and
+-- Supabase grants access to them again on its own; only pg_net's short log of recent requests clears.
 do $$
 begin
   if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
-    create extension if not exists pg_cron;
+    create extension if not exists pg_cron with schema pg_catalog;
+  end if;
+  if exists (select 1 from pg_extension where extname = 'pg_net' and extnamespace = 'public'::regnamespace) then
+    drop extension pg_net;
+    create extension pg_net with schema extensions;
   end if;
 end
 $$;

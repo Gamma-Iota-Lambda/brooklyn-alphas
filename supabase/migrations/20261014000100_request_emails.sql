@@ -12,11 +12,12 @@
 -- * A media team member who sends a request himself isn't emailed about it.
 -- * Only new requests send email. Edits and reviews don't.
 
--- pg_net comes with Supabase. The local test database stands in for it.
+-- pg_net comes with Supabase. The local test database stands in for it. Supabase keeps extensions in
+-- the extensions schema; pg_net's own functions and tables live in the net schema either way.
 do $$
 begin
   if exists (select 1 from pg_available_extensions where name = 'pg_net') then
-    create extension if not exists pg_net;
+    create extension if not exists pg_net with schema extensions;
   end if;
 end
 $$;
