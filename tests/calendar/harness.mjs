@@ -1,6 +1,7 @@
 // Runs the content calendar migrations inside PGlite (Postgres compiled to WebAssembly) with a small
-// stand-in for Supabase's auth schema and roles, so row level security and SECURITY DEFINER
-// functions behave the way they do in production. Adapted from the Alpha Academy Trading Floor.
+// stand-in for Supabase's auth schema and roles, storage, Vault, pg_net, and pg_cron, so row level
+// security and SECURITY DEFINER functions behave the way they do in production. Adapted from the
+// Alpha Academy Trading Floor.
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -118,6 +119,23 @@ returns void language sql as $$
   set secret = coalesce(new_secret, secret), name = coalesce(new_name, name),
       description = coalesce(new_description, description), updated_at = now()
   where id = secret_id
+$$;
+-- pg_cron: keeps the job list without running anything.
+create schema cron;
+create table cron.job (
+  jobid bigserial primary key,
+  jobname text unique,
+  schedule text not null,
+  command text not null,
+  active boolean not null default true
+);
+create function cron.schedule(job_name text, schedule text, command text) returns bigint language sql as $$
+  insert into cron.job (jobname, schedule, command) values ($1, $2, $3)
+  on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+  returning jobid
+$$;
+create function cron.unschedule(job_name text) returns boolean language sql as $$
+  with gone as (delete from cron.job where jobname = $1 returning 1) select exists (select 1 from gone)
 $$;
 -- Supabase grants new public tables and functions to the API roles by default.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
