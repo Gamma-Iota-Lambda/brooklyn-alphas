@@ -1,13 +1,15 @@
 // GIL content calendar: the page behind calendar.html.
-// Renders the month board, agenda, requests, and guide, plus the drawers for posts, requests,
-// sign-in, and managing access. With Supabase settings in config.js it runs live (api-live.js);
-// without them it runs the demo (api-demo.js), which keeps everything in this browser.
+// Renders the month board, agenda, requests, results, and guide, plus the drawers for posts,
+// requests, platform posts, sign-in, and managing access. With Supabase settings in config.js it
+// runs live (api-live.js); without them it runs the demo (api-demo.js), which keeps everything in
+// this browser.
 import {
   LEAD_DAYS, CONTACT, CATS, PROGRAMS, FORMATS, PLATFORMS, STATUSES, REQ_STATUS, COMMITTEES, MILESTONES, FILES,
   CAT, PROG, FMT, PLAT, STAT, CAT_ORDER
 } from './data.js';
 import { LiveApi } from './api-live.js';
 import { DemoApi } from './api-demo.js';
+import { chartHTML, barsHTML, drawCharts, initCharts, resetCharts, fmtNum, fmtCompact } from './charts.js';
 
 const config = window.GIL_CALENDAR_CONFIG || {};
 const api = config.supabaseUrl && config.supabaseKey ? new LiveApi(config) : new DemoApi();
@@ -57,9 +59,33 @@ const store = {
 // ---------------------------------------------------------------- state
 const now = new Date();
 const narrow = () => window.matchMedia('(max-width: 760px)').matches;
-const VIEWS = ['calendar', 'agenda', 'requests', 'guide'];
+const VIEWS = ['calendar', 'agenda', 'requests', 'results', 'guide'];
 const hashView = (location.hash || '').replace('#', '');
 const wantsSignin = hashView === 'signin'; // the home page's Sign in button links to calendar.html#signin
+// Connecting Instagram or Threads comes back as calendar.html?connected=instagram#results, or with
+// ?connect_error=... when it didn't work.
+const backFromConnect = (() => {
+  const q = new URLSearchParams(location.search);
+  return q.has('connected') || q.has('connect_error') ? { platform: q.get('connected') || '', error: q.get('connect_error') || '' } : null;
+})();
+
+// Results: the platforms the calendar connects to, each in the color it keeps in every chart.
+const SOCIAL = [
+  { key: 'instagram', label: 'Instagram', color: 'var(--viz-ig)', talk: 'Comments' },
+  { key: 'threads', label: 'Threads', color: 'var(--viz-th)', talk: 'Replies' }
+];
+const SOC = Object.fromEntries(SOCIAL.map((s) => [s.key, s]));
+const RESULT_PERIODS = ['30', '90', 'cal', 'all'];
+const freshResults = () => {
+  const period = store.get('r-period', '90'), platform = store.get('r-platform', 'all');
+  return {
+    loaded: false, error: '', accounts: [], posts: [], followers: [],
+    period: RESULT_PERIODS.includes(period) ? period : '90',
+    platform: ['all', 'instagram', 'threads'].includes(platform) ? platform : 'all',
+    measure: store.get('r-measure', 'views') === 'interactions' ? 'interactions' : 'views',
+    topAll: false, unmatchedAll: false, tables: new Set(), confirm: '', notice: null
+  };
+};
 const storedView = store.get('view', '');
 const storedCats = [].concat(store.get('cats', []) || []).filter((k) => CAT[k]);
 const S = {
@@ -76,6 +102,7 @@ const S = {
   drawer: null, lastTrigger: null,
   signin: { mode: store.get('last-name', '') ? 'rejoin' : 'join', note: '', done: '' },
   access: { members: null, staff: null, error: '', pending: null },
+  results: freshResults(),
   refreshing: false
 };
 // Roles: visitors see nothing; brothers (member) view; committee chairs also request; the media team runs it.
@@ -233,6 +260,7 @@ function renderShell() {
   for (const b of el.tabs.querySelectorAll('.tab')) {
     b.setAttribute('aria-selected', String(b.dataset.view === S.view));
     if (b.dataset.view === 'requests') b.hidden = !canRequest();
+    if (b.dataset.view === 'results') b.hidden = !isStaff();
   }
   let badge = 0;
   if (isStaff()) badge = S.requests.filter((r) => r.status === 'new').length;
@@ -253,12 +281,14 @@ function renderShell() {
 }
 
 function render() {
-  // Only chairs and the media team have a Requests view.
+  // Only chairs and the media team have a Requests view, and only the media team has Results.
   if (S.view === 'requests' && S.role !== 'loading' && signedIn() && !canRequest()) S.view = narrow() ? 'agenda' : 'calendar';
+  if (S.view === 'results' && S.role !== 'loading' && signedIn() && !isStaff()) S.view = narrow() ? 'agenda' : 'calendar';
   renderShell(); renderMain(); renderRail();
 }
 
 function renderMain() {
+  resetCharts();
   if (S.bootError) {
     el.view.innerHTML = emptyHTML('Connection', "The calendar couldn't connect", `${esc(S.bootError)} Reload to try again. If it keeps happening, tell ${esc(CONTACT)}.`, '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>');
     return;
@@ -284,6 +314,7 @@ function renderMain() {
     return;
   }
   if (S.view === 'agenda') return renderAgenda();
+  if (S.view === 'results') return renderResults();
   renderCalendar();
 }
 
@@ -420,6 +451,405 @@ function reqCard(r) {
   </article>`;
 }
 
+// ---------------------------------------------------------------- results (media team)
+const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+const nyDay = (ts) => { const d = new Date(ts); return ts && !isNaN(d) ? NY_DAY.format(d) : ''; };
+const nyTime = (ts, o) => new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York', ...o });
+const postedText = (ts) => nyTime(ts, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+function syncText(ts) {
+  const day = nyDay(ts), time = nyTime(ts, { hour: 'numeric', minute: '2-digit' });
+  if (day === todayISO()) return `today at ${time}`;
+  if (day === iso(addDays(new Date(), -1))) return `yesterday at ${time}`;
+  return `${fmt(day, { month: 'short', day: 'numeric' })} at ${time}`;
+}
+const monthLabel = (ym, o) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('en-US', o); };
+const total = (arr, f) => arr.reduce((n, x) => n + (f(x) ?? 0), 0);
+const known = (arr, f) => arr.filter((x) => f(x) !== null && f(x) !== undefined);
+const socialKey = (s) => `${s.platform}:${s.mediaId}`;
+const measureOf = (s) => (S.results.measure === 'views' ? s.views : s.interactions);
+const measureWord = () => (S.results.measure === 'views' ? 'views' : 'interactions');
+
+function normSocial(d) {
+  const n = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+  return {
+    platform: SOC[d.platform] ? d.platform : 'instagram', mediaId: String(d.mediaId || ''), postedAt: d.postedAt || '',
+    day: nyDay(d.postedAt), permalink: safeUrl(d.permalink), mediaType: d.mediaType || '', caption: d.caption || '',
+    postId: d.postId || '', matchSource: ['date', 'manual', 'none'].includes(d.matchSource) ? d.matchSource : '',
+    views: n(d.views), reach: n(d.reach), likes: n(d.likes), comments: n(d.comments), saves: n(d.saves), shares: n(d.shares),
+    replies: n(d.replies), reposts: n(d.reposts), quotes: n(d.quotes), interactions: n(d.interactions)
+  };
+}
+
+// Results load on their own: if they can't (for example, before their database setup), the rest of
+// the calendar still works.
+async function loadResults() {
+  if (!isStaff() || !api.socialResults) return;
+  const R = S.results;
+  try {
+    const r = await api.socialResults();
+    R.accounts = (r.accounts || []).filter((a) => SOC[a.platform]);
+    R.posts = (r.posts || []).map(normSocial).filter((p) => p.mediaId && p.day);
+    R.followers = (r.followers || []).filter((f) => SOC[f.platform] && parse(f.day) && f.followers !== null && Number.isFinite(Number(f.followers)))
+      .map((f) => ({ platform: f.platform, day: f.day, followers: Number(f.followers) }))
+      .sort((a, b) => a.day.localeCompare(b.day));
+    R.error = '';
+  } catch (e) {
+    R.error = e.message || 'Results could not load.';
+  }
+  R.loaded = true;
+}
+
+let resultsTimers = [];
+function reloadResultsSoon(delays) {
+  resultsTimers.forEach(clearTimeout);
+  resultsTimers = delays.map((ms) => setTimeout(async () => {
+    if (!isStaff()) return;
+    await loadResults();
+    if (S.view === 'results') renderMain();
+    refreshDrawer();
+  }, ms));
+}
+
+const calendarStart = () => (S.posts.length ? S.posts[0].date : todayISO());
+function resultsRange() {
+  const t = todayISO(), p = S.results.period;
+  if (p === '30') return { from: iso(addDays(new Date(), -29)), to: t, days: 30 };
+  if (p === '90') return { from: iso(addDays(new Date(), -89)), to: t, days: 90 };
+  if (p === 'cal') { const s = calendarStart(); return { from: s < t ? s : t, to: t, days: 0 }; }
+  return { from: S.results.posts.reduce((m, x) => (x.day < m ? x.day : m), t), to: t, days: 0 };
+}
+const resultsPlatforms = () => (S.results.platform === 'all' ? ['instagram', 'threads'] : [S.results.platform]);
+const postsIn = (from, to, plats) => S.results.posts.filter((s) => plats.includes(s.platform) && s.day >= from && s.day <= to);
+const barColor = (plats) => (plats.length === 1 ? SOC[plats[0]].color : 'var(--viz-all)');
+const lineKey = (key) => `<span class="ptag"><i class="lk" style="--sw:${SOC[key].color}"></i>${esc(SOC[key].label)}</span>`;
+const seg = (act, attr, value, label, current) => `<button class="seg" data-act="${act}" data-${attr}="${esc(value)}" aria-pressed="${current === value}">${esc(label)}</button>`;
+const tableToggle = (id) => `<button class="btn small quiet" data-act="r-table" data-chart="${id}" aria-pressed="${S.results.tables.has(id)}">${S.results.tables.has(id) ? 'Show chart' : 'Show table'}</button>`;
+const tableHTML = (caption, head, rows, tall = false) => `<div class="rtable-wrap${tall ? ' tall' : ''}"><table class="rtable"><caption>${esc(caption)}</caption><thead><tr>${head.map((h) => `<th scope="col"${h.n ? ' class="n"' : ''}>${esc(h.label)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td${head[i].n ? ' class="n"' : ''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+
+function kpiHTML(label, value, notes) {
+  return `<div class="kpi"><span class="kpi-l">${esc(label)}</span><b class="kpi-v">${esc(value)}</b>${notes.filter(Boolean).map((d) =>
+    `<span class="kpi-d${d.dir ? ` trend-${d.dir}` : ''}">${d.dir === 'up' ? '<span aria-hidden="true">▲</span>&nbsp;' : d.dir === 'down' ? '<span aria-hidden="true">▼</span>&nbsp;' : ''}${esc(d.text)}</span>`).join('')}</div>`;
+}
+function changeNote(now, before, days) {
+  if (!days || !before) return null;
+  const pct = Math.round(((now - before) / before) * 100);
+  if (!pct) return { text: `Even with the previous ${days} days` };
+  return { dir: pct > 0 ? 'up' : 'down', text: `${pct > 0 ? 'Up' : 'Down'} ${Math.abs(pct)}% on the previous ${days} days` };
+}
+
+function accountHTML(sp) {
+  const R = S.results;
+  const a = R.accounts.find((x) => x.platform === sp.key);
+  const head = (status) => `<div class="acct-top"><span class="acct-name"><i class="lk" style="--sw:${sp.color}"></i>${esc(sp.label)}</span>${status}</div>`;
+  if (a && R.confirm === sp.key) {
+    return `<div class="acct">${head('')}<p>Disconnect ${esc(sp.label)}? The numbers saved so far stay on this tab.</p>
+      <div class="btnrow"><button class="btn small quiet" data-act="r-disconnect-cancel">Cancel</button><button class="btn small danger" data-act="r-disconnect-confirm" data-platform="${sp.key}">Disconnect</button></div></div>`;
+  }
+  if (!a) {
+    return `<div class="acct">${head('<span class="pill s-skipped">Not connected</span>')}<p>Connect @gil1906 to bring in its ${esc(sp.label)} posts and numbers every night.</p>
+      <div class="btnrow"><button class="btn small primary" data-act="r-connect" data-platform="${sp.key}">Connect ${esc(sp.label)}</button></div></div>`;
+  }
+  const expires = a.tokenExpiresAt ? Date.parse(a.tokenExpiresAt) : NaN;
+  const expired = expires <= Date.now();
+  const reconnect = expired || /reconnect/i.test(a.lastError);
+  const note = expired ? 'The connection expired. Choose Reconnect and sign in again.'
+    : a.lastError || (expires - Date.now() < 10 * 86400000 ? `The sign-in renews each week. Reconnect by ${fmt(nyDay(a.tokenExpiresAt), { month: 'long', day: 'numeric' })} if it hasn't.` : '');
+  return `<div class="acct">${head(reconnect ? '<span class="pill s-needs-info">Needs attention</span>' : '<span class="pill s-ready">Connected</span>')}
+    <p>${a.username ? `@${esc(a.username)}. ` : ''}${a.lastSyncAt ? `Last sync ${esc(syncText(a.lastSyncAt))}.` : 'The first sync is on its way.'}</p>
+    ${note ? `<p class="hint${reconnect ? ' warn' : ''}">${esc(note)}</p>` : ''}
+    <div class="btnrow">${reconnect ? `<button class="btn small primary" data-act="r-connect" data-platform="${sp.key}">Reconnect</button>` : ''}<button class="btn small quiet" data-act="r-disconnect" data-platform="${sp.key}">Disconnect</button></div></div>`;
+}
+
+function followersCard(rg, plats) {
+  const R = S.results;
+  const series = SOCIAL.filter((sp) => plats.includes(sp.key)).map((sp) => ({ sp, pts: R.followers.filter((f) => f.platform === sp.key && f.day >= rg.from && f.day <= rg.to) }));
+  const table = R.tables.has('followers');
+  let body;
+  if (!series.some((s) => s.pts.length)) body = '<p class="empty-line">Follower counts start with the first nightly sync.</p>';
+  else if (table) {
+    const days = [...new Set(series.flatMap((s) => s.pts.map((p) => p.day)))].sort().reverse();
+    const at = (s, d) => { const p = s.pts.find((x) => x.day === d); return p ? fmtNum(p.followers) : ''; };
+    body = tableHTML('Followers each night', [{ label: 'Date' }, ...series.map((s) => ({ label: s.sp.label, n: true }))],
+      days.map((d) => [esc(fmt(d, { month: 'short', day: 'numeric', year: 'numeric' })), ...series.map((s) => at(s, d))]), true);
+  } else {
+    body = `<div class="multiples">${series.map(({ sp, pts }) => {
+      if (!pts.length) return `<div class="multiple"><div class="multiple-head">${lineKey(sp.key)}</div><p class="empty-line">No follower counts yet.</p></div>`;
+      const first = pts[0], last = pts.at(-1), change = last.followers - first.followers;
+      const since = fmt(first.day, { month: 'short', day: 'numeric' });
+      const note = pts.length < 2 ? '' : change ? `<span class="kpi-d trend-${change > 0 ? 'up' : 'down'}">${change > 0 ? 'Up' : 'Down'} ${esc(fmtNum(Math.abs(change)))} since ${esc(since)}</span>` : `<span class="kpi-d">No change since ${esc(since)}</span>`;
+      const chart = pts.length < 2 ? '<p class="empty-line">The trend line starts after the second nightly sync.</p>'
+        : chartHTML({
+          id: `followers-${sp.key}`, type: 'line', height: 150, unit: 'followers', from: first.day, to: last.day,
+          label: `${sp.label} followers`, summary: `${sp.label} followers: ${fmtNum(first.followers)} on ${since}, ${fmtNum(last.followers)} on ${fmt(last.day, { month: 'short', day: 'numeric' })}.`,
+          series: [{ label: sp.label, color: sp.color, points: pts.map((p) => ({ x: p.day, y: p.followers })) }]
+        });
+      return `<div class="multiple"><div class="multiple-head">${lineKey(sp.key)}<b>${esc(fmtNum(last.followers))}</b>${note}</div>${chart}</div>`;
+    }).join('')}</div>`;
+  }
+  return `<section class="card"><div class="card-head"><div><h3>Followers</h3><p class="csub">The count each night.</p></div>${series.some((s) => s.pts.length) ? tableToggle('followers') : ''}</div>${body}</section>`;
+}
+
+function monthsCard(rg, plats) {
+  const R = S.results;
+  const months = [];
+  for (let d = parse(rg.from.slice(0, 7) + '-01'); iso(d) <= rg.to; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(iso(d).slice(0, 7));
+  const inMonth = (day, m) => day.startsWith(m) && day >= rg.from && day <= rg.to;
+  const planned = months.map((m) => S.posts.filter((p) => inMonth(p.date, m) && p.status !== 'skipped' && p.format !== 'story')
+    .reduce((n, p) => n + p.platforms.filter((k) => plats.includes(k)).length, 0));
+  const went = SOCIAL.filter((sp) => plats.includes(sp.key)).map((sp) => ({ label: sp.label, color: sp.color, values: months.map((m) => R.posts.filter((s) => s.platform === sp.key && inMonth(s.day, m)).length) }));
+  const out = postsIn(rg.from, rg.to, plats);
+  const matched = out.filter((s) => s.postId).length;
+  const table = R.tables.has('months');
+  const body = table
+    ? tableHTML('Planned and posted by month', [{ label: 'Month' }, { label: 'Planned', n: true }, ...went.map((w) => ({ label: w.label, n: true }))],
+      months.map((m, i) => [esc(monthLabel(m, { month: 'long', year: 'numeric' })), fmtNum(planned[i]), ...went.map((w) => fmtNum(w.values[i]))]))
+    : `<ul class="legend-row"><li><i class="sw" style="--sw:var(--viz-context)"></i>Planned</li>${went.map((w) => `<li><i class="sw" style="--sw:${w.color}"></i>${esc(w.label)}</li>`).join('')}</ul>` +
+      chartHTML({
+        id: 'months', type: 'columns', height: 210, label: 'Planned and posted by month',
+        summary: `Planned and posted by month. ${plural(out.length, 'post')} went out; ${plural(planned.reduce((a, b) => a + b, 0), 'post')} were planned.`,
+        categories: months.map((m) => ({ label: monthLabel(m, { month: 'long', year: 'numeric' }), short: monthLabel(m, { month: 'short' }) })),
+        columns: [{ label: 'Planned', parts: [{ label: 'Planned', color: 'var(--viz-context)', values: planned }] }, { label: 'Went out', parts: went }]
+      });
+  return `<section class="card"><div class="card-head"><div><h3>Planned and posted</h3><p class="csub">${out.length ? `${matched} of ${plural(out.length, 'post')} that went out match the calendar.` : 'Nothing went out in this period.'} Planned counts each platform a calendar post lists, leaving out stories.</p></div>${tableToggle('months')}</div>${body}</section>`;
+}
+
+// Average results by calendar category, format, and national program, for matched posts at least a
+// week old (newer ones are still gaining views).
+function performCards(rg, plats) {
+  const R = S.results;
+  const settledBy = iso(addDays(new Date(), -7));
+  const done = postsIn(rg.from, rg.to, plats).filter((s) => s.postId && S.postsById.has(s.postId) && s.day <= settledBy && measureOf(s) !== null);
+  const word = measureWord();
+  const groups = (keyOf, labelOf, htmlOf) => {
+    const g = new Map();
+    for (const s of done) {
+      const k = keyOf(S.postsById.get(s.postId));
+      if (k) g.set(k, [...(g.get(k) || []), s]);
+    }
+    return [...g].map(([k, list]) => {
+      const avg = total(list, measureOf) / list.length;
+      const best = list.reduce((b, x) => (measureOf(x) > measureOf(b) ? x : b));
+      return {
+        label: labelOf(k), labelHTML: htmlOf ? htmlOf(k) : '', value: avg, valueLabel: fmtCompact(avg), note: plural(list.length, 'post'),
+        tip: [{ value: fmtNum(avg), label: `average ${word}` }, { value: fmtNum(measureOf(best)), label: `best: ${S.postsById.get(best.postId).title}` }]
+      };
+    }).sort((a, b) => b.value - a.value);
+  };
+  const sets = [
+    ['cat', 'By category', groups((p) => p.category, (k) => CAT[k].label, (k) => `<span class="tag k-${k}"><i class="dot"></i>${esc(CAT[k].label)}</span>`)],
+    ['fmt', 'By format', groups((p) => p.format, (k) => FMT[k].label)],
+    ['prog', 'By national program', groups((p) => p.program, (k) => PROG[k].short)]
+  ];
+  const card = ([id, title, rows]) => {
+    const table = R.tables.has(id);
+    const body = !rows.length ? `<p class="empty-line">${id === 'prog' ? 'No matched national program posts in this period yet.' : 'No matched posts in this period yet.'}</p>`
+      : table ? tableHTML(`${title}, average ${word} per post`, [{ label: title.replace('By ', '').replace(/^./, (c) => c.toUpperCase()) }, { label: `Average ${word}`, n: true }, { label: 'Posts', n: true }],
+        rows.map((r) => [esc(r.label), fmtNum(r.value), r.note.split(' ')[0]]))
+        : barsHTML({ id: `perform-${id}`, color: barColor(plats), rows });
+    return `<section class="card"><div class="card-head"><h3>${esc(title)}</h3>${rows.length ? tableToggle(id) : ''}</div>${body}</section>`;
+  };
+  return `<div class="rsection"><h3>What performs</h3><p class="csub">Average ${esc(word)} per post that matches the calendar. Posts from the last week are left out while their numbers settle.</p>
+    <div class="cards three">${sets.map(card).join('')}</div></div>`;
+}
+
+function socialTitle(s) {
+  const cal = s.postId && S.postsById.get(s.postId);
+  if (cal) return cal.title;
+  const text = s.caption.replace(/\s+/g, ' ').trim();
+  return text ? (text.length > 90 ? `${text.slice(0, 89)}…` : text) : `${SOC[s.platform].label} post`;
+}
+function matchTag(s) {
+  const cal = s.postId && S.postsById.get(s.postId);
+  if (cal) return catTag(cal);
+  if (s.matchSource === 'none') return '<span>Not on the calendar</span>';
+  return '<span>Not matched yet</span>';
+}
+
+function topCard(rg, plats) {
+  const R = S.results;
+  const list = known(postsIn(rg.from, rg.to, plats), measureOf).sort((a, b) => measureOf(b) - measureOf(a) || b.postedAt.localeCompare(a.postedAt));
+  const shown = R.topAll ? list : list.slice(0, 10);
+  const cell = (v) => (v === null || v === undefined ? '' : esc(fmtNum(v)));
+  const rows = shown.map((s) => [
+    `<span class="when-c">${esc(fmt(s.day, { month: 'short', day: 'numeric' }))}</span>`,
+    `<button type="button" class="postbtn" data-act="social" data-id="${esc(socialKey(s))}"><span class="ttl">${esc(socialTitle(s))}</span><span class="meta">${lineKey(s.platform)}${matchTag(s)}</span></button>`,
+    cell(s.views), cell(s.interactions), cell(s.likes), cell(s.platform === 'threads' ? s.replies : s.comments), cell(s.shares), cell(s.saves)
+  ]);
+  // On phones: the date, the post, and the number it's ranked by.
+  const colClass = (i) => [i >= 2 ? 'n' : '', i >= 4 || (i === 2 && R.measure !== 'views') || (i === 3 && R.measure !== 'interactions') ? 'opt' : '', i === 1 ? 'post-c' : ''].filter(Boolean).join(' ');
+  const head = [{ label: 'Date' }, { label: 'Post' }, { label: 'Views', n: true }, { label: 'Interactions', n: true }, { label: 'Likes', n: true }, { label: 'Comments', n: true }, { label: 'Shares', n: true }, { label: 'Saves', n: true }];
+  const table = list.length ? `<div class="rtable-wrap"><table class="rtable"><caption class="sr">Top posts by ${esc(measureWord())}</caption><thead><tr>${head.map((h, i) => `<th scope="col" class="${colClass(i)}">${esc(h.label)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((r) => `<tr>${r.map((c, i) => `<td class="${colClass(i)}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`
+    : '<p class="empty-line">No posts in this period.</p>';
+  return `<section class="card wide"><div class="card-head"><div><h3>Top posts</h3><p class="csub">By ${esc(measureWord())}. Open a post to see all its numbers or fix its match.</p></div></div>${table}
+    ${list.length > 10 ? `<div class="card-foot"><span class="muted">${R.topAll ? `All ${list.length} posts` : `10 of ${list.length} posts`}</span><button class="btn small" data-act="r-top-all">${R.topAll ? 'Show the top 10' : `Show all ${list.length}`}</button></div>` : ''}</section>`;
+}
+
+function unmatchedCard(plats) {
+  const R = S.results;
+  const start = calendarStart();
+  const list = R.posts.filter((s) => !s.matchSource && plats.includes(s.platform) && s.day >= start).sort((a, b) => b.postedAt.localeCompare(a.postedAt));
+  const shown = R.unmatchedAll ? list : list.slice(0, 6);
+  const rows = shown.map((s) => {
+    const d = parse(s.day);
+    return `<button class="row" data-act="social" data-id="${esc(socialKey(s))}">
+      <span class="when"><span class="wd">${esc(d.toLocaleDateString('en-US', { month: 'short' }))}</span><span class="dn">${d.getDate()}</span></span>
+      <span class="what"><span class="ttl">${esc(socialTitle(s))}</span><span class="meta">${lineKey(s.platform)}<span>${esc(nyTime(s.postedAt, { hour: 'numeric', minute: '2-digit' }))}</span>${s.views !== null ? `<span>${esc(fmtNum(s.views))} views</span>` : ''}</span></span>
+      <span class="pill s-needs-info">Match</span></button>`;
+  }).join('');
+  return `<section class="card wide"><div class="card-head"><div><h3>Not matched yet</h3><p class="csub">${list.length
+    ? `Posts since ${esc(fmt(start, { month: 'short', day: 'numeric' }))} that the calendar couldn't match by date. Open one to pick its calendar post, or mark it as not on the calendar.`
+    : `Every post since ${esc(fmt(start, { month: 'short', day: 'numeric' }))} matches a calendar post or is marked as not on the calendar.`}</p></div></div>
+    ${list.length ? `<div class="list">${rows}</div>` : ''}
+    ${list.length > 6 ? `<div class="card-foot"><span class="muted">${R.unmatchedAll ? `All ${list.length}` : `6 of ${list.length}`}</span><button class="btn small" data-act="r-unmatched-all">${R.unmatchedAll ? 'Show fewer' : `Show all ${list.length}`}</button></div>` : ''}</section>`;
+}
+
+function renderResults() {
+  const R = S.results;
+  if (!R.loaded) { el.view.innerHTML = emptyHTML('Results', 'Loading results', 'Numbers from Instagram and Threads load here in a moment.'); return; }
+  if (R.error) {
+    el.view.innerHTML = /could not find the table|does not exist|schema cache/i.test(R.error)
+      ? emptyHTML('Results', 'Results need their database setup', 'Run supabase/migrations/20261018000100_social_results.sql in the Supabase SQL Editor, then reload this page. supabase/README.md walks through connecting Instagram and Threads.')
+      : emptyHTML('Connection', 'Results could not load', `${esc(R.error)} Reload the page to try again.`, '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>');
+    return;
+  }
+  const rg = resultsRange();
+  const plats = resultsPlatforms();
+  const start = calendarStart();
+  const head = `<div class="rhead"><div><p class="eyebrow">Instagram and Threads</p><h2>Results</h2><p class="csub">Numbers come in every night and match posts to the calendar by date.</p></div>
+    ${R.accounts.length ? '<button class="btn" data-act="r-refresh">Refresh now</button>' : ''}</div>`;
+  const notice = R.notice ? `<div class="${R.notice.ok ? 'ok' : 'note'} rnote" role="status"><p>${esc(R.notice.text)}</p><button class="btn small quiet" data-act="r-notice-close">Dismiss</button></div>` : '';
+  const accounts = `<div class="accts">${SOCIAL.map(accountHTML).join('')}</div>`;
+  if (!R.posts.length) {
+    el.view.innerHTML = `<div class="results">${head}${notice}${accounts}${R.accounts.length
+      ? emptyHTML('Results', 'The first sync is on its way', 'Posts and their numbers show up here in a minute or two. Reload the page to check.', '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>')
+      : emptyHTML('Results', "Connect the chapter's accounts", 'Choose Connect for Instagram and Threads and sign in as @gil1906. Every night the calendar brings in each post with its views, likes, comments, shares, and saves, plus the follower count, and matches posts to the calendar by date.')}</div>`;
+    return;
+  }
+  const filters = `<div class="rfilters">
+    <div class="fgroup" role="group" aria-label="Period"><span>Period</span>${[['30', '30 days'], ['90', '90 days'], ['cal', `Since ${fmt(start, { month: 'short', day: 'numeric' })}`], ['all', 'All']].map(([v, l]) => seg('r-period', 'period', v, l, R.period)).join('')}</div>
+    <div class="fgroup" role="group" aria-label="Platform"><span>Platform</span>${[['all', 'Both'], ['instagram', 'Instagram'], ['threads', 'Threads']].map(([v, l]) => seg('r-platform', 'platform', v, l, R.platform)).join('')}</div>
+    <div class="fgroup" role="group" aria-label="Rank by"><span>Rank by</span>${[['views', 'Views'], ['interactions', 'Interactions']].map(([v, l]) => seg('r-measure', 'measure', v, l, R.measure)).join('')}</div>
+  </div>`;
+  const list = postsIn(rg.from, rg.to, plats);
+  const prev = rg.days ? postsIn(iso(addDays(parse(rg.from), -rg.days)), iso(addDays(parse(rg.from), -1)), plats) : [];
+  const views = total(list, (s) => s.views), viewed = known(list, (s) => s.views).length;
+  const acts = total(list, (s) => s.interactions);
+  const latest = plats.map((k) => R.followers.filter((f) => f.platform === k && f.day <= rg.to).at(-1)).filter(Boolean);
+  const firsts = plats.map((k) => R.followers.find((f) => f.platform === k && f.day >= rg.from)).filter(Boolean);
+  const fNow = total(latest, (f) => f.followers), fThen = total(firsts, (f) => f.followers);
+  const kpis = `<div class="kpis">
+    ${kpiHTML('Posts', fmtNum(list.length), [{ text: `${fmtNum(list.filter((s) => s.postId).length)} on the calendar` }])}
+    ${kpiHTML('Views', fmtCompact(views), [prev.length ? changeNote(views, total(prev, (s) => s.views), rg.days) : null])}
+    ${kpiHTML('Average views', viewed ? fmtCompact(views / viewed) : '0', [{ text: 'per post' }])}
+    ${kpiHTML('Interactions', fmtCompact(acts), [prev.length ? changeNote(acts, total(prev, (s) => s.interactions), rg.days) : null])}
+    ${kpiHTML('Followers', latest.length ? fmtCompact(fNow) : 'None yet', [latest.length && firsts.length && fNow !== fThen
+      ? { dir: fNow > fThen ? 'up' : 'down', text: `${fNow > fThen ? 'Up' : 'Down'} ${fmtNum(Math.abs(fNow - fThen))} since ${fmt(firsts[0].day, { month: 'short', day: 'numeric' })}` } : null])}
+  </div>`;
+  const body = list.length
+    ? `${kpis}<div class="cards">${followersCard(rg, plats)}${monthsCard(rg, plats)}</div>${performCards(rg, plats)}<div class="cards">${topCard(rg, plats)}${unmatchedCard(plats)}</div>`
+    : `${emptyHTML('Results', 'No posts in this period', 'Try a longer period or the other platform.')}<div class="cards">${unmatchedCard(plats)}</div>`;
+  el.view.innerHTML = `<div class="results">${head}${notice}${accounts}${filters}${body}</div>`;
+  drawCharts(el.view);
+}
+
+// The calendar posts a platform post could belong to: two weeks either side, nearest first.
+function matchChoices(s) {
+  const day = parse(s.day);
+  const near = S.posts.filter((p) => Math.abs(daysBetween(s.day, p.date)) <= 14)
+    .sort((a, b) => Math.abs(daysBetween(s.day, a.date)) - Math.abs(daysBetween(s.day, b.date)) || a.date.localeCompare(b.date));
+  const cur = s.postId && S.postsById.get(s.postId);
+  if (cur && !near.includes(cur)) near.unshift(cur);
+  return { day, near };
+}
+
+function socialView(key) {
+  const s = S.results.posts.find((x) => socialKey(x) === key);
+  if (!s) return '';
+  const sp = SOC[s.platform];
+  const cal = s.postId && S.postsById.get(s.postId);
+  const status = cal ? (s.matchSource === 'manual' ? 'Matched by hand to' : 'Matched by date to')
+    : s.matchSource === 'none' ? 'Marked as not on the calendar.' : 'Not matched to a calendar post yet.';
+  const metric = (label, v) => (v === null || v === undefined ? '' : `<div><dt>${esc(label)}</dt><dd>${esc(fmtNum(v))}</dd></div>`);
+  const { near } = matchChoices(s);
+  const options = `<option value="">Choose a calendar post</option>${near.map((p) => `<option value="${esc(p.id)}"${p.id === s.postId ? ' selected' : ''}>${esc(`${fmt(p.date, { month: 'short', day: 'numeric' })}: ${p.title}${p.platforms.includes(s.platform) ? '' : ` (not set for ${sp.label})`}`)}</option>`).join('')}`;
+  return `${drawerHead(esc(`${sp.label} · ${postedText(s.postedAt)}`), cal ? cal.title : `${sp.label} post`)}
+  <div class="dbody">
+    ${s.caption ? `<div class="block"><h4>${s.platform === 'threads' ? 'Text' : 'Caption'}</h4><div class="caption">${esc(s.caption)}</div></div>` : ''}
+    ${s.permalink ? `<p class="m0"><a href="${esc(s.permalink)}" target="_blank" rel="noopener">Open on ${esc(sp.label)}</a></p>` : ''}
+    <dl class="metrics">${metric('Views', s.views)}${metric('Reach', s.reach)}${metric('Likes', s.likes)}${metric(sp.talk, s.platform === 'threads' ? s.replies : s.comments)}${metric('Shares', s.shares)}${metric('Saves', s.saves)}${metric('Reposts', s.reposts)}${metric('Quotes', s.quotes)}${metric('Interactions', s.interactions)}</dl>
+    <div class="block"><h4>Calendar post</h4>
+      <div class="resline">${esc(status)}${cal ? ` <button type="button" class="btn small link" data-act="post" data-id="${esc(cal.id)}">${esc(cal.title)}</button>` : ''}</div>
+      ${fieldHTML('gc-social-post', 'Match it to', `<select id="gc-social-post" name="gc-social-post">${options}</select>`, `Calendar posts from two weeks either side of ${esc(fmt(s.day, { month: 'short', day: 'numeric' }))}.`)}
+      <div class="btnrow"><button type="button" class="btn small primary" data-act="social-save" data-id="${esc(key)}">Save match</button>
+        ${s.matchSource !== 'none' ? `<button type="button" class="btn small" data-act="social-none" data-id="${esc(key)}">Not on the calendar</button>` : ''}
+        ${s.matchSource === 'manual' || s.matchSource === 'none' ? `<button type="button" class="btn small quiet" data-act="social-auto" data-id="${esc(key)}">Match by date instead</button>` : ''}</div>
+    </div>
+  </div>
+  <div class="dfoot"><button type="button" class="btn" data-act="close">Close</button></div>`;
+}
+
+// What a calendar post did on Instagram and Threads, inside its drawer, for the media team.
+function postResultsBlock(p) {
+  if (!isStaff() || !S.results.loaded) return '';
+  const matched = S.results.posts.filter((s) => s.postId === p.id);
+  if (!matched.length) return '';
+  return `<div class="block"><h4>Results</h4>${matched.map((s) => `<div class="resline">${lineKey(s.platform)}${s.views !== null ? `<span><b>${esc(fmtNum(s.views))}</b> views</span>` : ''}${s.interactions !== null ? `<span><b>${esc(fmtNum(s.interactions))}</b> interactions</span>` : ''}<button type="button" class="btn small link" data-act="social" data-id="${esc(socialKey(s))}">Details</button></div>`).join('')}</div>`;
+}
+
+async function connectSocial(platform, button) {
+  if (!SOC[platform]) return;
+  if (button) button.disabled = true;
+  try {
+    const res = await api.socialConnect(platform, location.origin + location.pathname);
+    if (res && res.url) { location.assign(res.url); return; }
+    S.results.notice = { ok: true, text: `${SOC[platform].label} is connected (demo).` };
+    S.results.confirm = '';
+    await loadResults();
+    renderMain();
+  } catch (e) {
+    toast(e.message);
+    if (button) button.disabled = false;
+  }
+}
+async function disconnectSocial(platform) {
+  try { await api.socialDisconnect(platform); } catch (e) { toast(e.message); return; }
+  S.results.confirm = '';
+  toast(`${SOC[platform].label} disconnected. Its numbers so far stay.`);
+  await loadResults();
+  renderMain();
+}
+async function syncNow(button) {
+  if (button) button.disabled = true;
+  let res;
+  try { res = await api.socialSyncNow(); } catch (e) { toast(e.message); if (button) button.disabled = false; return; }
+  toast(res.message);
+  if (button) button.disabled = false;
+  if (res.ok) reloadResultsSoon([20000, 60000]);
+}
+async function saveMatch(key, mode) {
+  const s = S.results.posts.find((x) => socialKey(x) === key);
+  if (!s) return;
+  let postId = null;
+  if (mode === 'manual') {
+    const pick = $('#gc-social-post', el.drawer);
+    postId = pick ? pick.value : '';
+    if (!postId) { toast('Choose the calendar post it belongs to.'); if (pick) pick.focus(); return; }
+  }
+  try { await api.socialSetMatch(s.platform, s.mediaId, postId, mode === 'auto'); } catch (e) { toast(e.message); return; }
+  await loadResults();
+  renderMain();
+  if (S.drawer) drawDrawer(false);
+  toast(mode === 'manual' ? `Matched to ${S.postsById.get(postId)?.title || 'the calendar post'}` : mode === 'none' ? 'Marked as not on the calendar' : 'Matching by date again');
+}
+function resultsControl(prop, value, storeKey) {
+  S.results[prop] = value;
+  if (storeKey) store.set(storeKey, value);
+  renderMain();
+  const again = el.view.querySelector(`[data-act="r-${prop}"][data-${prop}="${CSS.escape(value)}"]`);
+  if (again) again.focus();
+}
+
 // ---------------------------------------------------------------- guide
 function renderGuide() {
   el.view.innerHTML = `<div class="guide">
@@ -459,7 +889,7 @@ function renderGuide() {
         <li><b>Media team:</b> sign in with your email and password.</li>
       </ul>
       <h3 class="mt-gap">Who sees what</h3>
-      <p>Only brothers who sign in can see the calendar. Brothers can view every post. Committee chairs also send requests, attach files, and follow their requests through review. The media team edits the calendar, reviews requests, and decides who is a chair.</p>
+      <p>Only brothers who sign in can see the calendar. Brothers can view every post. Committee chairs also send requests, attach files, and follow their requests through review. The media team edits the calendar, reviews requests, decides who is a chair, and sees how each post did on Instagram and Threads.</p>
       <p>For access or questions, contact ${esc(CONTACT)}.</p>
     </div>
     <div>
@@ -558,15 +988,16 @@ const drawerItem = () => {
   const { type, data } = S.drawer;
   if (type === 'post') return S.postsById.get(data);
   if (type === 'request') return S.reqById.get(data);
+  if (type === 'social') return S.results.posts.find((s) => socialKey(s) === data) || null;
   return null;
 };
 // After a refresh, redraw an open post or request only if it changed, so focus and scroll stay put.
 function refreshDrawer() {
   if (!S.drawer) return;
   const { type } = S.drawer;
-  if (type !== 'post' && type !== 'request') return;
+  if (type !== 'post' && type !== 'request' && type !== 'social') return;
   const item = drawerItem();
-  if (!item) { closeDrawer(); toast(type === 'post' ? 'That post was removed.' : 'That request was removed.'); return; }
+  if (!item) { closeDrawer(); toast(type === 'post' ? 'That post was removed.' : type === 'social' ? 'That post is no longer in the results.' : 'That request was removed.'); return; }
   if (JSON.stringify(item) === S.drawer.snap || el.drawer.querySelector('[data-pending]')) return;
   drawDrawer(false);
 }
@@ -580,6 +1011,7 @@ function drawDrawer(focus) {
   else if (type === 'request') html = requestView(S.reqById.get(data));
   else if (type === 'signin') html = signinView();
   else if (type === 'access') html = accessView();
+  else if (type === 'social') html = socialView(data);
   const item = drawerItem();
   S.drawer.snap = item ? JSON.stringify(item) : '';
   el.drawer.innerHTML = html;
@@ -610,6 +1042,7 @@ function postView(p) {
     ${p.notes ? `<div class="block"><h4>Notes</h4><p>${esc(p.notes)}</p></div>` : ''}
     ${req ? `<div class="block"><h4>From a request</h4><p>${esc(req.contactName || 'A chair')}, ${esc(req.committee)}. <button type="button" class="btn small link" data-act="req" data-id="${esc(req.id)}">Open request</button></p></div>` : ''}
     ${req && req.files.length && (isStaff() || isMine(req)) ? filesBlock(req.files, 'Files from the request') : ''}
+    ${postResultsBlock(p)}
   </div>
   <div class="dfoot">
     ${isStaff() ? `<label class="sr" for="gc-quick-status">Status</label>${selectHTML('gc-quick-status', STATUSES, p.status, `data-id="${esc(p.id)}" class="autow"`)}<span class="spacer"></span>
@@ -1400,6 +1833,29 @@ document.addEventListener('click', (e) => {
     case 'm-remove-confirm': removeMember(id); break;
     case 'demo-role': demoRole(t.dataset.role); break;
     case 'demo-reset': api.reset(); store.del('view'); location.reload(); break;
+    case 'r-period': resultsControl('period', t.dataset.period, 'r-period'); break;
+    case 'r-platform': resultsControl('platform', t.dataset.platform, 'r-platform'); break;
+    case 'r-measure': resultsControl('measure', t.dataset.measure, 'r-measure'); break;
+    case 'r-table': {
+      const c = t.dataset.chart;
+      if (S.results.tables.has(c)) S.results.tables.delete(c); else S.results.tables.add(c);
+      renderMain();
+      const again = el.view.querySelector(`[data-act="r-table"][data-chart="${CSS.escape(c)}"]`);
+      if (again) again.focus();
+      break;
+    }
+    case 'r-top-all': S.results.topAll = !S.results.topAll; renderMain(); break;
+    case 'r-unmatched-all': S.results.unmatchedAll = !S.results.unmatchedAll; renderMain(); break;
+    case 'r-connect': connectSocial(t.dataset.platform, t); break;
+    case 'r-disconnect': S.results.confirm = t.dataset.platform; renderMain(); break;
+    case 'r-disconnect-cancel': S.results.confirm = ''; renderMain(); break;
+    case 'r-disconnect-confirm': disconnectSocial(t.dataset.platform); break;
+    case 'r-refresh': syncNow(t); break;
+    case 'r-notice-close': S.results.notice = null; renderMain(); break;
+    case 'social': openDrawer('social', id, S.drawer ? S.lastTrigger : t); break;
+    case 'social-save': saveMatch(id, 'manual'); break;
+    case 'social-none': saveMatch(id, 'none'); break;
+    case 'social-auto': saveMatch(id, 'auto'); break;
   }
 });
 
@@ -1536,6 +1992,8 @@ async function loadData() {
   else setPosts([], false);
   if (canRequest()) jobs.push(api.requests().then((rows) => setRequests(rows)));
   else setRequests([], false);
+  if (isStaff()) jobs.push(loadResults());
+  else S.results = freshResults();
   try {
     await Promise.all(jobs);
     S.loadError = '';
@@ -1580,6 +2038,7 @@ async function quietRefresh(force) {
 async function boot() {
   buildFilters();
   watchNav();
+  initCharts();
   render();
   try {
     await api.init();
@@ -1595,6 +2054,17 @@ async function boot() {
   if (wantsSignin) {
     try { history.replaceState(null, '', location.pathname + location.search); } catch { /* file:// previews */ }
     if (S.role === 'visitor') openDrawer('signin', null, null);
+  }
+  if (backFromConnect) {
+    try { history.replaceState(null, '', location.pathname + '#results'); } catch { /* file:// previews */ }
+    if (isStaff()) {
+      S.view = 'results';
+      const label = (SOC[backFromConnect.platform] || {}).label || 'The account';
+      S.results.notice = backFromConnect.error
+        ? { ok: false, text: backFromConnect.error }
+        : { ok: true, text: `${label} is connected. Its posts and numbers are coming in now and show up here in a minute or two.` };
+      if (!backFromConnect.error) reloadResultsSoon([15000, 45000]);
+    }
   }
   await loadData();
   lastRefresh = Date.now();

@@ -3,6 +3,8 @@
 //   * Data API: the parts of PostgREST the calendar uses (table reads and writes, and RPC)
 //   * Auth: anonymous and email/password sessions
 //   * Storage: uploads, signed links, downloads, and removal, with the storage policies enforced
+//   * Edge Functions: the real calendar-social function, talking to a simulated Instagram and Threads
+//     (meta-sim.mjs) instead of Meta's servers
 //   * Static hosting for the site, with assets/calendar/config.js pointed at this server
 // Adapted from the Alpha Academy Trading Floor's stand-in. live-smoke.mjs drives it.
 import { createServer } from 'node:http';
@@ -11,6 +13,8 @@ import { extname, join, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createDb } from './harness.mjs';
+import { Meta } from './meta-sim.mjs';
+import { createHandler, makeDb } from '../../supabase/functions/calendar-social/social.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPES = {
@@ -18,7 +22,8 @@ const TYPES = {
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml'
 };
 const IDENT = /^[a-z_][a-z0-9_]*$/;
-const TABLES = new Set(['cal_posts', 'cal_requests', 'cal_members', 'cal_staff']);
+const TABLES = new Set(['cal_posts', 'cal_requests', 'cal_members', 'cal_staff', 'cal_social_accounts', 'cal_social_posts',
+  'cal_social_post_days', 'cal_social_account_days']);
 const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 
@@ -34,6 +39,21 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
     chain = p.catch(() => {});
     return p;
   };
+
+  // The calendar-social Edge Function, with Meta simulated. Its background syncs finish in settle().
+  const fnEnv = {
+    SUPABASE_URL: origin, INSTAGRAM_APP_ID: 'ig-app-test', INSTAGRAM_APP_SECRET: 'ig-secret-test',
+    THREADS_APP_ID: 'th-app-test', THREADS_APP_SECRET: 'th-secret-test'
+  };
+  const meta = new Meta({ env: fnEnv, callback: `${origin}/functions/v1/calendar-social/callback` });
+  const background = [];
+  const fn = demo ? null : createHandler({
+    env: fnEnv,
+    db: makeDb((text, params) => serial(() => h.sql(text, params))),
+    fetch: meta.fetch,
+    waitUntil: (p) => background.push(p),
+    log: { error: () => {}, warn: () => {} }
+  });
 
   const users = new Map(); // id -> {id, email, password, is_anonymous, confirmed}
   const files = new Map(); // 'bucket/name' -> {bytes, type}
@@ -317,6 +337,19 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
         return send(res, 200, rows.map((r) => ({ name: r.name, bucket_id: bucket })));
       }
 
+      // Edge Functions
+      if (path.startsWith('/functions/v1/calendar-social')) {
+        if (!fn) return send(res, 404, { message: 'demo mode has no backend' });
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !['host', 'connection', 'content-length'].includes(k)));
+        const out = await fn(new Request(origin + req.url, {
+          method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks)
+        }));
+        res.writeHead(out.status, Object.fromEntries(out.headers));
+        return res.end(Buffer.from(await out.arrayBuffer()));
+      }
+
       // Site
       if (path === '/assets/calendar/config.js') {
         res.writeHead(200, { 'Content-Type': TYPES['.js'] });
@@ -342,6 +375,9 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
     h,
     users,
     files,
+    meta,
+    // Waits for the Edge Function's background syncs.
+    settle: async () => { while (background.length) await background.shift(); },
     sql: (q, params) => serial(() => h.sql(q, params)),
     close: () => new Promise((resolve) => server.close(resolve))
   };

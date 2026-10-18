@@ -6,7 +6,9 @@
 // chair; he sends a request with a photo and a PDF attached, answers a question by swapping a file,
 // and sees it approved. The media team opens his files. He signs in on a laptop, which signs out
 // the phone. The media team resets his PIN, makes him a viewer again, and finally removes him.
-// The home page's Sign in button opens the sign-in panel.
+// The home page's Sign in button opens the sign-in panel. Last, the media team connects Instagram
+// and Threads through the real Edge Function (with Meta simulated), matches a post by hand, refreshes,
+// and disconnects.
 //
 //   npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 //   npx playwright install chromium   (once)
@@ -157,6 +159,12 @@ await toast(phone.page, /Signed in as Jean Louis/);
 await phone.page.waitForSelector('#gc-view .row');
 assert.equal(await phone.page.locator('#gc-actions').getByRole('button', { name: 'Request a post' }).count(), 0, 'brothers cannot request');
 assert.equal(await phone.page.locator('.tab[data-view="requests"]').isHidden(), true, 'no Requests tab for brothers');
+assert.equal(await phone.page.locator('.tab[data-view="results"]').isHidden(), true, 'no Results tab for brothers');
+const brotherReads = await phone.page.evaluate(async () => {
+  const r = await fetch('/rest/v1/cal_social_posts?select=*', { headers: { apikey: 'sb_publishable_test', Authorization: `Bearer ${JSON.parse(localStorage.getItem('gilcal.auth')).access_token}` } });
+  return r.json();
+});
+assert.deepEqual(brotherReads, [], 'brothers read no results, even asking the Data API directly');
 await phone.page.locator('.row', { hasText: 'Live smoke post' }).click();
 assert.match(await D(phone.page).innerText(), /Caption for brothers/);
 await phone.page.keyboard.press('Escape');
@@ -334,10 +342,109 @@ await media.page.fill('#s-password', 'black and gold 1906');
 await D(media.page).getByRole('button', { name: 'Sign in', exact: true }).click();
 await toast(media.page, /Signed in as Eugene Aiken/);
 
+// ------------------------------------------------------------------ results
+step('Results starts with nothing connected');
+// Two calendar posts on quiet days in the past, and what Instagram and Threads will report.
+const quiet = [];
+for (let i = 12; quiet.length < 3 && i < 300; i++) {
+  const d = nyDate(-i);
+  if (!(await one('select count(*)::int as n from public.cal_posts where date = $1', [d])).n) quiet.push(d);
+}
+// The unmatched post goes on the latest day: the list covers days since the calendar's first post.
+const [dayC, dayA, dayB] = quiet;
+await server.sql(`insert into public.cal_posts (id, date, title, category, platforms, status) values
+  ('p-results-a', $1, 'Results post A', 'chapter', '{instagram,threads}', 'posted'), ('p-results-b', $2, 'Results post B', 'program', '{instagram}', 'posted')`, [dayA, dayB]);
+server.meta.add('instagram', '1801', `${dayA}T22:00:00+0000`,
+  { caption: 'Results post A on Instagram', media_type: 'IMAGE', media_product_type: 'FEED', permalink: 'https://www.instagram.com/p/A1/', like_count: 80, comments_count: 6 },
+  { views: 900, reach: 700, likes: 80, comments: 6, saved: 9, shares: 12, total_interactions: 107 });
+server.meta.add('instagram', '1802', `${dayC}T21:00:00+0000`,
+  { caption: 'Thank you to everyone who came out', media_type: 'IMAGE', media_product_type: 'FEED', permalink: 'https://www.instagram.com/p/A2/', like_count: 30, comments_count: 2 },
+  { views: 300, reach: 250, likes: 30, comments: 2, saved: 1, shares: 3, total_interactions: 36 });
+server.meta.add('threads', '3101', `${dayA}T23:00:00+0000`,
+  { text: 'Results post A on Threads', permalink: 'https://www.threads.com/@gil1906/post/T1', media_type: 'TEXT_POST', is_quote_post: false },
+  { views: 200, likes: 10, replies: 2, reposts: 1, quotes: 0, shares: 1 });
+// The Edge Function sends the browser to Instagram's or Threads' sign-in, which this test plays:
+// it checks where the function sent the browser, then goes straight on to the callback with a code.
+const signIns = [];
+await media.page.route(/\/functions\/v1\/calendar-social\/connect/, async (route) => {
+  const res = await route.fetch({ maxRedirects: 0 });
+  const to = new URL(res.headers().location);
+  signIns.push(to);
+  const code = to.host === 'www.instagram.com' ? 'ig-code-1' : 'th-code-1';
+  await route.fulfill({ status: 302, headers: { location: `${to.searchParams.get('redirect_uri')}?code=${code}&state=${to.searchParams.get('state')}` } });
+});
+await media.page.locator('.tab', { hasText: 'Results' }).click();
+await media.page.waitForSelector('.results .acct');
+assert.match(await media.page.locator('#gc-view').innerText(), /Connect the chapter's accounts/);
+
+step('the media team connects Instagram through the Edge Function, and the first sync matches by date');
+await media.page.locator('.acct', { hasText: 'Instagram' }).getByRole('button', { name: 'Connect Instagram' }).click();
+await media.page.waitForSelector('.rnote:has-text("Instagram is connected")', { timeout: 15000 });
+assert.equal(new URL(media.page.url()).search, '', 'the note from Connect leaves the address');
+assert.equal(signIns[0].origin + signIns[0].pathname, 'https://www.instagram.com/oauth/authorize');
+assert.equal(signIns[0].searchParams.get('redirect_uri'), `${server.origin}/functions/v1/calendar-social/callback`);
+await server.settle();
+assert.deepEqual(await one(`select username, account_id from public.cal_social_accounts where platform = 'instagram'`), { username: 'gil1906', account_id: '17841400000000001' });
+assert.deepEqual(await server.sql(`select media_id, post_id, match_source from public.cal_social_posts order by media_id`), [
+  { media_id: '1801', post_id: 'p-results-a', match_source: 'date' },
+  { media_id: '1802', post_id: null, match_source: null }
+]);
+await reload(media.page);
+await media.page.waitForSelector('.results .kpis');
+await media.page.locator('.seg[data-period="all"]').click();
+assert.match(await media.page.locator('.card', { hasText: 'Top posts' }).innerText(), /Results post A/);
+assert.match(await media.page.locator('.card', { has: media.page.locator('h3', { hasText: 'Not matched yet' }) }).innerText(), /Thank you to everyone who came out/);
+await shot(media.page, 'results');
+
+step('he matches the other post by hand');
+await media.page.locator('.card', { has: media.page.locator('h3', { hasText: 'Not matched yet' }) }).locator('.row').first().click();
+await media.page.selectOption('#gc-social-post', 'p-results-b');
+await D(media.page).getByRole('button', { name: 'Save match' }).click();
+await toast(media.page, /Matched to Results post B/);
+assert.deepEqual(await one(`select post_id, match_source from public.cal_social_posts where media_id = '1802'`), { post_id: 'p-results-b', match_source: 'manual' });
+await media.page.keyboard.press('Escape');
+
+step('the media team connects Threads too');
+await media.page.locator('.acct', { hasText: 'Threads' }).getByRole('button', { name: 'Connect Threads' }).click();
+await media.page.waitForSelector('.rnote:has-text("Threads is connected")', { timeout: 15000 });
+assert.equal(signIns[1].origin + signIns[1].pathname, 'https://threads.com/oauth/authorize');
+await server.settle();
+assert.deepEqual(await one(`select post_id, match_source from public.cal_social_posts where media_id = '3101'`), { post_id: 'p-results-a', match_source: 'date' });
+
+step('Refresh now asks the Edge Function to sync, the way the nightly job does');
+await reload(media.page);
+await media.page.getByRole('button', { name: 'Refresh now' }).click();
+await toast(media.page, /Refreshing/);
+const call = await one('select url, headers from net.http_calls order by id desc limit 1');
+assert.equal(call.url, `${server.origin}/functions/v1/calendar-social/sync`);
+server.meta.numbers.set('1801', { views: 1250, reach: 900, likes: 95, comments: 7, saved: 10, shares: 15, total_interactions: 127 });
+const synced = await fetch(call.url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-sync-key': call.headers['x-sync-key'] }, body: '{}' });
+assert.equal(synced.status, 202);
+await server.settle();
+assert.equal((await one(`select views::int from public.cal_social_posts where media_id = '1801'`)).views, 1250);
+
+step("the post's drawer on the calendar shows its results");
+await reload(media.page);
+await media.page.locator('.seg[data-period="all"]').click();
+await media.page.locator('.postbtn', { hasText: 'Results post A' }).first().click();
+await D(media.page).locator('.resline [data-act="post"]').click();
+await media.page.waitForSelector('#gc-drawer h4:has-text("Results")');
+assert.match(await D(media.page).locator('.block', { hasText: 'Results' }).innerText(), /1,250\s+views/);
+await media.page.keyboard.press('Escape');
+
+step('the media team disconnects Threads; its token is gone and its numbers stay');
+const thCard = () => media.page.locator('.acct', { hasText: 'Threads' });
+await thCard().getByRole('button', { name: 'Disconnect' }).click();
+await thCard().getByRole('button', { name: 'Disconnect' }).click();
+await toast(media.page, /Threads disconnected/);
+assert.equal((await one(`select count(*)::int as n from public.cal_social_accounts where platform = 'threads'`)).n, 0);
+assert.equal((await one(`select count(*)::int as n from vault.secrets where name = 'calendar_threads_token'`)).n, 0);
+assert.equal((await one(`select count(*)::int as n from public.cal_social_posts where platform = 'threads'`)).n, 1);
+
 await browser.close();
 await server.close();
 if (errors.length) {
   console.error('Browser errors:\n' + errors.join('\n'));
   process.exit(1);
 }
-console.log('Live mode passed: visitors locked out, a brother who views, a chair who requests with files, and the media team.');
+console.log('Live mode passed: visitors locked out, a brother who views, a chair who requests with files, the media team, and Results.');

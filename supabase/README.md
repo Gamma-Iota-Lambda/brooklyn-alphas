@@ -14,9 +14,11 @@ This folder holds everything the live mode needs:
 | `migrations/20261013000100_content_calendar.sql` | Tables, access rules, and the functions brothers write through |
 | `migrations/20261013000200_chairs_and_request_files.sql` | Committee chairs, request files and their private storage bucket, and no access for visitors |
 | `migrations/20261014000100_request_emails.sql` | Emails the media team about each new request |
+| `migrations/20261018000100_social_results.sql` | Instagram and Threads results: tables, matching, token storage, and the nightly schedule |
 | `seed.sql` | The 128 planned posts for October 2026 to August 2027 |
 | `setup/1-codes.sql` | Sets the chapter code and the media code |
 | `setup/2-request-emails.sql` | Saves the Resend API key that request emails use |
+| `functions/calendar-social/` | The Edge Function that connects Instagram and Threads and brings in their numbers each night |
 
 ## Who can do what
 
@@ -57,6 +59,34 @@ Later:
 - **Turn the emails off:** run `delete from cal_private.config where key = 'email_from';`. Running `setup/2-request-emails.sql` again turns them back on.
 - **Who gets them:** the media team list in Manage access. Adding or removing someone from the media team changes the emails too.
 
+## Instagram and Threads results
+
+The Results tab, for the media team only, shows how posts do on Instagram and Threads: posts, views, interactions, and followers, followers over time, planned posts against what went out each month, average views by category, format, and national program, top posts, and posts still to match. Each calendar post's panel also shows its numbers.
+
+- **How it works.** The media team connects @gil1906 once from the Results tab. The `calendar-social` Edge Function handles the sign-in with Instagram or Threads, keeps each 60-day access token in Supabase Vault, and renews it every week. Every night at 4:20 a.m. New York time (3:20 in winter), pg_cron asks the function to sync. It brings in each post from the last 400 days with its views, reach, likes, comments, shares, and saves (on Threads, replies, reposts, and quotes), and each account's follower count. Posts from the last 60 days get fresh numbers every night; older ones on Sundays. Refresh now on the Results tab asks for a sync sooner, once every 10 minutes at most.
+- **Matching.** A platform post matches a calendar post by date, in New York time, when exactly one post went out on that platform that day and exactly one calendar post that day lists the platform. Stories and skipped posts don't count, since Instagram doesn't share stories after a day. The media team matches the rest by hand under Not matched yet, or marks a post as not on the calendar. Hand matches stay; moving or deleting a calendar post updates date matches right away.
+- **Who sees it.** Only the media team can read the results. The tokens stay in Vault, and only the database and the Edge Function use them.
+
+Setup, once:
+
+1. **Meta developer apps.** At developers.facebook.com, signed in with a Facebook account, create two apps. Both stay in Development mode, which covers accounts with a role on the app and needs no app review.
+   - **Instagram:** a Business app. Choose Add Product, then Instagram, then Set up. Under Instagram, then API setup with Instagram login, then Set up Instagram business login, open Business login settings and enter the three addresses below. The **Instagram app ID** and **Instagram app secret** are on that screen; they differ from the app ID at the top of the page.
+   - **Threads:** an app with the Access the Threads API use case. Under Use cases, Customize, add the `threads_manage_insights` permission and enter the three addresses. The **Threads app ID** and **Threads app secret** are under App settings, then Basic.
+   - The addresses: OAuth or redirect callback `https://uqfoifrpyysqjvwtkgia.supabase.co/functions/v1/calendar-social/callback`; deauthorize or uninstall `.../calendar-social/uninstall`; data deletion `.../calendar-social/delete`.
+   - In each app, under App roles, then Roles, add `gil1906` as an Instagram Tester or a Threads Tester. Accept on instagram.com as gil1906 (Settings, then Apps and websites, then Tester invites) and in Threads as gil1906 (Settings, then Account, then Website permissions, then Invites).
+2. **Run the SQL.** In SQL Editor, run `migrations/20261018000100_social_results.sql`. It turns on pg_cron and schedules the nightly sync.
+3. **Deploy the Edge Function** `functions/calendar-social` with JWT verification off. Browsers reach its sign-in steps and pg_cron reaches its sync without a Supabase session; a one-time Connect code and a shared key in Vault protect them. With the Supabase CLI: `supabase functions deploy calendar-social --no-verify-jwt`.
+4. **Add its secrets** in the Supabase dashboard under Edge Functions, then Secrets: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `THREADS_APP_ID`, and `THREADS_APP_SECRET`. The function also reads `SUPABASE_URL` and `SUPABASE_DB_URL`, which every project has.
+5. **Connect.** On the calendar, open Results and choose Connect Instagram. Instagram asks for the gil1906 password, then for permission, and sends you back to Results. For Threads, sign in to threads.com as gil1906 in the same browser first, then choose Connect Threads. The first sync takes a minute or two.
+
+Day to day:
+
+- **Needs attention:** a connection that stops working, for example after a password change, shows Needs attention and a Reconnect button.
+- **A wrong match:** open the post from Top posts or from the calendar post's panel, pick the right calendar post, and choose Save match. Match by date instead undoes a hand match.
+- **Disconnect:** Disconnect on the Results tab forgets the token. The numbers saved so far stay.
+- **Check the nightly sync:** each account's last sync and any note show on the Results tab. In SQL Editor, `select status_code, content from net._http_response order by created desc limit 3;` shows the function's latest answers (202 means it started), and the function's logs are under Edge Functions, then calendar-social, then Logs.
+- **Pause the nightly sync:** run `select cron.unschedule('gil-calendar-social-sync');`. The `cron.schedule` line at the end of the migration turns it back on.
+
 ## Go live
 
 Plan on about 30 minutes.
@@ -66,10 +96,11 @@ Plan on about 30 minutes.
    1. `migrations/20261013000100_content_calendar.sql`
    2. `migrations/20261013000200_chairs_and_request_files.sql`, which also creates the `calendar-files` bucket
    3. `migrations/20261014000100_request_emails.sql`
-   4. `seed.sql`
-   5. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
+   4. `migrations/20261018000100_social_results.sql`
+   5. `seed.sql`
+   6. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
 
-   A project that already ran some of these runs only the migrations it hasn't, in order. Posts, requests, brothers, and codes all stay. After the second migration, brothers start as viewers, so mark the chairs in Manage access. Request emails also need `setup/2-request-emails.sql`; see Request emails above.
+   A project that already ran some of these runs only the migrations it hasn't, in order. Posts, requests, brothers, and codes all stay. After the second migration, brothers start as viewers, so mark the chairs in Manage access. Request emails also need `setup/2-request-emails.sql`; see Request emails above. Results also need the Edge Function and its secrets; see Instagram and Threads results above.
 3. **Turn on brother sign-in.** Under Authentication, open Sign In / Providers and turn on **Allow anonymous sign-ins**. Brothers don't create accounts; the chapter code and their PIN are their sign-in. Supabase allows 30 of these sign-ins per hour from one internet connection. Before a chapter meeting where many brothers sign in on the same Wi-Fi, raise that under Authentication, then Rate Limits.
 4. **Make media team logins simple.** In the same Sign In / Providers section, open Email and turn off **Confirm email**. The media code already decides who joins the media team. (If you keep confirmation on, set the Site URL under Authentication, then URL Configuration, to `https://www.gil1906.org/calendar.html`, so the confirmation link brings people back to the calendar.)
 5. **Connect the page.** Open the Connect button at the top of the project, or Project Settings, then API Keys. Copy the **Project URL** and the **publishable key** (it starts with `sb_publishable_`; the legacy `anon` key also works) into `assets/calendar/config.js`. Both are meant to be public. Never put a secret or `service_role` key in the page. Commit the change on a branch, open a pull request, and merge it; Vercel deploys in a minute or two.
@@ -103,9 +134,9 @@ From the repository root:
 ```bash
 npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 npx playwright install chromium        # once
-node --test "tests/calendar/*.test.mjs"  # 16 database tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails
+node --test "tests/calendar/*.test.mjs"  # 28 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, and the Edge Function
 node tests/calendar/demo-smoke.mjs     # the demo in a real browser, at desktop and phone widths
 node tests/calendar/live-smoke.mjs     # live mode against a local stand-in for Supabase
 ```
 
-The database tests run the real migrations and seed in PGlite, Postgres compiled to WebAssembly, with a small stand-in for Supabase's sign-in, storage, Vault, and pg_net. The pg_net stand-in records each email instead of sending it. The live browser test runs the same database behind a local imitation of Supabase's Data API, sign-in, and file storage. It walks through a visitor, the media team, a brother who becomes a chair and sends files, and a brother on two devices. Add `SCREENSHOTS=some-folder` to either browser test to save screenshots.
+The database tests run the real migrations and seed in PGlite, Postgres compiled to WebAssembly, with a small stand-in for Supabase's sign-in, storage, Vault, pg_net, and pg_cron. The pg_net stand-in records each request instead of sending it. The Edge Function tests run `functions/calendar-social/social.js` in Node against the same database, with Instagram and Threads simulated by `tests/calendar/meta-sim.mjs`: sign-in, token renewal, the nightly sync, expired and rate-limited tokens, and what the media team sees when something goes wrong. The live browser test runs the same database behind a local imitation of Supabase's Data API, sign-in, and file storage. It walks through a visitor, the media team, a brother who becomes a chair and sends files, and a brother on two devices. Then the media team connects Instagram and Threads through the real Edge Function, matches a post by hand, refreshes, and disconnects. Add `SCREENSHOTS=some-folder` to either browser test to save screenshots.

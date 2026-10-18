@@ -1,7 +1,8 @@
-// Live mode: Supabase for sign-in, posts, requests, and request files.
+// Live mode: Supabase for sign-in, posts, requests, request files, and results.
 // Needs the project URL and publishable key in assets/calendar/config.js.
 // Brothers and chairs write through database functions; the media team edits posts directly under
-// row level security. Request files go to the private calendar-files storage bucket.
+// row level security. Request files go to the private calendar-files storage bucket. Results come
+// from the tables the calendar-social Edge Function fills each night.
 
 const PAGE = 1000;
 const BUCKET = 'calendar-files';
@@ -74,6 +75,25 @@ export function rowToRequest(r) {
     youth: !!r.youth, releases: !!r.releases, status: r.status, reviewNote: r.review_note || '',
     postId: r.post_id || '', memberId: r.member_id || '', files: Array.isArray(r.files) ? r.files : [],
     createdAt: r.created_at || '', updatedAt: r.updated_at || ''
+  };
+}
+
+// Results: the connected accounts, each platform post with its numbers, and followers by day.
+const num = (v) => (v === null || v === undefined || v === '' || Number.isNaN(Number(v)) ? null : Number(v));
+
+export function rowToAccount(r) {
+  return {
+    platform: r.platform, username: r.username || '', connectedAt: r.connected_at || '', tokenExpiresAt: r.token_expires_at || '',
+    lastSyncAt: r.last_sync_at || '', lastError: r.last_error || '', lastErrorAt: r.last_error_at || ''
+  };
+}
+
+export function rowToSocial(r) {
+  return {
+    platform: r.platform, mediaId: r.media_id, postedAt: r.posted_at, permalink: r.permalink || '', mediaType: r.media_type || '',
+    caption: r.caption || '', postId: r.post_id || '', matchSource: r.match_source || '',
+    views: num(r.views), reach: num(r.reach), likes: num(r.likes), comments: num(r.comments), saves: num(r.saves),
+    shares: num(r.shares), replies: num(r.replies), reposts: num(r.reposts), quotes: num(r.quotes), interactions: num(r.interactions)
   };
 }
 
@@ -314,5 +334,43 @@ export class LiveApi {
 
   async setChapterCode(code) {
     await this.rpc('cal_set_chapter_code', { p_code: code });
+  }
+
+  // ------------------------------------------------------------ results (media team)
+
+  async socialResults() {
+    const fallback = 'Results could not load.';
+    const [accounts, posts, followers] = await Promise.all([
+      this.rows(this.client.from('cal_social_accounts').select('*').order('platform'), fallback),
+      this.allRows(() => this.client.from('cal_social_posts').select('*').order('posted_at', { ascending: false }).order('media_id'), fallback),
+      this.allRows(() => this.client.from('cal_social_account_days').select('platform, day, followers').order('day').order('platform'), fallback)
+    ]);
+    return {
+      accounts: accounts.map(rowToAccount),
+      posts: posts.map(rowToSocial),
+      followers: followers.map((f) => ({ platform: f.platform, day: f.day, followers: num(f.followers) }))
+    };
+  }
+
+  // Starts a Connect and returns where to send the browser: the calendar-social Edge Function, which
+  // goes on to Instagram or Threads and comes back to returnTo.
+  async socialConnect(platform, returnTo) {
+    const state = await this.rpc('cal_social_connect_start', { p_platform: platform, p_return: returnTo });
+    return { url: `${this.config.supabaseUrl.replace(/\/+$/, '')}/functions/v1/calendar-social/connect?state=${encodeURIComponent(state)}` };
+  }
+
+  async socialDisconnect(platform) {
+    await this.rpc('cal_social_disconnect', { p_platform: platform });
+  }
+
+  // {ok, message}
+  async socialSyncNow() {
+    return this.rpc('cal_social_sync_now');
+  }
+
+  // postId matches the platform post to that calendar post; null marks it as not on the calendar;
+  // auto goes back to matching by date.
+  async socialSetMatch(platform, mediaId, postId, auto = false) {
+    await this.rpc('cal_social_set_match', { p_platform: platform, p_media_id: mediaId, p_post_id: postId || null, p_auto: !!auto });
   }
 }
