@@ -1,7 +1,8 @@
 // Demo mode: runs when assets/calendar/config.js has no Supabase settings.
 // Posts load from demo-posts.json; every change stays in this browser's localStorage, and attached
 // files stay in this tab only. The demo bar lets you view the page as the media team, a committee
-// chair, a brother, or a visitor. The rules match the database's.
+// chair, a brother, or a visitor. The rules match the database's. The Results tab shows sample
+// Instagram and Threads numbers.
 
 import { safeFileName } from './api-live.js';
 
@@ -49,6 +50,146 @@ function exampleRequests() {
   ];
 }
 
+// ------------------------------------------------------------ sample results
+// Numbers for the Results tab: Instagram and Threads posts from the last four months, matched to the
+// calendar the way the database matches them. Before the real calendar begins, example posts fill
+// in, so the demo has history on any date. A seeded generator keeps the numbers the same each visit.
+
+const NY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' });
+const nyDay = (ts) => NY.format(new Date(ts));
+const SAMPLE_DAYS = 120;
+
+function seeded(seed) {
+  let s = 2166136261;
+  for (const c of String(seed)) s = Math.imul(s ^ c.charCodeAt(0), 16777619) >>> 0;
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+}
+
+const PAST_EXAMPLES = [
+  ['chapter', 'graphic', 'Example: Chapter meeting reminder', ''],
+  ['series', 'carousel', 'Example: Brother spotlight', ''],
+  ['program', 'carousel', 'Example: Alpha Academy applications open', 'college'],
+  ['heritage', 'graphic', 'Example: Heritage month post', ''],
+  ['alpha', 'carousel', 'Example: This day in Alpha history', ''],
+  ['chapter', 'reel', 'Example: Step show highlights', ''],
+  ['program', 'graphic', 'Example: Register to vote', 'vote'],
+  ['holiday', 'graphic', 'Example: Holiday greeting', ''],
+  ['notable', 'graphic', 'Example: Happy birthday to a notable brother', ''],
+  ['chapter', 'flyer', 'Example: Event flyer', ''],
+  ['d9', 'graphic', "Example: A Divine Nine Founders' Day", ''],
+  ['program', 'carousel', 'Example: Project Alpha workshop recap', 'project-alpha'],
+  ['series', 'carousel', 'Example: This month in Alpha history', ''],
+  ['program', 'graphic', "Example: Brother's Keeper visit", 'keeper']
+];
+const CAT_PULL = { alpha: 1.6, chapter: 1.3, program: 1.0, heritage: 1.1, d9: 0.9, notable: 1.2, series: 0.85, holiday: 0.9, faith: 1.0 };
+const FMT_PULL = { reel: 2.4, carousel: 1.35, flyer: 1.1, graphic: 1, text: 0.7, story: 0.5 };
+
+function sampleNumbers(platform, post, ageDays, rand) {
+  const grown = Math.min(1, (ageDays + 1) / 6) ** 0.6;
+  const pull = (CAT_PULL[post.category] || 1) * (FMT_PULL[post.format] || 1) * (0.7 + 0.6 * rand()) * grown;
+  if (platform === 'instagram') {
+    const views = Math.round(880 * pull);
+    const likes = Math.round(views * (0.06 + 0.03 * rand())), comments = Math.round(views * 0.008 * (0.5 + rand()));
+    const saves = Math.round(views * 0.009 * (0.5 + rand())), shares = Math.round(views * 0.012 * (0.5 + rand()));
+    return { views, reach: Math.round(views * (0.72 + 0.1 * rand())), likes, comments, saves, shares, interactions: likes + comments + saves + shares };
+  }
+  const views = Math.round(260 * pull);
+  const likes = Math.round(views * (0.05 + 0.03 * rand())), replies = Math.round(views * 0.012 * (0.5 + rand()));
+  const reposts = Math.round(views * 0.006 * (0.5 + rand())), quotes = Math.round(views * 0.002 * rand()), shares = Math.round(views * 0.004 * rand());
+  return { views, likes, replies, reposts, quotes, shares, interactions: likes + replies + reposts + quotes + shares };
+}
+
+function sampleAccount(platform, connectedAt) {
+  const sync = new Date();
+  sync.setUTCHours(8, 20, 0, 0);
+  if (sync > new Date()) sync.setUTCDate(sync.getUTCDate() - 1);
+  return {
+    platform, username: 'gil1906', connectedAt, tokenExpiresAt: new Date(Date.now() + 52 * 86400000).toISOString(),
+    lastSyncAt: sync.toISOString(), lastError: '', lastErrorAt: ''
+  };
+}
+
+// Matches platform posts to calendar posts by date, the way cal_private.social_match does: one post
+// that day on the platform, and one calendar post that day for the platform that isn't skipped, isn't
+// a story, and isn't already matched. Hand matches stay.
+function rematch(state) {
+  const ids = new Set(state.posts.map((p) => p.id));
+  for (const platform of ['instagram', 'threads']) {
+    const mine = state.social.posts.filter((s) => s.platform === platform);
+    for (const s of mine) {
+      if (s.matchSource === 'date' || (s.matchSource === 'manual' && !ids.has(s.postId))) { s.postId = ''; s.matchSource = ''; }
+    }
+    const taken = new Set(mine.filter((s) => s.postId).map((s) => s.postId));
+    const open = new Map();
+    for (const s of mine) if (!s.matchSource) open.set(nyDay(s.postedAt), [...(open.get(nyDay(s.postedAt)) || []), s]);
+    for (const [day, list] of open) {
+      if (list.length !== 1) continue;
+      const fits = state.posts.filter((p) => p.date === day && (p.platforms || []).includes(platform) && p.status !== 'skipped' && p.format !== 'story' && !taken.has(p.id));
+      if (fits.length !== 1) continue;
+      Object.assign(list[0], { postId: fits[0].id, matchSource: 'date' });
+    }
+  }
+}
+
+function seedSocial(state) {
+  const rand = seeded('gil1906');
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - SAMPLE_DAYS);
+  const startISO = isoOf(start), yesterday = addDays(-1);
+  // Example calendar posts every few days before the real calendar begins.
+  const firstReal = state.posts.reduce((m, p) => (p.date < m ? p.date : m), '9999-12-31');
+  const examples = [];
+  for (let d = new Date(start), k = 0; isoOf(d) < firstReal && isoOf(d) <= yesterday; d.setDate(d.getDate() + 3 + (k % 2)), k += 1) {
+    const [category, format, title, program] = PAST_EXAMPLES[k % PAST_EXAMPLES.length];
+    examples.push({
+      id: `demo-past-${k}`, date: isoOf(d), title, category, program, format, platforms: format === 'reel' ? ['instagram'] : ['instagram', 'threads'],
+      status: 'posted', committee: 'Media', concept: 'Example post for the demo, from before the calendar began.', notes: '', eventDate: '',
+      link: '', assetLink: '', caption: '', source: '', requestId: '', createdAt: stamp(), updatedAt: stamp()
+    });
+  }
+  state.posts.push(...examples);
+
+  const posts = [];
+  let n = 0;
+  const add = (platform, day, hourUTC, post) => {
+    n += 1;
+    const postedAt = new Date(`${day}T${String(hourUTC).padStart(2, '0')}:${String(Math.floor(rand() * 50)).padStart(2, '0')}:00Z`).toISOString();
+    const age = Math.round((Date.now() - Date.parse(postedAt)) / 86400000);
+    posts.push({
+      platform, mediaId: `demo-${platform === 'instagram' ? 'ig' : 'th'}-${n}`, postedAt,
+      permalink: platform === 'instagram' ? 'https://www.instagram.com/gil1906/' : 'https://www.threads.com/@gil1906',
+      mediaType: platform === 'instagram' ? (post.format === 'reel' ? 'REELS' : post.format === 'carousel' ? 'CAROUSEL_ALBUM' : 'IMAGE') : 'TEXT_POST',
+      caption: String(post.caption || post.concept || post.title).slice(0, 300), postId: '', matchSource: '',
+      views: null, reach: null, likes: null, comments: null, saves: null, shares: null, replies: null, reposts: null, quotes: null, interactions: null,
+      ...sampleNumbers(platform, post, age, rand)
+    });
+  };
+  const planned = state.posts.filter((p) => p.date >= startISO && p.date <= yesterday && p.status !== 'skipped' && p.format !== 'story')
+    .sort((a, b) => a.date.localeCompare(b.date));
+  for (const p of planned) {
+    if (p.platforms.includes('instagram') && rand() < 0.9) add('instagram', p.date, 22, p);
+    if (p.platforms.includes('threads') && rand() < 0.78) add('threads', p.date, 23, p);
+  }
+  // A few posts that weren't on the calendar, for the matching list.
+  const busy = new Set(state.posts.map((p) => p.date));
+  const free = [];
+  for (let i = 5; i < SAMPLE_DAYS && free.length < 4; i += 9) { const d = addDays(-i); if (!busy.has(d)) free.push(d); }
+  const extra = { category: 'chapter', format: 'carousel', caption: 'Thank you to everyone who came out this weekend. More photos on our page.' };
+  free.slice(0, 3).forEach((d) => add('instagram', d, 21, extra));
+  if (free[3]) add('threads', free[3], 21, { ...extra, format: 'text', caption: 'Chapter meeting is this Thursday. See you there, brothers.' });
+
+  const followers = [];
+  let ig = 1362, th = 291;
+  for (let d = new Date(start); isoOf(d) <= isoOf(today); d.setDate(d.getDate() + 1)) {
+    ig += Math.round(rand() * 2.4 - 0.4);
+    th += Math.round(rand() * 1.8 - 0.3);
+    followers.push({ platform: 'instagram', day: isoOf(d), followers: ig }, { platform: 'threads', day: isoOf(d), followers: th });
+  }
+  const connectedAt = new Date(start.getTime() + 43200000).toISOString();
+  state.social = { accounts: { instagram: sampleAccount('instagram', connectedAt), threads: sampleAccount('threads', connectedAt) }, posts, followers };
+  rematch(state);
+}
+
 function exampleMembers() {
   const base = { createdAt: stamp(), lastSeenAt: stamp(), locked: false, signedIn: true };
   return [
@@ -74,6 +215,7 @@ export class DemoApi {
       state = { posts, requests: exampleRequests(), members: exampleMembers() };
     }
     if (state.brother) Object.assign(DEMO_BROTHER, state.brother);
+    if (!state.social || !Array.isArray(state.social.posts)) seedSocial(state);
     this.state = state;
     this.save();
   }
@@ -221,6 +363,7 @@ export class DemoApi {
       if (i < 0) throw new Error('That post no longer exists.');
       this.state.posts[i] = { ...this.state.posts[i], ...p };
     }
+    rematch(this.state);
     this.save();
     return clone(isNew ? p : this.state.posts.find((x) => x.id === post.id));
   }
@@ -228,13 +371,14 @@ export class DemoApi {
   async setPostStatus(id, status) {
     this.requireStaff();
     const p = this.state.posts.find((x) => x.id === id);
-    if (p) { p.status = status; p.updatedAt = stamp(); this.save(); }
+    if (p) { p.status = status; p.updatedAt = stamp(); rematch(this.state); this.save(); }
   }
 
   async deletePost(id) {
     this.requireStaff();
     this.state.posts = this.state.posts.filter((x) => x.id !== id);
     for (const r of this.state.requests) if (r.postId === id) r.postId = '';
+    rematch(this.state);
     this.save();
   }
 
@@ -256,6 +400,7 @@ export class DemoApi {
     const p = { ...clone(post), id: post.id || uid('p'), requestId: id, createdAt: stamp(), updatedAt: stamp() };
     this.state.posts.push(p);
     Object.assign(r, { status: 'approved', postId: p.id, reviewNote: '', updatedAt: stamp() });
+    rematch(this.state);
     this.save();
     return clone(p);
   }
@@ -292,4 +437,50 @@ export class DemoApi {
   }
 
   async setChapterCode(code) { this.requireStaff(); if ((code || '').trim().length < 6) throw new Error('Use a chapter code of at least 6 characters.'); }
+
+  // ------------------------------------------------------------ results (sample numbers)
+
+  async socialResults() {
+    this.requireStaff();
+    const s = this.state.social;
+    return clone({ accounts: Object.values(s.accounts), posts: s.posts, followers: s.followers });
+  }
+
+  // Live mode sends the browser to Instagram or Threads; the demo connects in place.
+  async socialConnect(platform) {
+    this.requireStaff();
+    if (!['instagram', 'threads'].includes(platform)) throw new Error('Choose Instagram or Threads.');
+    this.state.social.accounts[platform] = sampleAccount(platform, stamp());
+    this.save();
+    return { demo: true };
+  }
+
+  async socialDisconnect(platform) {
+    this.requireStaff();
+    delete this.state.social.accounts[platform];
+    this.save();
+  }
+
+  async socialSyncNow() {
+    this.requireStaff();
+    const accounts = Object.values(this.state.social.accounts);
+    if (!accounts.length) return { ok: false, message: 'Connect Instagram or Threads first.' };
+    for (const a of accounts) Object.assign(a, { lastSyncAt: stamp(), lastError: '', lastErrorAt: '' });
+    this.save();
+    return { ok: true, message: 'Refreshing. New numbers show up in a minute or two.' };
+  }
+
+  async socialSetMatch(platform, mediaId, postId, auto = false) {
+    this.requireStaff();
+    const s = this.state.social.posts.find((x) => x.platform === platform && x.mediaId === mediaId);
+    if (!s) throw new Error('That post is no longer in the results.');
+    if (auto) Object.assign(s, { postId: '', matchSource: '' });
+    else if (!postId) Object.assign(s, { postId: '', matchSource: 'none' });
+    else {
+      if (!this.state.posts.some((p) => p.id === postId)) throw new Error('That calendar post no longer exists.');
+      Object.assign(s, { postId, matchSource: 'manual' });
+    }
+    rematch(this.state);
+    this.save();
+  }
 }

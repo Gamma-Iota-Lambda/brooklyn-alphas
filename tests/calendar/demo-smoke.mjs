@@ -169,6 +169,7 @@ const drawer = (page) => page.locator('#gc-drawer');
   await page.locator('.demo .seg', { hasText: 'Brother' }).click();
   await page.waitForFunction(() => /Example Brother/.test(document.querySelector('.who')?.textContent || ''));
   assert.equal(await page.locator('.tab[data-view="requests"]').isHidden(), true, 'no Requests tab for brothers');
+  assert.equal(await page.locator('.tab[data-view="results"]').isHidden(), true, 'no Results tab for brothers');
   assert.equal(await page.locator('#gc-actions').getByRole('button', { name: 'Request a post' }).count(), 0);
   assert.match(await page.textContent('#gc-rail'), /Requests come from committee chairs/);
   assert.equal(await page.locator('[data-act="add-post"]').count(), 0, 'brothers cannot add posts');
@@ -176,6 +177,7 @@ const drawer = (page) => page.locator('#gc-drawer');
   step('view as a chair: request a post with files, and edit it');
   await page.locator('.demo .seg', { hasText: 'Chair' }).click();
   await page.waitForFunction(() => /Example Chair/.test(document.querySelector('.who')?.textContent || ''));
+  assert.equal(await page.locator('.tab[data-view="results"]').isHidden(), true, 'no Results tab for chairs');
   await page.locator('.tab', { hasText: 'Requests' }).click();
   assert.equal(await page.locator('.req .yours').count(), 1);
   await page.locator('#gc-view').getByRole('button', { name: 'Request a post' }).click();
@@ -250,6 +252,69 @@ const drawer = (page) => page.locator('#gc-drawer');
   await page.locator('.tab', { hasText: 'How it works' }).click();
   await page.waitForSelector('.guide h2');
   await shot(page, 'flow-guide', { fullPage: true });
+
+  step('results: connected accounts, numbers, and charts with a readout');
+  await page.locator('.tab', { hasText: 'Results' }).click();
+  await page.waitForSelector('.results .kpis');
+  assert.equal(await page.locator('.acct .pill', { hasText: 'Connected' }).count(), 2);
+  assert.match(await page.locator('.kpi').first().innerText(), /Posts\s+\d+/);
+  assert.ok(await page.locator('.viz[data-viz="months"] .viz-band path').count() > 0, 'the month chart draws its columns');
+  assert.equal(await page.locator('.viz[data-viz="followers-instagram"] .viz-line').count(), 1);
+  assert.ok(await page.locator('.hbar').count() > 0, 'what performs has bars');
+  await page.locator('.viz[data-viz="months"] .viz-hit').last().hover();
+  await page.waitForSelector('.viz[data-viz="months"] .viz-tip:not([hidden])');
+  assert.match(await page.locator('.viz[data-viz="months"] .viz-tip').innerText(), /Planned/);
+  await shot(page, 'flow-results', { fullPage: true });
+
+  step('results: filters, the table view, and keyboard steps through the followers chart');
+  await page.locator('.seg[data-platform="threads"]').click();
+  assert.equal(await page.locator('.viz[data-viz="followers-instagram"]').count(), 0, 'Instagram leaves the followers card');
+  assert.equal(await page.locator('.viz[data-viz="followers-threads"]').count(), 1);
+  await page.locator('.seg[data-platform="all"]').click();
+  await page.locator('[data-act="r-table"][data-chart="months"]').click();
+  assert.equal(await page.locator('.card', { hasText: 'Planned and posted' }).locator('table').count(), 1);
+  await page.locator('[data-act="r-table"][data-chart="months"]').click();
+  await page.locator('.seg[data-measure="interactions"]').click();
+  assert.match(await page.locator('.card', { hasText: 'Top posts' }).innerText(), /By interactions/);
+  await page.locator('.seg[data-measure="views"]').click();
+  await page.locator('.viz[data-viz="followers-instagram"] .viz-hit').focus();
+  await page.keyboard.press('ArrowLeft');
+  assert.match(await page.locator('.viz[data-viz="followers-instagram"] .viz-tip').innerText(), /followers/);
+
+  step('results: match a post by hand, go back to matching by date, then mark it as not on the calendar');
+  const unmatched = () => page.locator('.card', { has: page.locator('h3', { hasText: 'Not matched yet' }) }).locator('.row');
+  const firstKey = await unmatched().first().getAttribute('data-id');
+  await unmatched().first().click();
+  await page.waitForSelector('#gc-social-post');
+  await drawer(page).getByRole('button', { name: 'Save match' }).click();
+  assert.match(await toastText(page), /Choose the calendar post/);
+  await page.selectOption('#gc-social-post', { index: 1 });
+  await drawer(page).getByRole('button', { name: 'Save match' }).click();
+  assert.match(await toastText(page), /Matched to/);
+  assert.match(await drawer(page).innerText(), /Matched by hand to/);
+  await drawer(page).getByRole('button', { name: 'Match by date instead' }).click();
+  assert.match(await toastText(page), /Matching by date again/);
+  await drawer(page).getByRole('button', { name: 'Not on the calendar' }).click();
+  assert.match(await toastText(page), /Marked as not on the calendar/);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator(`.row[data-id="${firstKey}"]`).count(), 0, 'it leaves the list');
+
+  step("results: a calendar post's drawer shows how it did");
+  await page.locator('.card', { hasText: 'Top posts' }).locator('.postbtn').filter({ has: page.locator('.tag') }).first().click();
+  await drawer(page).locator('.resline [data-act="post"]').click();
+  await page.waitForSelector('#gc-drawer h4:has-text("Results")');
+  assert.match(await drawer(page).locator('.block', { hasText: 'Results' }).innerText(), /views/);
+  await page.keyboard.press('Escape');
+
+  step('results: disconnect, connect again, and refresh now');
+  const igCard = () => page.locator('.acct', { hasText: 'Instagram' });
+  await igCard().getByRole('button', { name: 'Disconnect' }).click();
+  await igCard().getByRole('button', { name: 'Disconnect' }).click();
+  assert.match(await toastText(page), /Instagram disconnected/);
+  await igCard().getByRole('button', { name: 'Connect Instagram' }).click();
+  await page.waitForSelector('.rnote:has-text("Instagram is connected")');
+  await page.getByRole('button', { name: 'Refresh now' }).click();
+  assert.match(await toastText(page), /Refreshing/);
   await ctx.close();
 }
 
@@ -291,6 +356,15 @@ const drawer = (page) => page.locator('#gc-drawer');
   await shot(page, 'phone-signin');
   await page.keyboard.press('Escape');
 
+  step('phone: results fit the screen');
+  await page.locator('.demo .seg', { hasText: 'Media team' }).click();
+  await page.waitForFunction(() => /Media team/.test(document.querySelector('.who')?.textContent || ''));
+  await page.locator('.tab', { hasText: 'Results' }).click();
+  await page.waitForSelector('.results .kpis');
+  await page.waitForSelector('.viz[data-viz="months"] svg');
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), 0, 'no sideways scroll');
+  await shot(page, 'phone-results', { fullPage: true });
+
   step('phone: the site menu still opens');
   await page.click('#hamburger');
   await page.waitForSelector('#mobile-menu.open');
@@ -301,4 +375,4 @@ const drawer = (page) => page.locator('#gc-drawer');
 await browser.close();
 await server.close();
 if (errors.length) { console.error('Browser errors:\n' + errors.join('\n')); process.exit(1); }
-console.log('Demo mode passed: media team, chair, brother, and visitor at desktop and phone widths.');
+console.log('Demo mode passed: media team, chair, brother, and visitor at desktop and phone widths, and the Results tab.');

@@ -35,7 +35,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── zelle-qr.png                # Zelle QR code (Impact $20 page)
 ├── chapter-photo1.png          # Chapter group photo
 ├── assets/calendar/            # The calendar's script, styles, demo data, and Supabase client
-├── supabase/                   # The calendar's database: migration, seed, setup, and go-live steps
+├── supabase/                   # The calendar's database (migrations, seed, setup, go-live steps) and its Edge Function
 ├── tests/calendar/             # The calendar's database and browser tests
 └── headshots/                 # Current board first, then photos of past officers
     ├── robert-brissett.jpeg
@@ -213,12 +213,15 @@ Each year, update `scholarship.html`:
 - **Requests:** only committee chairs send them, at least three weeks ahead. They attach photos, videos, or PDFs in the form (up to 10 files, 50 MB each) or share a Google Drive link. Each new request emails the media team through Resend. The media team asks questions, declines, or adds them to the calendar, and the chair follows the status on the same page. It's built to take over from the Google Form the chapter has used for content requests.
 - **Platforms:** Instagram, Threads, X, gil1906.org, Substack, and WhatsApp. Facebook is off while the chapter has no access to it.
 - **Exports:** the Agenda view downloads a spreadsheet (CSV) or a calendar file (.ics) for Google Calendar, Outlook, or Apple Calendar.
+- **Results:** the media team's Results tab shows how posts do on Instagram and Threads: followers over time, planned posts against what went out each month, average views by category, format, and national program, and top posts. A Supabase Edge Function signs in to @gil1906, keeps its access in Supabase Vault, and brings in every post's numbers each night, matching posts to the calendar by date. Setup is under Instagram and Threads results in [`supabase/README.md`](supabase/README.md).
 
 **Demo and live.** With `assets/calendar/config.js` empty, the page runs a demo on sample data saved in each visitor's browser. To go live, follow [`supabase/README.md`](supabase/README.md): create a Supabase project, run the SQL files in order, change two sign-in settings, and paste the project's address and publishable key into `config.js`.
 
 **Files:**
 - `calendar.html` holds the site's nav and footer around the calendar.
 - `assets/calendar/app.js` draws the page; `api-live.js` talks to Supabase and `api-demo.js` runs the demo. Both expose the same methods.
+- `assets/calendar/charts.js` draws the Results charts: SVG line and column charts and bar lists, each with a hover and keyboard readout and a table view. Their colors are the `--viz-*` values in `calendar.css`, checked for color blindness and contrast.
+- `supabase/functions/calendar-social/` is the Edge Function behind Results: `social.js` holds the sign-in and the nightly sync, and `index.ts` connects it to the database on Supabase.
 - `assets/calendar/data.js` lists the categories, programs, formats, platforms, statuses, committees, and upload limits. The database checks the same keys, so change both together. A comment above the platforms says how to bring Facebook back.
 - `assets/calendar/calendar.css` gives the calendar the look of the original version the media team approved: a light palette with old gold, Cormorant Garamond for headings, and Outfit for everything else. The site's nav and footer keep their own look. It loads after `style.css`, styles only elements inside `.gc`, and turns off the site's page-in animation on this page so the side panel stays fixed to the screen.
 - `assets/calendar/vendor/supabase.js` is the Supabase client (supabase-js 2.117.2), kept in the repository so the page needs no build step.
