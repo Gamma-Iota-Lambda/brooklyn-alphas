@@ -11,7 +11,7 @@ export const STATUSES = [
 export const STATUS = Object.fromEntries(STATUSES.map((s) => [s.key, s]));
 
 export const PLACEHOLDERS = [
-  ['{first_name}', 'first name'], ['{name}', 'full name'], ['{years}', 'years since crossing, as a number'],
+  ['{first_name}', 'first name'], ['{last_name}', 'last name'], ['{name}', 'full name'], ['{years}', 'years since crossing, as a number'],
   ['{years_text}', '"1 year" or "12 years"'], ['{ordinal}', '"12th"'], ['{crossing_year}', 'the year he crossed'], ['{date}', "today's date"]
 ];
 
@@ -71,6 +71,7 @@ export function render(template, b, dayISO) {
   const day = parse(dayISO || todayISO());
   return String(template || '')
     .replaceAll('{first_name}', b.first_name || '')
+    .replaceAll('{last_name}', b.last_name || '')
     .replaceAll('{name}', fullName(b))
     .replaceAll('{years}', years == null ? '' : String(years))
     .replaceAll('{years_text}', years == null ? '' : years === 1 ? '1 year' : `${years} years`)
