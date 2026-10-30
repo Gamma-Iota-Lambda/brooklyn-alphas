@@ -15,9 +15,11 @@ This folder holds everything the live mode needs:
 | `migrations/20261013000200_chairs_and_request_files.sql` | Committee chairs, request files and their private storage bucket, and no access for visitors |
 | `migrations/20261014000100_request_emails.sql` | Emails the media team about each new request |
 | `migrations/20261018000100_social_results.sql` | Instagram and Threads results: tables, matching, token storage, and the nightly schedule |
+| `migrations/20261030000100_brother_directory.sql` | The brother directory (directory.html): records, who sees what, self-service edits, and the morning birthday and anniversary emails |
 | `seed.sql` | The 128 planned posts for October 2026 to August 2027 |
 | `setup/1-codes.sql` | Sets the chapter code and the media code |
-| `setup/2-request-emails.sql` | Saves the Resend API key that request emails use |
+| `setup/2-request-emails.sql` | Saves the Resend API key that request emails and directory greetings use |
+| `setup/3-directory-greetings.sql` | Checks the directory's greetings setup and runs today's by hand |
 | `functions/calendar-social/` | The Edge Function that connects Instagram and Threads and brings in their numbers each night |
 
 ## Who can do what
@@ -87,6 +89,29 @@ Day to day:
 - **Check the nightly sync:** each account's last sync and any note show on the Results tab. In SQL Editor, `select status_code, content from net._http_response order by created desc limit 3;` shows the function's latest answers (202 means it started), and the function's logs are under Edge Functions, then calendar-social, then Logs.
 - **Pause the nightly sync:** run `select cron.unschedule('gil-calendar-social-sync');`. The `cron.schedule` line at the end of the migration turns it back on.
 
+## Brother directory
+
+`directory.html` (www.gil1906.org/directory) is the chapter directory. It shares the calendar's Supabase project and sign-in: brothers use the chapter code, their name, and their PIN; the media team uses its email login. The fifth migration adds it.
+
+- **Who sees what.** Visitors see nothing. Brothers see every brother's name, standing, crossing date, birthday (month and day), chapter of initiation, and the phone, email, and city each brother chooses to share. Street addresses, birth years, emergency contacts, and notes are for the brother himself and the media team. The database enforces it; the page only shows what it is allowed to read.
+- **Self-service.** Under My record, a brother picks his name and confirms it with the last four digits of the phone on file, then edits his own record. A brother with no record adds himself, marked for the media team to confirm. When a number changed or none is on file, the media team links the record to his sign-in under Manage.
+- **Media team.** Add, edit, and remove records, import a CSV (the old chapter database's columns work as they are), download the directory as CSV, confirm brothers who added themselves, and manage the greetings.
+- **Greetings.** Every day at 12:35 UTC (8:35 a.m. New York in summer, 7:35 in winter), pg_cron runs `cal_private.dir_run_greetings()`. Each brother with an email on file and greetings turned on gets a short branded email on his birthday and on the anniversary of his crossing. The media team gets an email the day before listing tomorrow's celebrations, including brothers with no email on file, so a post or a call can go out. Deceased brothers are never listed. `dir_messages` logs each send, one per brother, kind, and day, so a rerun never repeats one. The Messages tab holds the switches, the sender, the wording with placeholders, a preview, a test to yourself, and the log.
+
+Setup, once:
+
+1. **Run the SQL.** In SQL Editor, run `migrations/20261030000100_brother_directory.sql`. It needs the calendar's four migrations first.
+2. **Load the roll.** Either import the cleaned spreadsheet as CSV under Manage on the page (signed in as the media team), or run the private import SQL in SQL Editor. Neither file lives in this repository: they hold brothers' phone numbers and addresses.
+3. **Email.** Greetings use the Resend key the calendar already keeps in Vault (`setup/2-request-emails.sql`). The sender defaults to the calendar's; set a directory sender under Messages, for example `Gamma Iota Lambda <brothers@mail.gil1906.org>`. Any address at `mail.gil1906.org` works, since Resend verified the domain.
+4. **Check it.** Run `setup/3-directory-greetings.sql` to see the schedule, the email setup, and the next 30 days of celebrations, and to run today's greetings by hand if you want to.
+
+Day to day:
+
+- **Ask brothers to claim their records.** The old spreadsheet had no emails and only a handful of real birthdates, so the greetings reach brothers only after they claim a record and add both.
+- **Pause the greetings:** turn off Send greetings to brothers under Messages. `select cron.unschedule('gil-directory-greetings');` stops the job entirely; the `cron.schedule` line at the end of the migration turns it back on.
+- **See what went out:** the Sent panel under Messages, or `select * from public.dir_messages order by sent_at desc limit 20;`. Resend's answers for the last few hours are in `select status_code, content from net._http_response order by created desc limit 5;`.
+- **Remove a brother's data:** Remove on his record deletes it, his message log included.
+
 ## Go live
 
 Plan on about 30 minutes.
@@ -97,8 +122,9 @@ Plan on about 30 minutes.
    2. `migrations/20261013000200_chairs_and_request_files.sql`, which also creates the `calendar-files` bucket
    3. `migrations/20261014000100_request_emails.sql`
    4. `migrations/20261018000100_social_results.sql`
-   5. `seed.sql`
-   6. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
+   5. `migrations/20261030000100_brother_directory.sql`
+   6. `seed.sql`
+   7. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
 
    A project that already ran some of these runs only the migrations it hasn't, in order. Posts, requests, brothers, and codes all stay. After the second migration, brothers start as viewers, so mark the chairs in Manage access. Request emails also need `setup/2-request-emails.sql`; see Request emails above. Results also need the Edge Function and its secrets; see Instagram and Threads results above.
 3. **Turn on brother sign-in.** Under Authentication, open Sign In / Providers and turn on **Allow anonymous sign-ins**. Brothers don't create accounts; the chapter code and their PIN are their sign-in. Supabase allows 30 of these sign-ins per hour from one internet connection. Before a chapter meeting where many brothers sign in on the same Wi-Fi, raise that under Authentication, then Rate Limits.
