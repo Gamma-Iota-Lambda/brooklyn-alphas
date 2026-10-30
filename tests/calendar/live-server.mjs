@@ -22,7 +22,7 @@ const TYPES = {
   '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml'
 };
 const IDENT = /^[a-z_][a-z0-9_]*$/;
-const TABLES = new Set(['cal_posts', 'cal_requests', 'cal_members', 'cal_staff', 'cal_social_accounts', 'cal_social_posts',
+const TABLES = new Set(['cal_posts', 'cal_requests', 'cal_members', 'cal_staff', 'dir_brothers', 'dir_messages', 'cal_social_accounts', 'cal_social_posts',
   'cal_social_post_days', 'cal_social_account_days']);
 const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });

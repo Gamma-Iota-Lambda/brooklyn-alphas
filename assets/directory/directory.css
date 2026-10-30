@@ -1,0 +1,82 @@
+/* Brother directory (directory.html). Loads after calendar.css and reuses its tokens and
+   components, so the two pages read as one system. Only what the directory adds lives here. */
+
+/* phone fields, which calendar.css does not style */
+.gc input[type=tel] {
+  width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+  background: var(--ground); color: var(--fg); font: inherit; font-size: 16px;
+}
+
+/* standing pills */
+.gc .s-current { --s: var(--s-ready); } .gc .s-not-current { --s: var(--s-planned); } .gc .s-deceased { --s: var(--s-skipped); }
+.gc .s-life { --s: var(--s-posted); } .gc .s-pending { --s: var(--s-info); } .gc .s-claimed { --s: var(--s-design); }
+.gc .s-birthday { --s: var(--c-holiday); } .gc .s-anniversary { --s: var(--s-posted); } .gc .s-digest { --s: var(--s-design); } .gc .s-test { --s: var(--s-planned); }
+
+/* brother cards */
+.gc .bros { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.gc .bro {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); color: var(--fg); text-align: left; cursor: pointer;
+}
+.gc .bro:hover { border-color: var(--gold); }
+.gc .bro.mine { box-shadow: inset 0 0 0 2px var(--gold); }
+.gc .bro-top { display: flex; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.gc .bro-name { font-family: var(--font-display); font-size: 22px; font-weight: 600; line-height: 1.15; }
+.gc .bro-name small { display: block; margin-top: 2px; font-family: var(--font-ui); font-size: 12.5px; font-weight: 400; color: var(--muted); }
+.gc .bro-lines { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 13.5px; color: var(--muted); }
+.gc .bro-lines span b { font-weight: 500; color: var(--fg); }
+.gc .bro-lines a { color: var(--fg); text-decoration: none; }
+.gc .bro-lines a:hover { color: var(--gold-text); text-decoration: underline; }
+.gc .bro .tagrow { margin-top: auto; }
+.gc .letter { margin: 22px 0 10px; font-family: var(--font-display); font-weight: 600; font-size: 26px; color: var(--gold-text); }
+.gc .letter:first-child { margin-top: 0; }
+.gc .dirbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.gc .dirbar h2, .gc .celbar h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 32px; line-height: 1.1; }
+.gc .dirbar h2 span { color: var(--muted); font-weight: 500; }
+
+/* celebrations list */
+.gc .cel { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.gc .cel:last-child { border-bottom: 0; }
+.gc .cel.today { background: var(--gold-wash); }
+.gc .cel .what { gap: 2px; }
+.gc .cel .ttl { font-size: 15.5px; }
+.gc .cel .ttl button { padding: 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; }
+.gc .cel .ttl button:hover { color: var(--gold-text); text-decoration: underline; }
+.gc .cel .mail { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 560px) { .gc .cel { grid-template-columns: 46px minmax(0, 1fr); } .gc .cel .mail { grid-column: 2; } }
+
+/* my record and forms */
+.gc .mycard { display: flex; flex-direction: column; gap: 18px; max-width: 760px; padding: clamp(18px, 3vw, 28px); border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.gc .mycard h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 30px; line-height: 1.15; }
+.gc .fs { display: flex; flex-direction: column; gap: 14px; margin: 0; padding: 0; border: 0; }
+.gc .fs > legend { margin-bottom: 4px; padding: 0; color: var(--gold-text); font-size: 12px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; }
+.gc .grid3 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 620px) { .gc .grid3 { grid-template-columns: minmax(0, 1fr); } }
+.gc .formfoot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding-top: 6px; border-top: 1px solid var(--line); }
+.gc .formfoot .spacer { flex: 1; }
+.gc .matches { display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
+.gc .match { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; width: 100%; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--fg); text-align: left; cursor: pointer; }
+.gc .match:last-child { border-bottom: 0; }
+.gc .match:hover { background: var(--raised); }
+.gc .match b { font-weight: 500; }
+.gc .match span { color: var(--muted); font-size: 13px; }
+.gc .pinbox { display: flex; gap: 8px; align-items: center; }
+.gc .pinbox input { width: 7em; font-size: 20px; letter-spacing: 0.2em; text-align: center; }
+
+/* messages and manage */
+.gc .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 900px) { .gc .cols { grid-template-columns: minmax(0, 1fr); } }
+.gc .tmpl textarea { min-height: 150px; font-family: var(--font-ui); }
+.gc .pv { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--ground); font-size: 14px; }
+.gc .pv b { display: block; margin-bottom: 6px; }
+.gc .pv p { margin: 0; white-space: pre-wrap; }
+.gc .holders { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--muted); }
+.gc .holders code { padding: 1px 5px; border-radius: 4px; background: var(--raised); color: var(--fg); font-size: 12px; }
+.gc .switch { display: flex; gap: 12px; align-items: flex-start; font-size: 14px; cursor: pointer; }
+.gc .switch input { flex: none; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--gold); }
+.gc .switch span small { display: block; color: var(--muted); font-size: 12.5px; }
+.gc .drop input[type=file] { font-size: 13px; }
+.gc .kv.wide { grid-template-columns: 140px minmax(0, 1fr); }
+.gc .notes { white-space: pre-wrap; }
+.gc .linkrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.gc .linkrow select { width: auto; max-width: 100%; }
