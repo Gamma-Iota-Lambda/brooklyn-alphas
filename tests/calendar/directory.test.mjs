@@ -235,9 +235,9 @@ test('the media team edits the messages, previews them, and sends a test', async
   await assert.rejects(() => h.rpc(bro, 'dir_send_test', { p_kind: 'birthday' }), /Only the media team/);
   await assert.rejects(() => h.rpc(bro, 'dir_preview', { p_kind: 'birthday', p_subject: '', p_text: '' }), /Only the media team/);
 
-  const prev = await h.rpc1(staff, 'dir_preview', { p_kind: 'anniversary', p_subject: '', p_text: 'Brother {name}, {years_text} ({ordinal}) since {crossing_year}. {date}' });
+  const prev = await h.rpc1(staff, 'dir_preview', { p_kind: 'anniversary', p_subject: '', p_text: 'Brother {last_name}: {name}, {years_text} ({ordinal}) since {crossing_year}. {date}' });
   assert.equal(prev.subject, 'Happy Alpha anniversary, Brother Charles: 10 years in the bond');
-  assert.equal(prev.text, 'Brother Charles Wesley, 10 years (10th) since 2016. October 30, 2026');
+  assert.equal(prev.text, 'Brother Wesley: Charles Wesley, 10 years (10th) since 2016. October 30, 2026');
 
   const s = await h.rpc1(staff, 'dir_set_settings', { p: JSON.stringify({ birthday_subject: 'Many happy returns, {first_name}', birthday_text: 'Enjoy the day, Brother {first_name}.' }) });
   assert.equal(s.birthday_subject, 'Many happy returns, {first_name}');
