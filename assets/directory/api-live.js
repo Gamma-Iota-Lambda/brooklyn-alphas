@@ -154,6 +154,12 @@ export class LiveApi {
     return this.rpc('dir_update_me', { p: fields });
   }
 
+  // The public visiting-brother form: starts an anonymous session when there is none.
+  async guestSubmit(fields, website = '') {
+    await this.ensureSession();
+    return this.rpc('dir_guest_submit', { p: fields, p_website: website || null });
+  }
+
   // ------------------------------------------------------------ media team
 
   async save(id, fields) {

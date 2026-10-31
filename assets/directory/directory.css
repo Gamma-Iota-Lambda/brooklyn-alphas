@@ -8,7 +8,7 @@
 }
 
 /* standing pills */
-.gc .s-current { --s: var(--s-ready); } .gc .s-not-current { --s: var(--s-planned); } .gc .s-deceased { --s: var(--s-skipped); }
+.gc .s-current { --s: var(--s-ready); } .gc .s-not-current { --s: var(--s-planned); } .gc .s-deceased { --s: var(--s-skipped); } .gc .s-visiting { --s: var(--c-program); }
 .gc .s-life { --s: var(--s-posted); } .gc .s-pending { --s: var(--s-info); } .gc .s-claimed { --s: var(--s-design); }
 .gc .s-birthday { --s: var(--c-holiday); } .gc .s-anniversary { --s: var(--s-posted); } .gc .s-digest { --s: var(--s-design); } .gc .s-test { --s: var(--s-planned); }
 
@@ -64,6 +64,7 @@
 .gc .pinbox input { width: 7em; font-size: 20px; letter-spacing: 0.2em; text-align: center; }
 
 /* messages and manage */
+.gc .side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .gc .cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 900px) { .gc .cols { grid-template-columns: minmax(0, 1fr); } }
 .gc .tmpl textarea { min-height: 150px; font-family: var(--font-ui); }
@@ -80,3 +81,7 @@
 .gc .notes { white-space: pre-wrap; }
 .gc .linkrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .gc .linkrow select { width: auto; max-width: 100%; }
+
+/* the visiting-brother form */
+.gc .hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.gc .thanks { max-width: 640px; }

@@ -132,12 +132,41 @@ const role = async (page, r) => { await page.click(`[data-act="demo-role"][data-
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-act="export"]')]);
   assert.match(dl.suggestedFilename(), /^gil-directory-\d{4}-\d{2}-\d{2}\.csv$/);
 
-  step('visitor: a sign-in prompt and nothing else');
+  step('visitor: a sign-in prompt and nothing else, plus the visiting-brother form');
   await role(page, 'visitor');
   await page.waitForSelector('#gc-view .empty');
   assert.match(await page.textContent('#gc-view'), /Sign in to see the directory/);
   assert.equal(await page.locator('.bro').count(), 0);
   await shot(page, 'desktop-visitor');
+  await page.click('#gc-view [data-act="view"][data-view="guest"]');
+  await page.waitForSelector('#gc-form[data-kind="guest"]');
+  await page.fill('#f-first_name', 'Kofi');
+  await page.fill('#f-last_name', 'Mensah');
+  await page.click('#gc-form button[type="submit"]');
+  assert.match(await page.textContent('#gc-form-err'), /email or a phone number/);
+  await page.fill('#f-email', 'kofi@example.org');
+  await page.fill('#f-initiation_chapter', 'Kappa Chapter');
+  await page.fill('#f-home_chapter', 'Zeta Chapter');
+  await page.fill('#f-crossing_date', '2012-03-10');
+  await page.fill('#f-guest_note', 'Visited for Founders Day.');
+  await shot(page, 'desktop-guest', { fullPage: true });
+  await page.click('#gc-form button[type="submit"]');
+  await page.waitForSelector('.thanks');
+  assert.match(await page.textContent('.thanks'), /Thank you, Kofi Mensah/);
+  await role(page, 'staff');
+  await page.waitForSelector('.bro');
+  await page.click('.tab[data-view="manage"]');
+  await page.waitForSelector('.person');
+  assert.match(await page.textContent('.person:has-text("Kofi Mensah")'), /Visiting/);
+  await page.click('.tab[data-view="directory"]');
+  await page.click('[data-act="filter"][data-filter="visiting"]');
+  assert.equal(await page.locator('.bro').count(), 2);
+  await page.click('.bro:has-text("Kofi Mensah")');
+  const kofi = await drawer(page).textContent();
+  assert.match(kofi, /Visited for Founders Day/);
+  assert.match(kofi, /Zeta Chapter/);
+  await page.keyboard.press('Escape');
+  await page.click('[data-act="filter"][data-filter="all"]');
   await ctx.close();
 }
 
