@@ -269,3 +269,54 @@ test('the run never throws: a failing mail path is logged and reported', async (
   assert.equal(res.day, '2026-10-30');
   assert.match(res.error, /pg_net is not available/);
 });
+
+test('a visiting brother adds himself from the public form, with no chapter code', async () => {
+  const { h, staff } = await seeded();
+  const guest = await h.createUser({ anon: true });
+  const form = (over = {}) => JSON.stringify({ first_name: 'Marcus', last_name: 'Holloway', email: 'MHolloway@Example.org', phone: '917-555-0112',
+    initiation_chapter: 'Beta Chapter', home_chapter: 'Delta Chapter', crossing_date: '2014-04-12', city: 'Brooklyn', state: 'ny',
+    guest_note: 'Moved to Clinton Hill. Interested in Alpha Academy.', greetings: true, share_contact: true, ...over });
+
+  await assert.rejects(() => h.rpc(null, 'dir_guest_submit', { p: form() }), /permission denied/);
+  await assert.rejects(() => h.rpc(guest, 'dir_guest_submit', { p: form({ email: '', phone: '' }) }), /email or a phone number/);
+  await assert.rejects(() => h.rpc(guest, 'dir_guest_submit', { p: form({ first_name: 'Marcus', last_name: 'Bell' }) }), /already on the chapter roll/);
+
+  const res = await h.rpc1(guest, 'dir_guest_submit', { p: form() });
+  assert.deepEqual(res, { ok: true, updated: false, name: 'Marcus Holloway' });
+  const row = (await h.sql(`select status, pending, share_contact, email, phone, state, home_chapter, guest_note, created_by from public.dir_brothers where last_name = 'Holloway'`))[0];
+  assert.deepEqual(row, { status: 'visiting', pending: true, share_contact: false, email: 'mholloway@example.org', phone: '9175550112', state: 'NY',
+    home_chapter: 'Delta Chapter', guest_note: 'Moved to Clinton Hill. Interested in Alpha Academy.', created_by: guest.id }, 'contact details stay unshared even when the form says otherwise');
+  const mail = (await calls(h)).pop();
+  assert.deepEqual(mail.body.to, ['eugene@example.org']);
+  assert.equal(mail.body.subject, 'Visiting brother: Marcus Holloway');
+  assert.match(mail.body.text, /Chapter now: Delta Chapter/);
+  assert.match(mail.body.text, /Interested in Alpha Academy/);
+
+  // Again with the same email: an update, still one record.
+  const again = await h.rpc1(guest, 'dir_guest_submit', { p: form({ phone: '', city: 'Queens' }) });
+  assert.equal(again.updated, true);
+  const rows = await h.sql(`select phone, city from public.dir_brothers where last_name = 'Holloway'`);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], { phone: '9175550112', city: 'Queens' }, 'blanks do not erase what he sent before');
+
+  // The honeypot swallows bots; brothers see him as visiting without contact details; staff see all.
+  assert.deepEqual(await h.rpc1(guest, 'dir_guest_submit', { p: form({ last_name: 'Bot' }), p_website: 'http://spam' }), { ok: true });
+  assert.equal((await h.sql(`select count(*)::int n from public.dir_brothers where last_name = 'Bot'`))[0].n, 0);
+  const bro = await h.member('Marcus Bell', '1906');
+  const seen = (await h.rpc(bro, 'dir_list')).map((r) => r.dir_list).find((b) => b.last_name === 'Holloway');
+  assert.equal(seen.status, 'visiting');
+  assert.equal(seen.home_chapter, 'Delta Chapter');
+  assert.equal(seen.email, null);
+  const full = (await h.rpc(staff, 'dir_list')).map((r) => r.dir_list).find((b) => b.last_name === 'Holloway');
+  assert.equal(full.guest_note, 'Moved to Clinton Hill. Interested in Alpha Academy.');
+  // The media team confirms him and shares his details; he still gets anniversary notes.
+  await h.rpc(staff, 'dir_save', { p_id: full.id, p: JSON.stringify({ pending: false, share_contact: true }) });
+  await h.setNow('2027-04-12T13:00:00Z');
+  const run = (await h.sql(`select cal_private.dir_run_greetings() as r`))[0].r;
+  assert.ok(run.sent >= 1);
+  assert.ok((await calls(h)).some((c) => c.body.to[0] === 'mholloway@example.org' && /13 years/.test(c.body.subject)));
+  // Three a day from one session is the limit.
+  const other = await h.createUser({ anon: true });
+  for (const n of ['One', 'Two', 'Three']) await h.rpc(other, 'dir_guest_submit', { p: form({ last_name: n, email: `${n}@example.org` }) });
+  await assert.rejects(() => h.rpc(other, 'dir_guest_submit', { p: form({ last_name: 'Four', email: 'four@example.org' }) }), /enough for today/);
+});

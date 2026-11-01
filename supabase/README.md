@@ -16,6 +16,9 @@ This folder holds everything the live mode needs:
 | `migrations/20261014000100_request_emails.sql` | Emails the media team about each new request |
 | `migrations/20261018000100_social_results.sql` | Instagram and Threads results: tables, matching, token storage, and the nightly schedule |
 | `migrations/20261030000100_brother_directory.sql` | The brother directory (directory.html): records, who sees what, self-service edits, and the morning birthday and anniversary emails |
+| `migrations/20261030000200_directory_last_name.sql` | `{last_name}` in the greeting messages |
+| `migrations/20261030000300_directory_email_design.sql` | Greeting emails with the chapter crest and a heading |
+| `migrations/20261031000100_directory_visiting_brothers.sql` | The Visiting standing and the public visiting-brother form |
 | `seed.sql` | The 128 planned posts for October 2026 to August 2027 |
 | `setup/1-codes.sql` | Sets the chapter code and the media code |
 | `setup/2-request-emails.sql` | Saves the Resend API key that request emails and directory greetings use |
@@ -95,12 +98,13 @@ Day to day:
 
 - **Who sees what.** Visitors see nothing. Brothers see every brother's name, standing, crossing date, birthday (month and day), chapter of initiation, and the phone, email, and city each brother chooses to share. Street addresses, birth years, emergency contacts, and notes are for the brother himself and the media team. The database enforces it; the page only shows what it is allowed to read.
 - **Self-service.** Under My record, a brother picks his name and confirms it with the last four digits of the phone on file, then edits his own record. A brother with no record adds himself, marked for the media team to confirm. When a number changed or none is on file, the media team links the record to his sign-in under Manage.
+- **Visiting brothers.** A brother from another chapter, or not yet affiliated, adds himself at `gil1906.org/directory#guest` with no sign-in: name, how to reach him, his chapters, dates, and a note. He arrives with the Visiting standing, marked Needs review, with his contact details unshared until the media team confirms him, and the media team gets an email. Visiting brothers get the greeting emails too, for reclamation. A second submission with the same email updates the first; one session can add three a day; a hidden field catches bots. Put the link or its QR code on the sign-in sheet at meetings.
 - **Media team.** Add, edit, and remove records, import a CSV (the old chapter database's columns work as they are), download the directory as CSV, confirm brothers who added themselves, and manage the greetings.
 - **Greetings.** Every day at 12:35 UTC (8:35 a.m. New York in summer, 7:35 in winter), pg_cron runs `cal_private.dir_run_greetings()`. Each brother with an email on file and greetings turned on gets a short branded email on his birthday and on the anniversary of his crossing. The media team gets an email the day before listing tomorrow's celebrations, including brothers with no email on file, so a post or a call can go out. Deceased brothers are never listed. `dir_messages` logs each send, one per brother, kind, and day, so a rerun never repeats one. The Messages tab holds the switches, the sender, the wording with placeholders, a preview, a test to yourself, and the log.
 
 Setup, once:
 
-1. **Run the SQL.** In SQL Editor, run `migrations/20261030000100_brother_directory.sql`. It needs the calendar's four migrations first.
+1. **Run the SQL.** In SQL Editor, run the four directory migrations in order, starting with `migrations/20261030000100_brother_directory.sql`. They need the calendar's four migrations first.
 2. **Load the roll.** Either import the cleaned spreadsheet as CSV under Manage on the page (signed in as the media team), or run the private import SQL in SQL Editor. Neither file lives in this repository: they hold brothers' phone numbers and addresses.
 3. **Email.** Greetings use the Resend key the calendar already keeps in Vault (`setup/2-request-emails.sql`). The sender defaults to the calendar's; set a directory sender under Messages, for example `Gamma Iota Lambda <brothers@mail.gil1906.org>`. Any address at `mail.gil1906.org` works, since Resend verified the domain.
 4. **Check it.** Run `setup/3-directory-greetings.sql` to see the schedule, the email setup, and the next 30 days of celebrations, and to run today's greetings by hand if you want to.

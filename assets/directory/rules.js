@@ -6,6 +6,7 @@
 export const STATUSES = [
   { key: 'current', label: 'Current', desc: 'Financial with the chapter.' },
   { key: 'not-current', label: 'Not current', desc: 'On the roll, not financial this year.' },
+  { key: 'visiting', label: 'Visiting', desc: 'A brother from another chapter, or not yet affiliated, kept in touch with for reclamation.' },
   { key: 'deceased', label: 'Omega Chapter', desc: 'Entered Omega Chapter. Kept for the record; never emailed.' }
 ];
 export const STATUS = Object.fromEntries(STATUSES.map((s) => [s.key, s]));
@@ -91,7 +92,8 @@ export function checkFields(input, all = false) {
   str('phone', digits); str('phone_alt', digits);
   str('address'); str('city'); str('state', (v) => clean(v).toUpperCase());
   str('zip', (v) => String(v ?? '').replace(/\D/g, ''));
-  str('initiation_chapter'); str('emergency_contact_name'); str('emergency_contact_phone', digits);
+  str('initiation_chapter'); str('home_chapter'); str('emergency_contact_name'); str('emergency_contact_phone', digits);
+  if (has('guest_note')) f.guest_note = String(input.guest_note ?? '').trim() || null;
   if (has('share_contact')) f.share_contact = input.share_contact !== false && input.share_contact !== 'false';
   if (has('greetings')) f.greetings = input.greetings !== false && input.greetings !== 'false';
   for (const k of ['birth_date', 'crossing_date']) {
@@ -120,7 +122,8 @@ export function checkFields(input, all = false) {
   if (f.birth_date && (f.birth_date > today || f.birth_date < '1900-01-01')) return { error: 'That birthdate is not possible.' };
   if (f.crossing_date && (f.crossing_date > today || f.crossing_date < '1906-12-04')) return { error: 'A crossing date falls between December 4, 1906 and today.' };
   if (f.status && !STATUS[f.status]) return { error: 'Choose a standing from the list.' };
-  if (over('initiation_chapter', 80) || over('emergency_contact_name', 80)) return { error: 'Keep the chapter and contact names under 80 characters.' };
+  if (over('initiation_chapter', 80) || over('home_chapter', 80) || over('emergency_contact_name', 80)) return { error: 'Keep the chapter and contact names under 80 characters.' };
+  if (over('guest_note', 1000)) return { error: 'Keep the note under 1,000 characters.' };
   if (over('notes', 2000)) return { error: 'Keep the notes under 2,000 characters.' };
   return { fields: f };
 }
@@ -219,7 +222,7 @@ export function rowsFromSheet(table) {
     const name = `${first} ${last}`;
     if (raw.status != null) {
       const s = clean(raw.status).toLowerCase();
-      out.status = { current: 'current', 'not current': 'not-current', 'not-current': 'not-current', deceased: 'deceased', omega: 'deceased', 'omega chapter': 'deceased' }[s] || '';
+      out.status = { current: 'current', 'not current': 'not-current', 'not-current': 'not-current', visiting: 'visiting', guest: 'visiting', 'visiting brother': 'visiting', deceased: 'deceased', omega: 'deceased', 'omega chapter': 'deceased' }[s] || '';
       if (!out.status) { rowNotes.push(`standing "${clean(raw.status)}" was not understood; set to current`); out.status = 'current'; }
     }
     if (raw.life_member != null) out.life_member = /^(x|y|yes|true|1|life)$/i.test(clean(raw.life_member));
@@ -233,7 +236,7 @@ export function rowsFromSheet(table) {
         else rowNotes.push(`Active/Inactive column held "${clean(raw.active)}"`);
       }
     }
-    for (const k of ['email', 'initiation_chapter', 'emergency_contact_name', 'notes', 'city', 'state', 'zip']) if (raw[k] != null) out[k] = clean(raw[k]);
+    for (const k of ['email', 'initiation_chapter', 'home_chapter', 'guest_note', 'emergency_contact_name', 'notes', 'city', 'state', 'zip']) if (raw[k] != null) out[k] = clean(raw[k]);
     if (raw.address != null) {
       const a = clean(raw.address);
       if (/^[\d.]+$/.test(a)) rowNotes.push(`address "${a}" was left out`); else out.address = a;
@@ -286,7 +289,7 @@ export function rowsFromSheet(table) {
 
 export const CSV_COLUMNS = [
   'first_name', 'middle_name', 'last_name', 'suffix', 'status', 'life_member', 'active', 'email', 'phone', 'phone_alt', 'address', 'city',
-  'state', 'zip', 'birth_date', 'crossing_date', 'initiation_chapter', 'emergency_contact_name', 'emergency_contact_phone',
+  'state', 'zip', 'birth_date', 'crossing_date', 'initiation_chapter', 'home_chapter', 'guest_note', 'emergency_contact_name', 'emergency_contact_phone',
   'share_contact', 'greetings', 'pending', 'notes'
 ];
 

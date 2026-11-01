@@ -42,6 +42,7 @@ function sampleBrothers() {
     b({ first_name: 'Kwame', last_name: 'Boateng', status: 'not-current', phone: '5165550108', crossing_date: shift(40, 100), city: 'Westbury' }),
     b({ first_name: 'Samuel', last_name: 'Lindo', life_member: true, phone: '9175550109', email: 'samuel@example.org', birth_date: shift(62, 15), crossing_date: shift(41, 5), initiation_chapter: 'Gamma Iota Lambda' }),
     b({ first_name: 'Rafael', last_name: 'Duarte', phone: '3475550110', birth_date: shift(31, 45), crossing_date: shift(3, 1), pending: true, notes: 'Added himself from the directory page; confirm at the next meeting.' }),
+    b({ first_name: 'Marcus', last_name: 'Holloway', status: 'visiting', phone: '9175550112', email: 'mholloway@example.org', initiation_chapter: 'Beta Chapter', home_chapter: 'Delta Chapter (Baltimore)', crossing_date: shift(12, 90), guest_note: 'Moved to Clinton Hill in September. Interested in Alpha Academy.', share_contact: false, pending: true, city: 'Brooklyn' }),
     b({ first_name: 'Elijah', last_name: 'Thorne', phone: '7185550111', email: 'elijah@example.org', birth_date: shift(44, -2), crossing_date: shift(20, -2), greetings: false })
   ];
 }
@@ -93,7 +94,7 @@ export class DemoApi {
       id: b.id, first_name: b.first_name, middle_name: b.middle_name, last_name: b.last_name, suffix: b.suffix, name: fullName(b),
       status: b.status, life_member: b.life_member, email: b.share_contact ? b.email : null, phone: b.share_contact ? b.phone : null,
       city: b.share_contact ? b.city : null, state: b.share_contact ? b.state : null,
-      birthday: b.birth_date ? b.birth_date.slice(5) : null, crossing_date: b.crossing_date, initiation_chapter: b.initiation_chapter,
+      birthday: b.birth_date ? b.birth_date.slice(5) : null, crossing_date: b.crossing_date, initiation_chapter: b.initiation_chapter, home_chapter: b.home_chapter || null,
       years: yearsBetween(b.crossing_date), claimed: !!b.member_id, pending: b.pending
     };
   }
@@ -146,6 +147,22 @@ export class DemoApi {
     }
     this.data.brothers.push(b); this.persist();
     return this.privateJson(b);
+  }
+
+  async guestSubmit(input, website = '') {
+    if (website) return { ok: true };
+    const base = { id: uid(), member_id: null, status: 'visiting', life_member: false, active: null, share_contact: false, greetings: true, pending: true, notes: null, created_at: stamp() };
+    const { share_contact, ...rest } = input;
+    const b = this.apply(base, rest, false);
+    if (!b.first_name || !b.last_name) throw new Error('Add a first and last name.');
+    if (!b.email && !b.phone) throw new Error('Add an email or a phone number so the chapter can reach you.');
+    if (this.data.brothers.some((x) => x.status !== 'visiting' && x.first_name.toLowerCase() === b.first_name.toLowerCase() && x.last_name.toLowerCase() === b.last_name.toLowerCase())) {
+      throw new Error('A brother with your name is already on the chapter roll. Sign in with the chapter code and claim your record instead. Ask any brother for the code.');
+    }
+    const cur = b.email && this.data.brothers.find((x) => x.status === 'visiting' && x.email === b.email);
+    if (cur) { Object.assign(cur, Object.fromEntries(Object.entries(b).filter(([k, v]) => v != null && !['id', 'created_at', 'share_contact'].includes(k))), { pending: true, updated_at: stamp() }); this.persist(); return { ok: true, updated: true, name: fullName(cur) }; }
+    this.data.brothers.push(b); this.persist();
+    return { ok: true, updated: false, name: fullName(b) };
   }
 
   async updateMe(input) {

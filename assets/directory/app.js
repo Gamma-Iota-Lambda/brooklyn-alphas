@@ -40,14 +40,15 @@ const hashView = (location.hash || '').replace('#', '');
 const wantsSignin = hashView === 'signin';
 const FILTERS = [
   { key: 'all', label: 'Everyone' }, { key: 'current', label: 'Current' }, { key: 'life', label: 'Life members' },
-  { key: 'not-current', label: 'Not current' }, { key: 'deceased', label: 'Omega Chapter' }, { key: 'unclaimed', label: 'Not claimed yet' }
+  { key: 'not-current', label: 'Not current' }, { key: 'visiting', label: 'Visiting' }, { key: 'deceased', label: 'Omega Chapter' }, { key: 'unclaimed', label: 'Not claimed yet' }
 ];
 
 // ---------------------------------------------------------------- state
 const S = {
   role: 'visitor', me: null, account: null, settings: { ready: true, email_ready: false },
   list: [], byId: new Map(), loaded: false, mine: null, loadError: '',
-  view: ['directory', 'celebrations', 'me', 'messages', 'manage', 'guide'].includes(hashView) ? hashView : 'directory',
+  view: ['directory', 'celebrations', 'me', 'messages', 'manage', 'guide', 'guest'].includes(hashView) ? hashView : 'directory',
+  guest: { done: null },
   q: '', filter: 'all',
   drawer: null,
   signin: { mode: store.get('last-name', '') ? 'rejoin' : 'join', note: '', done: '' },
@@ -122,7 +123,7 @@ function renderShell() {
   } else if (S.account && !S.account.anonymous) {
     a = '<button class="btn primary" data-act="signin" data-mode="staff">Finish media team sign-in</button><button class="btn quiet" data-act="signout">Sign out</button>';
   } else {
-    a = '<button class="btn primary" data-act="signin">Sign in</button>';
+    a = '<button class="btn primary" data-act="signin">Sign in</button><button class="btn" data-act="view" data-view="guest">Visiting brother?</button>';
   }
   if (isStaff()) a += `<button class="btn" data-act="add">${ICON.plus}Add a brother</button>`;
   el.actions.innerHTML = a;
@@ -149,7 +150,7 @@ function renderShell() {
 function matchFilter(b, key) {
   if (key === 'all') return true;
   if (key === 'life') return b.life_member;
-  if (key === 'unclaimed') return !b.claimed && b.status !== 'deceased';
+  if (key === 'unclaimed') return !b.claimed && b.status !== 'deceased' && b.status !== 'visiting';
   return b.status === key;
 }
 
@@ -175,10 +176,11 @@ function renderMain() {
     el.layout.classList.add('solo');
     return;
   }
+  if (S.view === 'guest') { el.layout.classList.add('solo'); renderGuest(); return; }
   if (!signedIn() && S.view !== 'guide') {
     el.view.innerHTML = emptyHTML('Brothers only', 'Sign in to see the directory',
       `The directory is for brothers of Gamma Iota Lambda. Sign in with the chapter code the first time, then with your name and PIN, the same way as the content calendar. Ask ${esc(CONTACT)} for the code.`,
-      '<div class="btns"><button class="btn primary" data-act="signin">Sign in</button><button class="btn" data-act="view" data-view="guide">How it works</button></div>');
+      '<div class="btns"><button class="btn primary" data-act="signin">Sign in</button><button class="btn" data-act="view" data-view="guest">Visiting brother? Add your info</button><button class="btn quiet" data-act="view" data-view="guide">How it works</button></div>');
     el.layout.classList.add('solo');
     return;
   }
@@ -198,6 +200,7 @@ function broCard(b) {
   if (b.phone) lines.push(`<span><a href="tel:${esc(b.phone)}" data-stop>${esc(fmtPhone(b.phone))}</a></span>`);
   if (b.email) lines.push(`<span><a href="mailto:${esc(b.email)}" data-stop>${esc(b.email)}</a></span>`);
   if (b.city) lines.push(`<span>${esc([b.city, b.state].filter(Boolean).join(', '))}</span>`);
+  if (b.status === 'visiting' && b.home_chapter) lines.push(`<span>Now with ${esc(b.home_chapter)}</span>`);
   if (crossedText(b)) lines.push(`<span>${esc(crossedText(b))}</span>`);
   if (b.birthday) lines.push(`<span>Birthday ${esc(mdOf(b.birthday))}</span>`);
   return `<button class="bro${mine ? ' mine' : ''}" data-act="open" data-id="${esc(b.id)}">
@@ -293,7 +296,8 @@ function recordFields(b, all) {
     <fieldset class="fs"><legend>In Alpha</legend>
       <div class="grid2">${fieldHTML('f-crossing_date', 'Crossing date', inputHTML('f-crossing_date', 'date', v('crossing_date'), 'min="1906-12-04"'), 'The day you were initiated.')}
       ${fieldHTML('f-birth_date', 'Birthdate', inputHTML('f-birth_date', 'date', v('birth_date'), 'min="1900-01-01"'), 'Brothers see the month and day only.')}</div>
-      ${fieldHTML('f-initiation_chapter', 'Chapter of initiation', inputHTML('f-initiation_chapter', 'text', v('initiation_chapter'), 'maxlength="80" placeholder="Gamma Iota Lambda"'))}
+      <div class="grid2">${fieldHTML('f-initiation_chapter', 'Chapter of initiation', inputHTML('f-initiation_chapter', 'text', v('initiation_chapter'), 'maxlength="80" placeholder="Gamma Iota Lambda"'))}
+      ${fieldHTML('f-home_chapter', 'Chapter now', inputHTML('f-home_chapter', 'text', v('home_chapter'), 'maxlength="80"'), 'If active with another chapter.')}</div>
     </fieldset>
     <fieldset class="fs"><legend>Emergency contact</legend>
       <div class="grid2">${fieldHTML('f-emergency_contact_name', 'Name', inputHTML('f-emergency_contact_name', 'text', v('emergency_contact_name'), 'maxlength="80"'))}
@@ -308,6 +312,7 @@ function recordFields(b, all) {
       <div class="grid3">${fieldHTML('f-status', 'Standing', selectHTML('f-status', STATUSES, v('status') || 'current'))}
       ${fieldHTML('f-life_member', 'Life member', selectHTML('f-life_member', [{ key: 'false', label: 'No' }, { key: 'true', label: 'Yes' }], String(!!v('life_member'))))}
       ${fieldHTML('f-active', 'Active in chapter life', selectHTML('f-active', [{ key: '', label: 'Not noted' }, { key: 'true', label: 'Active' }, { key: 'false', label: 'Inactive' }], b && b.active != null ? String(b.active) : ''))}</div>
+      ${fieldHTML('f-guest_note', 'His note', areaHTML('f-guest_note', v('guest_note'), 'maxlength="1000" class="ta-short"'), 'What a visiting brother wrote on the form.')}
       ${fieldHTML('f-notes', 'Notes', areaHTML('f-notes', v('notes'), 'maxlength="2000" class="ta-mid"'), 'For the media team only. Import notes about fixed or dropped values land here.')}
       ${b && b.pending ? switchHTML('f-pending', true, 'Still needs review', 'Turn off once the record is confirmed.') : ''}
     </fieldset>` : ''}`;
@@ -319,12 +324,12 @@ function readRecordForm(form, all) {
   const input = {
     first_name: v('first_name'), middle_name: v('middle_name'), last_name: v('last_name'), suffix: v('suffix'), email: v('email'),
     phone: v('phone'), phone_alt: v('phone_alt'), address: v('address'), city: v('city'), state: v('state'), zip: v('zip'),
-    crossing_date: v('crossing_date'), birth_date: v('birth_date'), initiation_chapter: v('initiation_chapter'),
+    crossing_date: v('crossing_date'), birth_date: v('birth_date'), initiation_chapter: v('initiation_chapter'), home_chapter: v('home_chapter'),
     emergency_contact_name: v('emergency_contact_name'), emergency_contact_phone: v('emergency_contact_phone'),
     share_contact: c('share_contact'), greetings: c('greetings')
   };
   if (all) {
-    Object.assign(input, { status: v('status'), life_member: v('life_member'), active: v('active'), notes: v('notes') });
+    Object.assign(input, { status: v('status'), life_member: v('life_member'), active: v('active'), notes: v('notes'), guest_note: v('guest_note') });
     if ($('#f-pending', form)) input.pending = c('pending');
   }
   return input;
@@ -378,6 +383,51 @@ function renderMe() {
       : '<p class="muted m0">No unclaimed record matches that name.</p>'}
     <div class="formfoot"><span class="muted" style="font-size:13px">Not on the list?</span><span class="spacer"></span><button type="button" class="btn" data-act="claim-add">Add myself</button></div>
   </div>`;
+}
+
+
+// ---------------------------------------------------------------- visiting brother (no sign-in)
+function renderGuest() {
+  const G = S.guest;
+  if (G.done) {
+    el.view.innerHTML = `<div class="mycard thanks">
+      <div><p class="eyebrow">Welcome, Brother</p><h2>Thank you, ${esc(G.done.name || 'Brother')}</h2>
+      <p class="muted m0 mt8">${G.done.updated ? 'Your details are updated.' : 'You are on the chapter\'s list.'} The membership and media teams see it right away, and a brother will be in touch. Meeting dates and programs are at gil1906.org.</p></div>
+      <div class="btnrow"><a class="btn" href="https://www.gil1906.org/">The chapter site</a><button type="button" class="btn quiet" data-act="guest-again">Add another brother</button></div>
+    </div>`;
+    return;
+  }
+  el.view.innerHTML = `<form class="mycard" id="gc-form" data-kind="guest" novalidate>
+    <div><p class="eyebrow">Visiting brother</p><h2>Stay in touch with Gamma Iota Lambda</h2>
+    <p class="muted m0 mt8">Brother, good to have you with us. Leave your details and the chapter will keep you in the loop: meetings, programs, and a note on your birthday and your Alpha anniversary. No account needed. Only the chapter's membership and media teams see what you enter until you say otherwise.</p></div>
+    <fieldset class="fs"><legend>Name</legend>
+      <div class="grid3">${fieldHTML('f-first_name', 'First name', inputHTML('f-first_name', 'text', '', 'required maxlength="60" autocomplete="given-name" data-autofocus'), '', true)}
+      ${fieldHTML('f-middle_name', 'Middle', inputHTML('f-middle_name', 'text', '', 'maxlength="60"'))}
+      ${fieldHTML('f-suffix', 'Suffix', inputHTML('f-suffix', 'text', '', 'maxlength="10" placeholder="Jr., III"'))}</div>
+      ${fieldHTML('f-last_name', 'Last name', inputHTML('f-last_name', 'text', '', 'required maxlength="60" autocomplete="family-name"'), '', true)}
+    </fieldset>
+    <fieldset class="fs"><legend>How to reach you</legend>
+      <div class="grid2">${fieldHTML('f-email', 'Email', inputHTML('f-email', 'email', '', 'autocomplete="email"'))}
+      ${fieldHTML('f-phone', 'Phone', inputHTML('f-phone', 'tel', '', 'autocomplete="tel"'))}</div>
+      <p class="hint m0">One of the two, at least.</p>
+      <div class="grid3">${fieldHTML('f-city', 'City', inputHTML('f-city', 'text', '', 'maxlength="80" autocomplete="address-level2"'))}
+      ${fieldHTML('f-state', 'State', inputHTML('f-state', 'text', '', 'maxlength="2" placeholder="NY"'))}
+      ${fieldHTML('f-zip', 'ZIP', inputHTML('f-zip', 'text', '', 'inputmode="numeric" maxlength="5"'))}</div>
+      <div class="hp" aria-hidden="true"><label for="f-website">Website</label><input id="f-website" name="website" type="text" tabindex="-1" autocomplete="off"></div>
+    </fieldset>
+    <fieldset class="fs"><legend>In Alpha</legend>
+      <div class="grid2">${fieldHTML('f-initiation_chapter', 'Chapter of initiation', inputHTML('f-initiation_chapter', 'text', '', 'maxlength="80"'))}
+      ${fieldHTML('f-home_chapter', 'Chapter now', inputHTML('f-home_chapter', 'text', '', 'maxlength="80"'), 'Where you are active, if anywhere.')}</div>
+      <div class="grid2">${fieldHTML('f-crossing_date', 'Crossing date', inputHTML('f-crossing_date', 'date', '', 'min="1906-12-04"'))}
+      ${fieldHTML('f-birth_date', 'Birthdate', inputHTML('f-birth_date', 'date', '', 'min="1900-01-01"'), 'So the chapter can wish you well.')}</div>
+    </fieldset>
+    <fieldset class="fs"><legend>Anything else</legend>
+      ${fieldHTML('f-guest_note', 'A note for the chapter', areaHTML('f-guest_note', '', 'maxlength="1000" class="ta-mid" placeholder="What brought you by, what you are interested in, the best way to follow up"'))}
+      ${switchHTML('f-greetings', true, 'Email me on my birthday and my Alpha anniversary', 'A short note from the chapter.')}
+    </fieldset>
+    <p class="err" id="gc-form-err" role="alert" hidden></p>
+    <div class="formfoot"><span class="muted" style="font-size:12.5px">Already a GIL brother? <button type="button" class="btn link" data-act="signin">Sign in instead</button></span><span class="spacer"></span><button type="submit" class="btn primary">Send to the chapter</button></div>
+  </form>`;
 }
 
 // ---------------------------------------------------------------- messages (media team)
@@ -444,9 +494,9 @@ function renderManage() {
         ${imp.error ? `<p class="err">${esc(imp.error)}</p>` : ''}</div>` : ''}
       <div class="btnrow"><button type="button" class="btn" data-act="export">${ICON.down}Download the directory as CSV</button><button type="button" class="btn" data-act="add">${ICON.plus}Add a brother</button></div>
     </div>
-    <div class="rail">
+    <div class="side">
       <div class="panel"><h3>Needs review</h3>
-        ${pending.length ? `<div class="people">${pending.map((b) => `<div class="person"><div class="person-top"><span class="person-name">${esc(fullName(b))}</span>${pill('pending', 'Added himself')}</div><span class="person-meta">${esc([b.phone && fmtPhone(b.phone), b.email, whenText(b.created_at)].filter(Boolean).join(' · '))}</span><div class="person-act"><button type="button" class="btn small primary" data-act="confirm" data-id="${esc(b.id)}">Confirm</button><button type="button" class="btn small" data-act="edit" data-id="${esc(b.id)}">Edit</button></div></div>`).join('')}</div>` : '<p class="m0">Nothing waiting. Brothers who add themselves show up here.</p>'}
+        ${pending.length ? `<div class="people">${pending.map((b) => `<div class="person"><div class="person-top"><span class="person-name">${esc(fullName(b))}</span><span class="tagrow">${b.status === 'visiting' ? pill('visiting', 'Visiting') : ''}${pill('pending', b.status === 'visiting' ? 'From the form' : 'Added himself')}</span></div><span class="person-meta">${esc([b.phone && fmtPhone(b.phone), b.email, whenText(b.created_at)].filter(Boolean).join(' · '))}</span><div class="person-act"><button type="button" class="btn small primary" data-act="confirm" data-id="${esc(b.id)}">Confirm</button><button type="button" class="btn small" data-act="edit" data-id="${esc(b.id)}">Edit</button></div></div>`).join('')}</div>` : '<p class="m0">Nothing waiting. Brothers who add themselves and visiting brothers from the form show up here.</p>'}
       </div>
       <div class="panel"><h3>Sign-ins</h3>
         <p>${claimed.length} of ${S.list.filter((b) => b.status !== 'deceased').length} records claimed. A brother claims his own with the last four digits of his phone; link one here when his number changed or there is none on file.</p>
@@ -517,6 +567,7 @@ function renderGuide() {
         <li><b>Manage</b> imports the chapter spreadsheet, downloads the directory as CSV, confirms brothers who added themselves, and links sign-ins to records.</li>
         <li><b>Any record</b> opens from the directory with Edit, where standing, life membership, and notes live too. Remove is there for duplicates.</li>
         <li><b>Messages</b> holds the switches, the sender, and the wording of both emails, a preview, a test to yourself, and the log of what went out. The media team also gets a note each day about tomorrow's celebrations, including brothers with no email on file.</li>
+        <li><b>Visiting brothers.</b> A brother from another chapter adds himself at <b>gil1906.org/directory#guest</b> with no sign-in (put that link or its QR code on the sign-in sheet at meetings). He arrives marked Visiting and Needs review, with his details unshared until confirmed, and the media team gets an email. Visiting brothers get the birthday and anniversary notes too, which keeps the door open for reclamation.</li>
         <li><b>Privacy.</b> The database decides what each person can read. Brothers never see street addresses, birth years, emergency contacts, or notes, and nothing is public.</li>
       </ul>
       <h3 class="mt-gap">Standing</h3>
@@ -590,6 +641,7 @@ function brotherView(b) {
   row('Crossed', b.crossing_date ? `${esc(longDate(b.crossing_date))}${b.years != null ? ` · ${plural(b.years, 'year')} in Alpha` : ''}` : '');
   row('Birthday', full && b.birth_date ? esc(longDate(b.birth_date)) : b.birthday ? esc(mdOf(b.birthday)) : '');
   row('Chapter of initiation', esc(b.initiation_chapter || ''));
+  row('Chapter now', esc(b.home_chapter || ''));
   if (full) {
     row('Emergency contact', b.emergency_contact_name ? `${esc(b.emergency_contact_name)}${b.emergency_contact_phone ? ` · <a href="tel:${esc(b.emergency_contact_phone)}">${esc(fmtPhone(b.emergency_contact_phone))}</a>` : ''}` : '');
     row('Shares contact', b.share_contact === false ? 'No' : '');
@@ -611,6 +663,7 @@ function brotherView(b) {
   return `<div class="dform">${drawerHead(tagsOf(b) || 'Brother', fullName(b))}
     <div class="dbody">
       ${kv.length ? `<dl class="kv wide">${kv.join('')}</dl>` : '<p class="muted m0">No details shared yet.</p>'}
+      ${isStaff() && b.guest_note ? `<div class="block"><h4>His note</h4><p class="notes">${esc(b.guest_note)}</p></div>` : ''}
       ${isStaff() && b.notes ? `<div class="block"><h4>Notes</h4><p class="notes">${esc(b.notes)}</p></div>` : ''}
       ${isStaff() && !b.claimed && links && links.length ? `<div class="block"><h4>Link to a sign-in</h4><div class="linkrow"><select id="gc-link-one"><option value="">Choose a sign-in</option>${links.filter((m) => !S.list.some((x) => x.member_id === m.id)).map((m) => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select><button type="button" class="btn small" data-act="link-one" data-id="${esc(b.id)}">Link</button></div></div>` : ''}
       ${S.drawer.confirmRemove ? `<div class="confirm"><span>Remove ${esc(fullName(b))} from the directory?</span><button type="button" class="btn small quiet" data-act="remove-cancel">Keep</button><button type="button" class="btn small danger" data-act="remove-confirm" data-id="${esc(b.id)}">Remove</button></div>` : ''}
@@ -689,6 +742,21 @@ async function submitForm(form) {
       if (kind === 'me') toast('Your record is saved.');
       else if (kind === 'add-self') { S.claim.adding = false; toast('You are in the directory.'); }
       else { toast(kind === 'add' ? `${fullName(saved)} added.` : 'Saved.'); openDrawer('brother', saved.id, S.drawer && S.drawer.trigger); }
+      return true;
+    }
+    if (kind === 'guest') {
+      const input = readRecordForm(form, false);
+      delete input.emergency_contact_name; delete input.emergency_contact_phone; delete input.share_contact;
+      input.guest_note = ($('#f-guest_note', form) || {}).value || '';
+      const { fields, error } = checkFields(input, false);
+      if (error) return formError(error);
+      if (!fields.email && !fields.phone) return formError('Add an email or a phone number so the chapter can reach you.', 'f-email');
+      const dateErr = checkDates(fields);
+      if (dateErr) return formError(dateErr, 'f-crossing_date');
+      const res = await withBusy(form, () => api.guestSubmit(fields, ($('#f-website', form) || {}).value || ''));
+      S.guest.done = res;
+      renderGuest();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       return true;
     }
     if (kind === 'claim-record') {
@@ -778,6 +846,7 @@ async function afterSignIn() {
   await refreshIdentity();
   S.signin.note = ''; S.signin.done = '';
   closeDrawer();
+  if (S.view === 'guest') { S.view = 'directory'; location.hash = ''; }
   await reload();
   if (isBrother() && !S.mine) { S.view = 'me'; render(); }
   return true;
@@ -838,11 +907,12 @@ document.addEventListener('click', async (e) => {
       case 'signin-mode': S.signin.mode = t.dataset.mode; S.signin.done = ''; drawDrawer(false); { const b = el.drawer.querySelector(`[data-mode="${t.dataset.mode}"]`); if (b) b.focus(); } break;
       case 'staff-signup': await staffSignUp(); break;
       case 'signout': await signOut(); break;
-      case 'demo-role': api.setRole(t.dataset.role); closeDrawer(); await refreshIdentity(); S.manage.members = null; S.msgs.log = null; await reload(); break;
+      case 'demo-role': api.setRole(t.dataset.role); closeDrawer(); if (S.view === 'guest') { S.view = 'directory'; location.hash = ''; } await refreshIdentity(); S.manage.members = null; S.msgs.log = null; await reload(); break;
       case 'demo-reset': api.resetDemo(); S.manage.members = null; S.msgs.log = null; await reload(); toast('Demo reset.'); break;
       case 'claim-pick': S.claim.pick = t.dataset.id; S.claim.adding = false; render(); { const f = $('#f-check'); if (f) f.focus(); } break;
       case 'claim-back': S.claim.pick = null; S.claim.adding = false; render(); break;
       case 'claim-add': S.claim.adding = true; S.claim.pick = null; render(); break;
+      case 'guest-again': S.guest.done = null; renderGuest(); break;
       case 'add': openDrawer('edit', null, t); break;
       case 'edit': openDrawer('edit', t.dataset.id, S.drawer ? S.drawer.trigger : t); break;
       case 'confirm': await api.save(t.dataset.id, { pending: false }); await reload(); toast('Confirmed.'); if (S.drawer && S.drawer.type === 'brother') drawDrawer(false); break;
@@ -882,7 +952,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.drawer
 el.scrim.addEventListener('click', closeDrawer);
 window.addEventListener('hashchange', () => {
   const v = (location.hash || '').replace('#', '');
-  if (['directory', 'celebrations', 'me', 'messages', 'manage', 'guide'].includes(v) && v !== S.view) { S.view = v; render(); }
+  if (['directory', 'celebrations', 'me', 'messages', 'manage', 'guide', 'guest'].includes(v) && v !== S.view) { S.view = v; render(); }
 });
 
 // ---------------------------------------------------------------- boot
