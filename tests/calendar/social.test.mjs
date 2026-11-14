@@ -353,6 +353,161 @@ test('every night pg_cron asks the Edge Function to sync, and the media team can
   }
 });
 
+const BLOCKED = { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'AbC123' };
+const failed = (h, platform, message, detail) =>
+  h.sql('select cal_private.social_sync_failed($1, $2, $3::jsonb)', [platform, message, JSON.stringify(detail)]);
+const account = (h, platform) =>
+  h.sql('select last_sync_at, last_error, last_error_detail, stale_alerted_at from public.cal_social_accounts where platform = $1', [platform]).then((rows) => rows[0]);
+
+test('the media team gets an email once the numbers have been stuck for two days, then once a week', async () => {
+  const h = await createDb();
+  await h.sql(`select cal_private.set_email_settings('re_testkey_12345678')`);
+  const eugene = await h.staff('Eugene Aiken');
+  await h.staff('Robert Brissett');
+  const chair = await h.chair('Farid Adenuga');
+  const [job] = await h.sql(`select schedule, command, active from cron.job where jobname = 'gil-calendar-social-health'`);
+  assert.deepEqual(job, { schedule: '10 9 * * *', command: 'select cal_private.social_health_check()', active: true });
+  const check = async (iso) => {
+    await h.setNow(iso);
+    return (await h.sql(job.command))[0].social_health_check; // pg_cron runs it as the database owner
+  };
+  const emails = () => h.sql(`select body from net.http_calls where url = 'https://api.resend.com/emails' order by id`).then((rows) => rows.map((r) => r.body));
+
+  assert.equal(await check('2026-10-18T09:10:00Z'), 0, 'nothing is connected');
+  await h.setNow('2026-10-19T01:04:00Z');
+  await connect(h, 'instagram', eugene);
+  await connect(h, 'threads', eugene);
+  await h.setNow('2026-10-19T08:20:00Z');
+  await sync(h, 'instagram', { username: 'gil1906', followers: 1500, posts: 320 }, []);
+  await sync(h, 'threads', { username: 'gil1906', followers: 410 }, []);
+  assert.equal(await check('2026-10-19T09:10:00Z'), 0, 'both synced this morning');
+
+  // Two nights in a row save nothing.
+  for (const night of ['2026-10-20T08:20:00Z', '2026-10-21T08:20:00Z']) {
+    await h.setNow(night);
+    await failed(h, 'instagram', 'Instagram sent an error: API access blocked.', BLOCKED);
+    await failed(h, 'threads', "Threads didn't answer. The next sync tries again.", { kind: 'network', request: 'GET graph.threads.net/v1.0/me' });
+    if (night.startsWith('2026-10-20')) assert.equal(await check('2026-10-20T09:10:00Z'), 0, 'one missed night is not two days');
+  }
+  assert.equal(await check('2026-10-21T09:10:00Z'), 2);
+  let sent = await emails();
+  assert.equal(sent.length, 1, 'one email covers both accounts');
+  assert.deepEqual(sent[0].to, ['eugene@example.org', 'robert@example.org']);
+  assert.equal(sent[0].subject, 'The Instagram and Threads numbers have stopped updating');
+  assert.equal(sent[0].text, [
+    'The Instagram and Threads numbers on the content calendar have stopped updating. The numbers saved so far are still there.',
+    '',
+    'Instagram (@gil1906)',
+    'Last updated: Monday, October 19, 2026 (2 days ago)',
+    'Latest note: Instagram sent an error: API access blocked.',
+    'Details, for Meta support: GET graph.instagram.com/v25.0/me, HTTP 400, code 200, subcode 5258005, OAuthException, trace AbC123',
+    'The saved sign-in lasts until Thursday, December 17. After that, choose Reconnect on the Results tab.',
+    '',
+    'Threads (@gil1906)',
+    'Last updated: Monday, October 19, 2026 (2 days ago)',
+    "Latest note: Threads didn't answer. The next sync tries again.",
+    'Details, for Meta support: GET graph.threads.net/v1.0/me',
+    'The saved sign-in lasts until Thursday, December 17. After that, choose Reconnect on the Results tab.',
+    '',
+    'What to do',
+    '- Open Results on the calendar and read the note on each account: https://www.gil1906.org/calendar.html#results',
+    "- If the note says to choose Reconnect, do that. Otherwise leave the connection in place and don't choose Disconnect: the saved sign-in picks up by itself once the problem clears.",
+    '- "When the numbers stop updating" in supabase/README.md lists what to check.',
+    '',
+    'This email comes again in a week if the numbers are still stuck. You get it because you have a media team login for the GIL content calendar.'
+  ].join('\n'));
+
+  for (const day of ['2026-10-22T09:10:00Z', '2026-10-27T09:10:00Z']) assert.equal(await check(day), 0, 'not again inside the week');
+  assert.equal(await check('2026-10-28T09:10:00Z'), 2, 'again a week later');
+  sent = await emails();
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].text, /Last updated: Monday, October 19, 2026 \(9 days ago\)/);
+
+  // Instagram comes back; Threads doesn't. Then Instagram goes quiet with no error at all, the way
+  // it would if the nightly request stopped arriving. Its new gap gets an email after two days.
+  await h.setNow('2026-10-29T08:20:00Z');
+  await sync(h, 'instagram', { username: 'gil1906', followers: 1510, posts: 321 }, []);
+  assert.deepEqual(await account(h, 'instagram').then((a) => [a.last_error, a.last_error_detail, a.stale_alerted_at]), [null, null, null]);
+  assert.equal(await check('2026-10-29T09:10:00Z'), 0, 'Threads was reported yesterday');
+  assert.equal(await check('2026-10-30T09:10:00Z'), 0);
+  assert.equal(await check('2026-10-31T09:10:00Z'), 2, 'the email lists every stuck account');
+  sent = await emails();
+  assert.equal(sent.length, 3);
+  assert.match(sent[2].text, /Instagram \(@gil1906\)\nLast updated: Thursday, October 29, 2026 \(2 days ago\)\nLatest note: none\. The nightly sync may not be reaching the calendar-social Edge Function\.\nThe saved sign-in lasts/);
+  assert.match(sent[2].text, /Threads \(@gil1906\)\nLast updated: Monday, October 19, 2026 \(12 days ago\)/);
+
+  // Only Threads is stuck now.
+  await h.setNow('2026-11-06T08:20:00Z');
+  await sync(h, 'instagram', { username: 'gil1906', followers: 1512, posts: 322 }, []);
+  assert.equal(await check('2026-11-06T09:10:00Z'), 0);
+  assert.equal(await check('2026-11-07T09:10:00Z'), 1);
+  sent = await emails();
+  assert.equal(sent[3].subject, 'The Threads numbers have stopped updating');
+  assert.ok(!sent[3].text.includes('Instagram (@gil1906)'));
+
+  // With emails turned off nothing is sent or marked, so the email goes out once they are back on.
+  await h.sql(`delete from cal_private.config where key = 'email_from'`);
+  assert.equal(await check('2026-11-14T09:10:00Z'), 0);
+  assert.equal((await account(h, 'threads')).stale_alerted_at.toISOString(), '2026-11-07T09:10:00.000Z');
+  await h.sql(`select cal_private.set_email_settings('re_testkey_12345678')`);
+  assert.equal(await check('2026-11-15T09:10:00Z'), 2);
+  assert.equal((await emails()).length, 5);
+
+  for (const who of [null, chair, eugene]) {
+    await assert.rejects(() => h.select(who, 'select cal_private.social_health_check()'), /permission denied/);
+    await assert.rejects(() => h.select(who, `select cal_private.social_sync_failed('instagram', 'x', '{}'::jsonb)`), /permission denied/);
+  }
+});
+
+test('an account that never synced, or whose sign-in ran out, is reported too', async () => {
+  const h = await createDb();
+  await h.sql(`select cal_private.set_email_settings('re_testkey_12345678')`);
+  const staff = await h.staff();
+  await h.setNow('2026-10-19T01:04:00Z');
+  await connect(h, 'threads', staff);
+  await h.setNow('2026-10-21T01:03:00Z');
+  assert.equal((await h.sql('select cal_private.social_health_check() as n'))[0].n, 0, 'connected just under two days ago');
+  await h.sql(`update public.cal_social_accounts set token_expires_at = '2026-10-20T00:00:00Z'`);
+  await failed(h, 'threads', 'The Threads connection expired. Choose Reconnect on the Results tab.', { kind: 'expired' });
+  await h.setNow('2026-10-21T09:10:00Z');
+  assert.equal((await h.sql('select cal_private.social_health_check() as n'))[0].n, 1);
+  const [mail] = await h.sql(`select body from net.http_calls where url = 'https://api.resend.com/emails'`);
+  assert.equal(mail.body.subject, 'The Threads numbers have stopped updating');
+  assert.match(mail.body.text, /Threads \(@gil1906\)\nNo numbers have come in since it was connected on Sunday, October 18, 2026\.\nLatest note: The Threads connection expired\. Choose Reconnect on the Results tab\.\nThe saved sign-in has expired\. Choose Reconnect on the Results tab\.\n\nWhat to do/);
+});
+
+test('what Instagram or Threads sent stays with its note, and goes when the note does', async () => {
+  const h = await createDb();
+  await h.setNow(NOW);
+  const staff = await h.staff();
+  const chair = await h.chair('Farid Adenuga');
+  await connect(h, 'instagram', staff);
+  const detail = () => account(h, 'instagram').then((a) => a.last_error_detail);
+
+  await failed(h, 'instagram', 'Instagram sent an error: API access blocked.', BLOCKED);
+  assert.deepEqual(await detail(), BLOCKED);
+  assert.deepEqual(await h.select(staff, 'select last_error_detail from public.cal_social_accounts'), [{ last_error_detail: BLOCKED }], 'the media team can read it');
+  assert.deepEqual(await h.select(chair, 'select last_error_detail from public.cal_social_accounts'), [], 'no one else can');
+
+  // A note after a sync that saved has no detail, and replaces the earlier error's.
+  await h.sql(`select cal_private.social_sync_failed('instagram', 'Instagram asked the calendar to slow down. Numbers for some posts update on the next sync.')`);
+  assert.equal(await detail(), null);
+
+  // Anything that isn't a small object is left out; the note still saves.
+  for (const odd of ['[1, 2]', '"text"', JSON.stringify({ trace: 'x'.repeat(1200) })]) {
+    await h.sql('select cal_private.social_sync_failed($1, $2, $3::jsonb)', ['instagram', 'Instagram sent an error: Odd.', odd]);
+    assert.deepEqual(await account(h, 'instagram').then((a) => [a.last_error, a.last_error_detail]), ['Instagram sent an error: Odd.', null]);
+  }
+
+  await failed(h, 'instagram', 'Instagram sent an error: API access blocked.', BLOCKED);
+  await sync(h, 'instagram', { username: 'gil1906', followers: 1500 }, []);
+  assert.equal(await detail(), null, 'a sync that saves clears it');
+
+  await failed(h, 'instagram', 'The Instagram connection stopped working. Choose Reconnect on the Results tab.', { kind: 'token', code: 190 });
+  await connect(h, 'instagram', staff, 'instagram-token-2');
+  assert.deepEqual(await account(h, 'instagram').then((a) => [a.last_error, a.last_error_detail]), [null, null], 'so does reconnecting');
+});
+
 test('the results migration runs on a project that already ran the first three', async () => {
   const h = await createDb({
     migrations: ['20261013000100_content_calendar.sql', '20261013000200_chairs_and_request_files.sql', '20261014000100_request_emails.sql']

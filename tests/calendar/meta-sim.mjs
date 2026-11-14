@@ -23,6 +23,9 @@ export class Meta {
     this.rateLimitAfter = Infinity;
     this.insightCalls = 0;
     this.down = false;
+    // Meta holding back the app or the account: every request gets this answer, whatever the token.
+    // true blocks everything; a pattern blocks the paths it matches.
+    this.blocked = false;
   }
 
   issue(platform, kind) {
@@ -82,6 +85,9 @@ export class Meta {
     const reply = (status, body) =>
       new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
     const expired = () => reply(400, { error: { message: 'Error validating access token: Session has expired.', type: 'OAuthException', code: 190, error_subcode: 463 } });
+    if (this.blocked === true || (this.blocked instanceof RegExp && this.blocked.test(url.pathname))) {
+      return reply(400, { error: { message: 'API access blocked.', type: 'OAuthException', code: 200, error_subcode: 5258005, fbtrace_id: 'AbCdEfGh1234567' } });
+    }
     const platform = url.host === 'graph.threads.net' ? 'threads' : 'instagram';
     const held = this.tokens.get(params.access_token || '');
     const path = url.pathname;

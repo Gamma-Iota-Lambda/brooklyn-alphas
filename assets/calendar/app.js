@@ -462,6 +462,12 @@ function syncText(ts) {
   if (day === iso(addDays(new Date(), -1))) return `yesterday at ${time}`;
   return `${fmt(day, { month: 'short', day: 'numeric' })} at ${time}`;
 }
+// A day with how long ago it was, for numbers that have stopped coming in: "Oct 19 (26 days ago)".
+function sinceText(ts) {
+  const day = nyDay(ts), ago = daysBetween(day, todayISO());
+  if (!(ago > 1)) return syncText(ts);
+  return `${fmt(day, { month: 'short', day: 'numeric', ...(day.slice(0, 4) === todayISO().slice(0, 4) ? {} : { year: 'numeric' }) })} (${ago} days ago)`;
+}
 const monthLabel = (ym, o) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('en-US', o); };
 const total = (arr, f) => arr.reduce((n, x) => n + (f(x) ?? 0), 0);
 const known = (arr, f) => arr.filter((x) => f(x) !== null && f(x) !== undefined);
@@ -537,27 +543,73 @@ function changeNote(now, before, days) {
   return { dir: pct > 0 ? 'up' : 'down', text: `${pct > 0 ? 'Up' : 'Down'} ${Math.abs(pct)}% on the previous ${days} days` };
 }
 
+// How an account's sync is doing. A note saved with a sync (some numbers waiting for the next one)
+// carries the sync's own time; an error from a later try means that try saved nothing.
+// state: 'ok', 'reconnect' (the sign-in has to be redone), or 'stuck' (numbers aren't coming in,
+// and signing in again isn't the fix).
+const STUCK_AFTER = 48 * 3600000; // two missed nights
+function syncHealth(a) {
+  const at = (ts) => (ts ? Date.parse(ts) : NaN);
+  const synced = at(a.lastSyncAt), tried = at(a.lastErrorAt), expires = at(a.tokenExpiresAt);
+  const expired = expires <= Date.now();
+  const failed = !!a.lastError && !(tried - synced <= 10000);
+  const quiet = !a.lastError && Date.now() - (Number.isNaN(synced) ? at(a.connectedAt) : synced) > STUCK_AFTER;
+  const state = expired || /\bchoose reconnect\b/i.test(a.lastError) ? 'reconnect' : failed || quiet ? 'stuck' : 'ok';
+  return { state, expired, failed, quiet, expires };
+}
+
 function accountHTML(sp) {
   const R = S.results;
   const a = R.accounts.find((x) => x.platform === sp.key);
   const head = (status) => `<div class="acct-top"><span class="acct-name"><i class="lk" style="--sw:${sp.color}"></i>${esc(sp.label)}</span>${status}</div>`;
+  const h = a ? syncHealth(a) : null;
   if (a && R.confirm === sp.key) {
-    return `<div class="acct">${head('')}<p>Disconnect ${esc(sp.label)}? The numbers saved so far stay on this tab.</p>
+    return `<div class="acct">${head('')}<p>${h.state === 'stuck'
+      ? `Disconnect ${esc(sp.label)}? That won't bring the numbers back, and connecting again may not work until ${esc(sp.label)} takes the calendar's requests again. Left connected, it picks up on its own. The numbers saved so far stay either way.`
+      : `Disconnect ${esc(sp.label)}? The numbers saved so far stay on this tab.`}</p>
       <div class="btnrow"><button class="btn small quiet" data-act="r-disconnect-cancel">Cancel</button><button class="btn small danger" data-act="r-disconnect-confirm" data-platform="${sp.key}">Disconnect</button></div></div>`;
   }
   if (!a) {
     return `<div class="acct">${head('<span class="pill s-skipped">Not connected</span>')}<p>Connect @gil1906 to bring in its ${esc(sp.label)} posts and numbers every night.</p>
       <div class="btnrow"><button class="btn small primary" data-act="r-connect" data-platform="${sp.key}">Connect ${esc(sp.label)}</button></div></div>`;
   }
-  const expires = a.tokenExpiresAt ? Date.parse(a.tokenExpiresAt) : NaN;
-  const expired = expires <= Date.now();
-  const reconnect = expired || /reconnect/i.test(a.lastError);
-  const note = expired ? 'The connection expired. Choose Reconnect and sign in again.'
-    : a.lastError || (expires - Date.now() < 10 * 86400000 ? `The sign-in renews each week. Reconnect by ${fmt(nyDay(a.tokenExpiresAt), { month: 'long', day: 'numeric' })} if it hasn't.` : '');
-  return `<div class="acct">${head(reconnect ? '<span class="pill s-needs-info">Needs attention</span>' : '<span class="pill s-ready">Connected</span>')}
-    <p>${a.username ? `@${esc(a.username)}. ` : ''}${a.lastSyncAt ? `Last sync ${esc(syncText(a.lastSyncAt))}.` : 'The first sync is on its way.'}</p>
-    ${note ? `<p class="hint${reconnect ? ' warn' : ''}">${esc(note)}</p>` : ''}
+  const reconnect = h.state === 'reconnect';
+  const pill = reconnect ? '<span class="pill s-needs-info">Needs attention</span>'
+    : h.state === 'stuck' ? '<span class="pill s-needs-info">Not updating</span>' : '<span class="pill s-ready">Connected</span>';
+  const line = h.state === 'ok'
+    ? (a.lastSyncAt ? `Last sync ${esc(syncText(a.lastSyncAt))}.` : 'The first sync is on its way.')
+    : `${a.lastSyncAt ? `Numbers last updated ${esc(sinceText(a.lastSyncAt))}.` : 'No numbers have come in yet.'}${h.failed && a.lastErrorAt ? ` Last try ${esc(syncText(a.lastErrorAt))}.` : ''}`;
+  const left = h.expires - Date.now();
+  const until = () => fmt(nyDay(a.tokenExpiresAt), { month: 'long', day: 'numeric' });
+  const notes = [];
+  if (h.expired) notes.push(['warn', 'The connection expired. Choose Reconnect and sign in again.']);
+  else {
+    if (a.lastError) notes.push([h.failed || reconnect ? 'warn' : '', a.lastError]);
+    else if (h.quiet) notes.push(['warn', "The nightly sync hasn't brought in new numbers. Choose Refresh now to try again."]);
+    // A sign-in renews every week, so one with under a month left hasn't been renewing.
+    if (h.state === 'stuck' && left < 30 * 86400000) notes.push(['', `The saved sign-in lasts until ${until()}. After that, choose Reconnect.`]);
+    else if (!a.lastError && left < 10 * 86400000) notes.push(['', `The sign-in renews each week. Reconnect by ${until()} if it hasn't.`]);
+  }
+  return `<div class="acct">${head(pill)}
+    <p>${a.username ? `@${esc(a.username)}. ` : ''}${line}</p>
+    ${notes.map(([tone, text]) => `<p class="hint${tone ? ` ${tone}` : ''}">${esc(text)}</p>`).join('')}
     <div class="btnrow">${reconnect ? `<button class="btn small primary" data-act="r-connect" data-platform="${sp.key}">Reconnect</button>` : ''}<button class="btn small quiet" data-act="r-disconnect" data-platform="${sp.key}">Disconnect</button></div></div>`;
+}
+
+// Says so across the top once an account's numbers are two or more days old.
+function behindHTML() {
+  const days = new Map();
+  for (const sp of SOCIAL) {
+    const a = S.results.accounts.find((x) => x.platform === sp.key);
+    if (!a || !a.lastSyncAt) continue;
+    const h = syncHealth(a);
+    if (!(h.failed || h.quiet) || !(daysBetween(nyDay(a.lastSyncAt), todayISO()) > 1)) continue;
+    const since = sinceText(a.lastSyncAt);
+    days.set(since, [...(days.get(since) || []), sp.label]);
+  }
+  if (!days.size) return '';
+  const text = [...days].map(([since, labels]) => `${labels.join(' and ')} ${labels.length > 1 ? "haven't" : "hasn't"} sent new numbers since ${since}.`).join(' ');
+  return `<div class="note rnote" role="status"><p>${esc(text)} What's below is from then. Each account's card says why.</p></div>`;
 }
 
 function followersCard(rg, plats) {
@@ -719,7 +771,7 @@ function renderResults() {
   const head = `<div class="rhead"><div><p class="eyebrow">Instagram and Threads</p><h2>Results</h2><p class="csub">Numbers come in every night and match posts to the calendar by date.</p></div>
     ${R.accounts.length ? '<button class="btn" data-act="r-refresh">Refresh now</button>' : ''}</div>`;
   const notice = R.notice ? `<div class="${R.notice.ok ? 'ok' : 'note'} rnote" role="status"><p>${esc(R.notice.text)}</p><button class="btn small quiet" data-act="r-notice-close">Dismiss</button></div>` : '';
-  const accounts = `<div class="accts">${SOCIAL.map(accountHTML).join('')}</div>`;
+  const accounts = `${behindHTML()}<div class="accts">${SOCIAL.map(accountHTML).join('')}</div>`;
   if (!R.posts.length) {
     el.view.innerHTML = `<div class="results">${head}${notice}${accounts}${R.accounts.length
       ? emptyHTML('Results', 'The first sync is on its way', 'Posts and their numbers show up here in a minute or two. Reload the page to check.', '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>')
