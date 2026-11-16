@@ -10,6 +10,7 @@ import {
 import { LiveApi } from './api-live.js';
 import { DemoApi } from './api-demo.js';
 import { chartHTML, barsHTML, drawCharts, initCharts, resetCharts, fmtNum, fmtCompact } from './charts.js';
+import { syncHealth } from './sync-health.js';
 
 const config = window.GIL_CALENDAR_CONFIG || {};
 const api = config.supabaseUrl && config.supabaseKey ? new LiveApi(config) : new DemoApi();
@@ -457,17 +458,19 @@ const NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }
 const nyDay = (ts) => { const d = new Date(ts); return ts && !isNaN(d) ? NY_DAY.format(d) : ''; };
 const nyTime = (ts, o) => new Date(ts).toLocaleString('en-US', { timeZone: 'America/New_York', ...o });
 const postedText = (ts) => nyTime(ts, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+// Syncs are shown in New York time, so "today" is New York's today wherever the page is read.
+const nyToday = () => nyDay(Date.now());
 function syncText(ts) {
   const day = nyDay(ts), time = nyTime(ts, { hour: 'numeric', minute: '2-digit' });
-  if (day === todayISO()) return `today at ${time}`;
-  if (day === iso(addDays(new Date(), -1))) return `yesterday at ${time}`;
+  if (day === nyToday()) return `today at ${time}`;
+  if (day === iso(addDays(parse(nyToday()), -1))) return `yesterday at ${time}`;
   return `${fmt(day, { month: 'short', day: 'numeric' })} at ${time}`;
 }
 // A day with how long ago it was, for numbers that have stopped coming in: "Oct 19 (26 days ago)".
 function sinceText(ts) {
-  const day = nyDay(ts), ago = daysBetween(day, todayISO());
+  const day = nyDay(ts), ago = daysBetween(day, nyToday());
   if (!(ago > 1)) return syncText(ts);
-  return `${fmt(day, { month: 'short', day: 'numeric', ...(day.slice(0, 4) === todayISO().slice(0, 4) ? {} : { year: 'numeric' }) })} (${ago} days ago)`;
+  return `${fmt(day, { month: 'short', day: 'numeric', ...(day.slice(0, 4) === nyToday().slice(0, 4) ? {} : { year: 'numeric' }) })} (${ago} days ago)`;
 }
 const monthLabel = (ym, o) => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('en-US', o); };
 const total = (arr, f) => arr.reduce((n, x) => n + (f(x) ?? 0), 0);
@@ -544,21 +547,6 @@ function changeNote(now, before, days) {
   return { dir: pct > 0 ? 'up' : 'down', text: `${pct > 0 ? 'Up' : 'Down'} ${Math.abs(pct)}% on the previous ${days} days` };
 }
 
-// How an account's sync is doing. A note saved with a sync (some numbers waiting for the next one)
-// carries the sync's own time; an error from a later try means that try saved nothing.
-// state: 'ok', 'reconnect' (the sign-in has to be redone), or 'stuck' (numbers aren't coming in,
-// and signing in again isn't the fix).
-const STUCK_AFTER = 48 * 3600000; // two missed nights
-function syncHealth(a) {
-  const at = (ts) => (ts ? Date.parse(ts) : NaN);
-  const synced = at(a.lastSyncAt), tried = at(a.lastErrorAt), expires = at(a.tokenExpiresAt);
-  const expired = expires <= Date.now();
-  const failed = !!a.lastError && !(tried - synced <= 10000);
-  const quiet = !a.lastError && Date.now() - (Number.isNaN(synced) ? at(a.connectedAt) : synced) > STUCK_AFTER;
-  const state = expired || /\bchoose reconnect\b/i.test(a.lastError) ? 'reconnect' : failed || quiet ? 'stuck' : 'ok';
-  return { state, expired, failed, quiet, expires };
-}
-
 function accountHTML(sp) {
   const R = S.results;
   const a = R.accounts.find((x) => x.platform === sp.key);
@@ -566,7 +554,7 @@ function accountHTML(sp) {
   const h = a ? syncHealth(a) : null;
   if (a && R.confirm === sp.key) {
     return `<div class="acct">${head('')}<p>${h.state === 'stuck'
-      ? `Disconnect ${esc(sp.label)}? That won't bring the numbers back, and connecting again may not work until ${esc(sp.label)} takes the calendar's requests again. Left connected, it picks up on its own. The numbers saved so far stay either way.`
+      ? `Disconnect ${esc(sp.label)}? That won't bring the numbers back, and connecting again may not work while the problem lasts. Left connected, the sync picks up on its own once it clears. The numbers saved so far stay either way.`
       : `Disconnect ${esc(sp.label)}? The numbers saved so far stay on this tab.`}</p>
       <div class="btnrow"><button class="btn small quiet" data-act="r-disconnect-cancel">Cancel</button><button class="btn small danger" data-act="r-disconnect-confirm" data-platform="${sp.key}">Disconnect</button></div></div>`;
   }
@@ -578,7 +566,7 @@ function accountHTML(sp) {
   const pill = reconnect ? '<span class="pill s-needs-info">Needs attention</span>'
     : h.state === 'stuck' ? '<span class="pill s-needs-info">Not updating</span>' : '<span class="pill s-ready">Connected</span>';
   const line = h.state === 'ok'
-    ? (a.lastSyncAt ? `Last sync ${esc(syncText(a.lastSyncAt))}.` : 'The first sync is on its way.')
+    ? (!a.lastSyncAt ? 'The first sync is on its way.' : h.waiting ? 'New numbers are on their way.' : `Last sync ${esc(syncText(a.lastSyncAt))}.`)
     : `${a.lastSyncAt ? `Numbers last updated ${esc(sinceText(a.lastSyncAt))}.` : 'No numbers have come in yet.'}${h.failed && a.lastErrorAt ? ` Last try ${esc(syncText(a.lastErrorAt))}.` : ''}`;
   const left = h.expires - Date.now();
   const until = () => fmt(nyDay(a.tokenExpiresAt), { month: 'long', day: 'numeric' });
@@ -586,9 +574,9 @@ function accountHTML(sp) {
   if (h.expired) notes.push(['warn', 'The connection expired. Choose Reconnect and sign in again.']);
   else {
     if (a.lastError) notes.push([h.failed || reconnect ? 'warn' : '', a.lastError]);
-    else if (h.quiet) notes.push(['warn', "The nightly sync hasn't brought in new numbers. Choose Refresh now to try again."]);
+    if (h.quiet) notes.push(['warn', "The nightly sync hasn't brought in new numbers, and no error was recorded. Choose Refresh now. If nothing changes in a few minutes, the sync isn't reaching the calendar, and whoever looks after the website should check it."]);
     // A sign-in renews every week, so one with under a month left hasn't been renewing.
-    if (h.state === 'stuck' && left < 30 * 86400000) notes.push(['', `The saved sign-in lasts until ${until()}. After that, choose Reconnect.`]);
+    if (h.state === 'stuck' && left < 30 * 86400000) notes.push(['', `The saved sign-in lasts until ${until()}. After that, choose Reconnect, once the problem has cleared.`]);
     else if (!a.lastError && left < 10 * 86400000) notes.push(['', `The sign-in renews each week. Reconnect by ${until()} if it hasn't.`]);
   }
   return `<div class="acct">${head(pill)}
@@ -604,7 +592,7 @@ function behindHTML() {
     const a = S.results.accounts.find((x) => x.platform === sp.key);
     if (!a || !a.lastSyncAt) continue;
     const h = syncHealth(a);
-    if (!(h.failed || h.quiet) || !(daysBetween(nyDay(a.lastSyncAt), todayISO()) > 1)) continue;
+    if (!(h.failed || h.quiet) || !(daysBetween(nyDay(a.lastSyncAt), nyToday()) > 1)) continue;
     const since = sinceText(a.lastSyncAt);
     days.set(since, [...(days.get(since) || []), sp.label]);
   }
@@ -775,7 +763,9 @@ function renderResults() {
   const accounts = `${behindHTML()}<div class="accts">${SOCIAL.map(accountHTML).join('')}</div>`;
   if (!R.posts.length) {
     el.view.innerHTML = `<div class="results">${head}${notice}${accounts}${R.accounts.length
-      ? emptyHTML('Results', 'The first sync is on its way', 'Posts and their numbers show up here in a minute or two. Reload the page to check.', '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>')
+      ? (R.accounts.some((a) => syncHealth(a).state !== 'ok')
+        ? emptyHTML('Results', 'No numbers have come in yet', 'The account cards above say why.')
+        : emptyHTML('Results', 'The first sync is on its way', 'Posts and their numbers show up here in a minute or two. Reload the page to check.', '<div class="btns"><button class="btn" data-act="reload">Reload</button></div>'))
       : emptyHTML('Results', "Connect the chapter's accounts", 'Choose Connect for Instagram and Threads and sign in as @gil1906. Every night the calendar brings in each post with its views, likes, comments, shares, and saves, plus the follower count, and matches posts to the calendar by date.')}</div>`;
     return;
   }

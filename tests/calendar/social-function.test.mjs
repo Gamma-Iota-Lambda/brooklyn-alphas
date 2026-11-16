@@ -361,9 +361,12 @@ test('sync problems leave a note on the Results tab, and the numbers that came t
   for (const secret of [igToken, thToken, 'ig-secret-shh', 'th-secret-shh']) assert.ok(!notes.includes(secret), 'no tokens or secrets in notes or logs');
 });
 
-const BLOCKED_NOTE = (label) => `${label} is refusing the calendar's requests (Meta says: API access blocked). Signing in again won't fix this. ` +
-  'Look for a security or "confirm your account" notice on the Facebook account that owns the chapter\'s Meta developer apps, ' +
-  "and on @gil1906 in the Instagram app. The numbers pick up on their own once it's cleared.";
+const WHERE_TO_LOOK = 'Look for a security or "confirm your account" notice on the Facebook account that owns the chapter\'s Meta developer apps, and on @gil1906 in the Instagram app.';
+const BLOCKED_NOTE = (label, says = 'API access blocked') =>
+  `${label} is refusing the calendar's requests (Meta says: ${says}). Signing in again won't fix this. ${WHERE_TO_LOOK} The numbers pick up on their own once it's cleared.`;
+// After a sign-in, where no saved sign-in may be waiting to pick up.
+const BLOCKED_SIGN_IN = (label) =>
+  `${label} wasn't connected. ${label} is refusing the calendar's requests (Meta says: API access blocked). Signing in won't work until that is cleared. ${WHERE_TO_LOOK} Then connect again.`;
 const SENT = 'HTTP 400, code 200, subcode 5258005, OAuthException, trace AbCdEfGh1234567';
 const accountRow = (s, staff, platform) =>
   s.h.select(staff, 'select last_sync_at, last_error, last_error_at, last_error_detail, token_refreshed_at from public.cal_social_accounts where platform = $1', [platform]).then((r) => r[0]);
@@ -407,20 +410,20 @@ test('when Meta blocks the calendar, the note says what to check, nothing is los
   assert.deepEqual(await s.h.select(staff, 'select media_id, views::int from public.cal_social_posts order by media_id'),
     [{ media_id: '1801', views: 900 }, { media_id: '3101', views: 50 }], 'the numbers saved so far stay');
 
-  // A week on, renewing the sign-in is refused too. It is logged in full, and the sign-in is kept.
-  assert.deepEqual(await nightly('2026-10-27T08:20:00Z'), [
-    'GET graph.instagram.com/refresh_access_token', 'GET graph.instagram.com/v25.0/me',
-    'GET graph.threads.net/refresh_access_token', 'GET graph.threads.net/v1.0/me'
-  ]);
-  assert.ok(s.logs.includes(`calendar-social: renewing the instagram token failed: API access blocked. (GET graph.instagram.com/refresh_access_token, ${SENT})`));
+  // A week on, the first request is the renewal. It is refused too, which ends the sync there, and
+  // the saved sign-in is kept.
+  assert.deepEqual(await nightly('2026-10-27T08:20:00Z'), ['GET graph.instagram.com/refresh_access_token', 'GET graph.threads.net/refresh_access_token']);
+  assert.ok(s.logs.includes(`calendar-social: instagram sync failed: API access blocked. (GET graph.instagram.com/refresh_access_token, ${SENT})`));
   ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
+  assert.equal(ig.last_error_detail.request, 'GET graph.instagram.com/refresh_access_token');
   assert.equal(ig.token_refreshed_at.toISOString(), '2026-10-19T08:20:00.000Z');
   assert.deepEqual([await vaultToken(s, 'instagram'), await vaultToken(s, 'threads')], [igToken, thToken]);
 
   // Signing in again is refused as well, and leaves the saved connection alone.
   const state = await s.h.rpc1(staff, 'cal_social_connect_start', { p_platform: 'instagram', p_return: 'https://www.gil1906.org/calendar.html' });
   const back = await s.get(`/callback?code=ig-code-1&state=${state}`);
-  assert.equal(note(back), `Instagram wasn't connected. ${BLOCKED_NOTE('Instagram')}`);
+  assert.equal(note(back), BLOCKED_SIGN_IN('Instagram'));
   assert.ok(s.logs.includes(`calendar-social: instagram connect failed: API access blocked. (POST api.instagram.com/oauth/access_token, ${SENT})`));
   assert.equal(await vaultToken(s, 'instagram'), igToken);
   assert.equal((await accountRow(s, staff, 'instagram')).last_error, BLOCKED_NOTE('Instagram'));
@@ -467,6 +470,87 @@ test('a block that reaches only some requests fails the sync too, and is read as
   const again = await accountRow(s, staff, 'instagram');
   assert.equal(again.last_error, BLOCKED_NOTE('Instagram'));
   assert.deepEqual(again.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 190, type: 'OAuthException' });
+});
+
+test('a block is recognized by its subcode, on the follower count, and with the trace in a header; a refused first sign-in says to connect again', async () => {
+  const s = await setup('2026-10-19T08:20:00Z');
+  const staff = await s.h.staff();
+
+  // A first sign-in while blocked saves nothing, so nothing is waiting to pick up afterwards.
+  s.meta.blocked = true;
+  const state = await s.h.rpc1(staff, 'cal_social_connect_start', { p_platform: 'threads', p_return: 'https://www.gil1906.org/calendar.html' });
+  assert.equal(note(await s.get(`/callback?code=th-code-1&state=${state}`)), BLOCKED_SIGN_IN('Threads'));
+  assert.deepEqual(await s.h.sql('select platform from public.cal_social_accounts'), []);
+  s.meta.blocked = false;
+
+  await connected(s, staff, 'instagram');
+  await connected(s, staff, 'threads');
+  s.meta.add('threads', '3101', '2026-10-18T13:00:00+0000', { text: 'Hello', media_type: 'TEXT_POST' }, { views: 50, likes: 5 });
+  const key = await syncKey(s.h);
+  const nightly = async (iso) => {
+    await s.at(iso);
+    await s.post('/sync', { 'x-sync-key': key });
+    await s.settle();
+  };
+
+  // Only the follower count is refused. Threads fails; Instagram, untouched, saves.
+  s.meta.blocked = /threads_insights$/;
+  await nightly('2026-10-19T08:20:00Z');
+  const th = await accountRow(s, staff, 'threads');
+  assert.deepEqual([th.last_error, th.last_sync_at], [BLOCKED_NOTE('Threads'), null]);
+  assert.equal(th.last_error_detail.request, 'GET graph.threads.net/v1.0/me/threads_insights');
+  assert.equal((await accountRow(s, staff, 'instagram')).last_error, null);
+
+  // The subcode alone, under wording Meta might change to, with the trace only in a header.
+  s.meta.blocked = true;
+  s.meta.blockedReply = { message: 'This app is temporarily unavailable.', type: 'OAuthException', code: 200, error_subcode: 5258005 };
+  s.meta.blockedHeaders = { 'x-fb-trace-id': 'HeaderTrace99' };
+  await nightly('2026-10-20T08:20:00Z');
+  const ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram', 'This app is temporarily unavailable'));
+  assert.deepEqual(ig.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'HeaderTrace99' });
+});
+
+test('odd replies never cost the note or put an address in it: stray characters, a detail that will not save, a broken next-page address', async () => {
+  const s = await setup('2026-10-19T08:20:00Z');
+  const staff = await s.h.staff();
+  const token = await connected(s, staff, 'instagram');
+  const key = await syncKey(s.h);
+  const nightly = async (iso) => {
+    await s.at(iso);
+    await s.post('/sync', { 'x-sync-key': key });
+    await s.settle();
+  };
+
+  // A NUL, an emoji where the type is cut, and a control character in the trace.
+  s.meta.blocked = true;
+  s.meta.blockedReply = { message: 'API access\u0000 blocked.', type: `${'a'.repeat(58)}😀tail`, code: 200, fbtrace_id: 'Ab\u0000Cd\n12' };
+  await nightly('2026-10-19T08:20:00Z');
+  let ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
+  assert.deepEqual(ig.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, type: `${'a'.repeat(58)}ta`, trace: 'AbCd12' });
+
+  // If the detail can't be saved for any reason, the note still is.
+  await s.h.sql(`create or replace function cal_private.social_sync_failed(p_platform text, p_message text, p_detail jsonb)
+    returns void language plpgsql as $$ begin raise exception 'no room for the detail'; end $$`);
+  s.meta.blockedReply = { message: 'API access blocked.', type: 'OAuthException', code: 200 };
+  await s.h.sql(`update public.cal_social_accounts set last_error = null, last_error_at = null`);
+  await nightly('2026-10-20T08:20:00Z');
+  ig = await accountRow(s, staff, 'instagram');
+  assert.deepEqual([ig.last_error, ig.last_error_at.toISOString()], [BLOCKED_NOTE('Instagram'), '2026-10-20T08:20:00.000Z']);
+  assert.deepEqual(s.logs.filter((l) => /could not record/.test(l)), []);
+
+  // A next-page address that isn't a full address holds the token. It is never quoted.
+  s.meta.blocked = false;
+  s.meta.relativeNext = true;
+  for (const [id, ts] of [['1801', '2026-10-18T22:00:00+0000'], ['1702', '2026-10-12T14:00:00+0000'], ['1603', '2026-10-05T14:00:00+0000']]) {
+    s.meta.add('instagram', id, ts, { media_type: 'IMAGE', media_product_type: 'FEED', like_count: 10, comments_count: 1 }, { views: 100 });
+  }
+  await nightly('2026-10-21T08:20:00Z');
+  ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, "Instagram sent an error: an address the calendar couldn't read");
+  const kept = JSON.stringify([ig, ...s.logs]);
+  assert.ok(!kept.includes(token) && !/access_token=|[?&]after=/.test(kept), 'no token and no query in the note or the log');
 });
 
 test('the function works before the sync health migration has run: the note saves, and the detail follows once it has', async () => {

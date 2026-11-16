@@ -89,12 +89,12 @@ Day to day:
 
 - **Needs attention:** a connection that has to be signed in again, for example after a password change or once its sign-in has run out, shows Needs attention and a Reconnect button.
 - **Not updating:** when a sync saves nothing, the account's card shows Not updating, the day its numbers were last updated, when the last try was, and the reason. Once the numbers are two days old the tab says so across the top. See When the numbers stop updating, below.
-- **The email:** every morning at 9:10 UTC, pg_cron runs `cal_private.social_health_check()`. Once a connected account has gone two days without a sync that saved, everyone with a media team login gets one email listing each stuck account: when it last updated, the latest note, what Instagram or Threads sent with the error, and when its sign-in runs out. It comes again each week while it lasts. It uses the same Resend setup as request emails, and stays off until that is set.
+- **The email:** every morning at 9:10 UTC, pg_cron runs `cal_private.social_health_check()`. Once a connected account has gone two days without a sync that saved, everyone with a media team login gets one email listing each stuck account: when it last updated, the latest note, what Instagram or Threads sent with the error, and when its sign-in runs out. It comes again each week while it lasts. It uses the same Resend setup as request emails, and stays off until that is set. If the email can't be handed over for sending, the run shows as failed in `cron.job_run_details` (Integrations, then Cron, in the dashboard), and the next morning tries again.
 - **A wrong match:** open the post from Top posts or from the calendar post's panel, pick the right calendar post, and choose Save match. Match by date instead undoes a hand match.
 - **Disconnect:** Disconnect on the Results tab forgets the token. The numbers saved so far stay.
 - **Check the nightly sync:** each account's card on the Results tab shows its last sync and any note. In SQL Editor, `select platform, last_sync_at, last_error, last_error_at, last_error_detail from public.cal_social_accounts;` shows the same, with what Instagram or Threads sent with the latest error. `last_sync_at` only moves when a sync saves. pg_cron's "succeeded" and a 202 in `net._http_response` only mean the request was sent. The function's logs are under Edge Functions, then calendar-social, then Logs; they keep one day. A failed sync, a failed renewal, a sync that stopped partway, and numbers a post couldn't report are each logged with the request, HTTP status, code, subcode, and trace.
 - **Pause the nightly sync:** run `select cron.unschedule('gil-calendar-social-sync');`. The `cron.schedule` line at the end of the migration turns it back on.
-- **Pause the email:** run `select cron.unschedule('gil-calendar-social-health');`. The `cron.schedule` line at the end of `migrations/20261114000100_social_sync_health.sql` turns it back on.
+- **Pause the email:** run `select cron.unschedule('gil-calendar-social-health');`. To turn it back on, run `select cron.schedule('gil-calendar-social-health', '10 9 * * *', 'select cal_private.social_health_check()');`.
 
 ### When the numbers stop updating
 
@@ -108,8 +108,8 @@ The account's card gives the reason. Whatever it is, leave the connection in pla
   Then choose Refresh now. The next sync renews the sign-in and brings in every post's current numbers, including posts published in the gap. Daily follower counts for the missed days don't come back.
 - **"... didn't answer" or "... asked the calendar to slow down".** The next night's sync tries again.
 - **"Choose Reconnect".** The sign-in stopped working or ran out. Choose Reconnect and sign in as gil1906.
-- **No note.** The nightly request isn't reaching the Edge Function, or the function isn't running. Check its logs, and that it is deployed with JWT verification off.
-- **The sign-in's end date.** Each sign-in lasts 60 days and renews every week, but can't renew while Meta refuses requests. The card shows the date once it is under a month away, and the email always does. After that date the card shows Needs attention and a Reconnect button, which works once Meta takes requests again.
+- **"The nightly sync hasn't brought in new numbers, and no error was recorded".** The nightly request isn't reaching the Edge Function, or the function isn't running, so Refresh now won't change anything either. Check the function's logs, and that it is deployed with JWT verification off. The email says "No note" for the same thing.
+- **The sign-in's end date.** Each sign-in lasts 60 days and renews every week, but can't renew while Meta refuses requests. The card shows the date once it is under a month away, and the email does too. After that date the card shows Needs attention and a Reconnect button. Reconnect works once Meta takes requests again; until then it comes back with the same reason.
 - **Asking Meta for help.** `last_error_detail` and the email carry the request, HTTP status, code, subcode, and trace Meta sent. Meta support asks for the trace.
 
 ## Brother directory
@@ -187,7 +187,7 @@ From the repository root:
 ```bash
 npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 npx playwright install chromium        # once
-node --test "tests/calendar/*.test.mjs"  # 45 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Function, the directory, and the site's menus
+node --test "tests/calendar/*.test.mjs"  # 55 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Function, the Results account states, the directory, and the site's menus
 node tests/calendar/demo-smoke.mjs     # the demo in a real browser, at desktop and phone widths
 node tests/calendar/live-smoke.mjs     # live mode against a local stand-in for Supabase
 ```

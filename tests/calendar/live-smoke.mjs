@@ -449,6 +449,17 @@ await reload(media.page);
 await media.page.locator('.tab', { hasText: 'Results' }).click();
 assert.equal(await media.page.locator('.acct .pill', { hasText: 'Connected' }).count(), 2);
 assert.equal(await media.page.locator('.results > .rnote').count(), 0);
+// A sync that saves but leaves a note (Instagram asked it to slow down) is still a good night.
+server.meta.rateLimitAfter = server.meta.insightCalls;
+await nightly();
+server.meta.rateLimitAfter = Infinity;
+await reload(media.page);
+await media.page.locator('.tab', { hasText: 'Results' }).click();
+await media.page.waitForSelector('.acct .hint');
+assert.equal(await media.page.locator('.acct .pill', { hasText: 'Connected' }).count(), 2);
+assert.match(await igCard().locator('.hint').innerText(), /^Instagram asked the calendar to slow down\./);
+assert.equal(await igCard().locator('.hint.warn').count(), 0, 'a note, not a warning');
+assert.match(await igCard().innerText(), /@gil1906\. Last sync today at \d/);
 // The last sync that saved was weeks ago, and tonight's gets Meta's refusal.
 await server.sql(`update public.cal_social_accounts set last_sync_at = now() - interval '26 days'`);
 server.meta.blocked = true;
@@ -466,7 +477,7 @@ assert.equal(await igCard().getByRole('button', { name: 'Reconnect' }).count(), 
 assert.match(await media.page.locator('.results > .rnote').innerText(), /^Instagram and Threads haven't sent new numbers since \w+ \d+(, \d{4})? \(2\d days ago\)\. What's below is from then\./);
 await shot(media.page, 'results-not-updating');
 await igCard().getByRole('button', { name: 'Disconnect' }).click();
-assert.match(await igCard().innerText(), /Disconnect Instagram\? That won't bring the numbers back, and connecting again may not work until Instagram takes the calendar's requests again\. Left connected, it picks up on its own\./);
+assert.match(await igCard().innerText(), /Disconnect Instagram\? That won't bring the numbers back, and connecting again may not work while the problem lasts\. Left connected, the sync picks up on its own once it clears\./);
 await igCard().getByRole('button', { name: 'Cancel' }).click();
 assert.equal((await one(`select count(*)::int as n from public.cal_social_accounts`)).n, 2);
 

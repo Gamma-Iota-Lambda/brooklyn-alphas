@@ -116,9 +116,9 @@ export function makeDb(query) {
         try {
           return await query('select cal_private.social_sync_failed($1::text, $2::text, ($3::text)::jsonb)',
             [platform, message, JSON.stringify(detail)]);
-        } catch (e) {
-          // Until the sync health migration runs there is nowhere to keep the detail. Save the note.
-          if (!e || e.code !== '42883') throw e;
+        } catch {
+          // Until the sync health migration runs there is nowhere to keep the detail, and the note
+          // matters more than the detail whatever went wrong. Save the note on its own.
         }
       }
       return query('select cal_private.social_sync_failed($1::text, $2::text)', [platform, message]);
@@ -149,10 +149,14 @@ function withParams(base, params) {
 // Some answers come wrapped in a data list, others don't.
 const unwrap = (j) => (Array.isArray(j?.data) ? j.data[0] || {} : j || {});
 
+// Text Meta sent, made safe to log and save: one line, no control characters (Postgres can't hold
+// a NUL), and cut on whole characters.
 function short(text, max = 200) {
-  const s = String(text || '').replace(/\s+/g, ' ').trim();
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+  const s = Array.from(String(text || '').replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim());
+  return s.length > max ? `${s.slice(0, max - 1).join('')}…` : s.join('');
 }
+// The same for a type or a trace, which are plain letters, digits, and punctuation.
+const plain = (text, max) => String(text || '').replace(/[^\x21-\x7e]+/g, '').slice(0, max);
 
 // An error for the function's log, with everything Meta sent. Meta support asks for the trace.
 export function logText(e) {
@@ -175,14 +179,17 @@ export function detailOf(e) {
   return Object.fromEntries(Object.entries(all).filter(([, v]) => v !== null && v !== undefined && v !== ''));
 }
 
-// What the media team reads on the Results tab when something goes wrong.
-export function friendly(e, label) {
+// What the media team reads on the Results tab when something goes wrong. connecting: the error
+// came from a sign-in, where no saved sign-in may be waiting to pick up afterwards.
+export function friendly(e, label, connecting = false) {
   if (e instanceof GraphError) {
     if (e.kind === 'token') return `The ${label} connection stopped working. Choose Reconnect on the Results tab.`;
     if (e.kind === 'blocked') {
-      return `${label} is refusing the calendar's requests (Meta says: ${short(e.message, 120).replace(/[.\s]+$/, '')}). Signing in again won't fix this. ` +
+      return `${label} is refusing the calendar's requests (Meta says: ${short(e.message, 120).replace(/[.\s]+$/, '')}). ` +
+        (connecting ? "Signing in won't work until that is cleared. " : "Signing in again won't fix this. ") +
         'Look for a security or "confirm your account" notice on the Facebook account that owns the chapter\'s Meta developer apps, ' +
-        "and on @gil1906 in the Instagram app. The numbers pick up on their own once it's cleared.";
+        'and on @gil1906 in the Instagram app. ' +
+        (connecting ? 'Then connect again.' : "The numbers pick up on their own once it's cleared.");
     }
     if (e.kind === 'rate') return `${label} asked the calendar to slow down. The next sync tries again.`;
     if (e.kind === 'network') return `${label} didn't answer. The next sync tries again.`;
@@ -199,8 +206,15 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
   // One request to Instagram or Threads. Errors carry the host and path asked, never the query,
   // which holds the token.
   async function call(url, init, label) {
-    const asked = new URL(url);
-    const request = `${init.method || 'GET'} ${asked.host}${asked.pathname}`;
+    let request;
+    try {
+      const asked = new URL(url);
+      request = `${init.method || 'GET'} ${asked.host}${asked.pathname}`;
+    } catch {
+      // A next-page address from Meta that isn't a full address. It holds the token, and some
+      // runtimes quote it in the error, so it stops here.
+      throw new GraphError("an address the calendar couldn't read");
+    }
     let res;
     try {
       res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(20000) });
@@ -217,16 +231,16 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       const err = body && body.error && typeof body.error === 'object' ? body.error : {};
       const code = num(err.code ?? body?.code);
       const subcode = num(err.error_subcode);
-      const message = err.message || body?.error_message || body?.error_description ||
-        (typeof body?.error === 'string' ? body.error : '') || `HTTP ${res.status}`;
+      const message = short(err.message || body?.error_message || body?.error_description ||
+        (typeof body?.error === 'string' ? body.error : '') || `HTTP ${res.status}`);
       // Blocked comes first: whatever code comes with it, signing in again is refused the same way.
       const kind = subcode === BLOCKED_SUBCODE || BLOCKED_MESSAGE.test(message) ? 'blocked'
         : TOKEN_CODES.has(code) ? 'token'
           : RATE_CODES.has(code) || res.status === 429 ? 'rate' : 'api';
-      throw new GraphError(short(message), {
+      throw new GraphError(message, {
         code, status: res.status, kind, subcode, request,
-        type: short(err.type || body?.error_type, 60) || null,
-        trace: short(err.fbtrace_id || res.headers?.get('x-fb-trace-id'), 80) || null
+        type: plain(err.type || body?.error_type, 60) || null,
+        trace: plain(err.fbtrace_id || res.headers?.get('x-fb-trace-id'), 80) || null
       });
     }
     return body;
@@ -322,7 +336,7 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       });
     } catch (e) {
       log.error(`calendar-social: ${p.key} connect failed: ${logText(e)}`);
-      return back(claim.return_to, { connect_error: `${p.label} wasn't connected. ${friendly(e, p.label)}` });
+      return back(claim.return_to, { connect_error: `${p.label} wasn't connected. ${friendly(e, p.label, true)}` });
     }
     // The first sync runs after the page is back, so no one waits on it.
     waitUntil(syncPlatform(p.key, { full: true, started: now() }));
@@ -517,7 +531,7 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
             token = r.access_token;
           }
         } catch (e) {
-          if (e instanceof GraphError && e.kind === 'token') throw e;
+          if (e instanceof GraphError && FATAL.has(e.kind)) throw e;
           log.warn(`calendar-social: renewing the ${platform} token failed: ${logText(e)}`);
           if (expiresAt && expiresAt - now() < 10 * DAY) {
             const day = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/New_York' });

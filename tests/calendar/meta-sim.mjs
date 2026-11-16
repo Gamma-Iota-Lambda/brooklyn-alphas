@@ -27,6 +27,9 @@ export class Meta {
     // true blocks everything; a pattern blocks the paths it matches.
     this.blocked = false;
     this.blockedReply = { message: 'API access blocked.', type: 'OAuthException', code: 200, error_subcode: 5258005, fbtrace_id: 'AbCdEfGh1234567' };
+    this.blockedHeaders = {};
+    // Makes Instagram's next-page address a relative one, which no request can be made from.
+    this.relativeNext = false;
   }
 
   issue(platform, kind) {
@@ -55,7 +58,7 @@ export class Meta {
     if (withNext && end < list.length) {
       const next = new URL(url);
       next.searchParams.set('after', String(end));
-      paging.next = next.toString();
+      paging.next = this.relativeNext ? `${next.pathname}${next.search}` : next.toString();
     }
     return { data: items.map((m) => pick(m, ['id', ...String(params.fields || '').split(',')])), paging };
   }
@@ -87,7 +90,7 @@ export class Meta {
       new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
     const expired = () => reply(400, { error: { message: 'Error validating access token: Session has expired.', type: 'OAuthException', code: 190, error_subcode: 463 } });
     if (this.blocked === true || (this.blocked instanceof RegExp && this.blocked.test(url.pathname))) {
-      return reply(400, { error: this.blockedReply });
+      return new Response(JSON.stringify({ error: this.blockedReply }), { status: 400, headers: { 'Content-Type': 'application/json', ...this.blockedHeaders } });
     }
     const platform = url.host === 'graph.threads.net' ? 'threads' : 'instagram';
     const held = this.tokens.get(params.access_token || '');

@@ -99,13 +99,18 @@ function sampleNumbers(platform, post, ageDays, rand) {
   return { views, likes, replies, reposts, quotes, shares, interactions: likes + replies + reposts + quotes + shares };
 }
 
-function sampleAccount(platform, connectedAt) {
+// When the nightly sync last ran: the latest 8:20 UTC.
+function lastNightly() {
   const sync = new Date();
   sync.setUTCHours(8, 20, 0, 0);
   if (sync > new Date()) sync.setUTCDate(sync.getUTCDate() - 1);
+  return sync.toISOString();
+}
+
+function sampleAccount(platform, connectedAt) {
   return {
     platform, username: 'gil1906', connectedAt, tokenExpiresAt: new Date(Date.now() + 52 * 86400000).toISOString(),
-    lastSyncAt: sync.toISOString(), lastError: '', lastErrorAt: ''
+    lastSyncAt: lastNightly(), lastError: '', lastErrorAt: ''
   };
 }
 
@@ -443,6 +448,12 @@ export class DemoApi {
   async socialResults() {
     this.requireStaff();
     const s = this.state.social;
+    // The demo's sync never misses a night or lets a sign-in run out, however long it has been
+    // sitting in this browser.
+    for (const a of Object.values(s.accounts)) {
+      if (!(a.lastSyncAt >= lastNightly())) a.lastSyncAt = lastNightly();
+      a.tokenExpiresAt = new Date(Date.now() + 52 * 86400000).toISOString();
+    }
     return clone({ accounts: Object.values(s.accounts), posts: s.posts, followers: s.followers });
   }
 
