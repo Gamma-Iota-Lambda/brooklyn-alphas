@@ -71,7 +71,7 @@ All visual styling lives in `style.css`. Page-specific styles are written in `<s
 2. Update the `<title>`, `<meta name="description">`, and `<link rel="canonical">` tags
 3. Update the Open Graph and Twitter Card meta tags
 4. Add a `<url>` entry to `sitemap.xml`
-5. Add a link to it in the nav dropdown on every page (both desktop `nav-links` and mobile `nav-mobile-menu`). In the phone menu, links go inside `mobile-menu-links`: a page that sits under a section gets `class="mobile-nav-link mobile-nav-sub"` and goes right after that section's link, and the sections number themselves.
+5. Add a link to it in the nav dropdown on every page (both desktop `nav-links` and mobile `nav-mobile-menu`). In the phone menu, links go inside `mobile-menu-links`: a page that sits under a section gets `class="mobile-nav-link mobile-nav-sub"` and goes right after that section's link, and the sections number themselves. `tests/calendar/site-nav.test.mjs` checks that the Chapter menu is the same on every page; a new link under Chapter goes in its list too.
 
 ---
 
@@ -221,6 +221,7 @@ Each year, update `scholarship.html`:
 - `calendar.html` holds the site's nav and footer around the calendar.
 - `assets/calendar/app.js` draws the page; `api-live.js` talks to Supabase and `api-demo.js` runs the demo. Both expose the same methods.
 - `assets/calendar/charts.js` draws the Results charts: SVG line and column charts and bar lists, each with a hover and keyboard readout and a table view. Their colors are the `--viz-*` values in `calendar.css`, checked for color blindness and contrast.
+- `assets/calendar/sync-health.js` decides what each connected account's card on Results says: fine, needs a new sign-in, or not updating. It is on its own so the tests can check each case.
 - `supabase/functions/calendar-social/` is the Edge Function behind Results: `social.js` holds the sign-in and the nightly sync, and `index.ts` connects it to the database on Supabase.
 - `assets/calendar/data.js` lists the categories, programs, formats, platforms, statuses, committees, and upload limits. The database checks the same keys, so change both together. A comment above the platforms says how to bring Facebook back.
 - `assets/calendar/calendar.css` gives the calendar the look of the original version the media team approved: a light palette with old gold, Cormorant Garamond for headings, and Outfit for everything else. The site's nav and footer keep their own look. It loads after `style.css`, styles only elements inside `.gc`, and turns off the site's page-in animation on this page so the side panel stays fixed to the screen.

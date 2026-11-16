@@ -19,6 +19,7 @@ This folder holds everything the live mode needs:
 | `migrations/20261030000200_directory_last_name.sql` | `{last_name}` in the greeting messages |
 | `migrations/20261030000300_directory_email_design.sql` | Greeting emails with the chapter crest and a heading |
 | `migrations/20261031000100_directory_visiting_brothers.sql` | The Visiting standing and the public visiting-brother form |
+| `migrations/20261114000100_social_sync_health.sql` | Results: an email to the media team when the numbers stop updating, and what Instagram or Threads sent with each error |
 | `seed.sql` | The 128 planned posts for October 2026 to August 2027 |
 | `setup/1-codes.sql` | Sets the chapter code and the media code |
 | `setup/2-request-emails.sql` | Saves the Resend API key that request emails and directory greetings use |
@@ -79,22 +80,43 @@ Setup, once:
    - **Threads:** an app with the Access the Threads API use case. Under Use cases, Customize, add the `threads_manage_insights` permission and enter the three addresses. The **Threads app ID** and **Threads app secret** are under App settings, then Basic.
    - The addresses: OAuth or redirect callback `https://uqfoifrpyysqjvwtkgia.supabase.co/functions/v1/calendar-social/callback`; deauthorize or uninstall `.../calendar-social/uninstall`; data deletion `.../calendar-social/delete`.
    - In each app, under App roles, then Roles, add `gil1906` as an Instagram Tester or a Threads Tester. Accept on instagram.com as gil1906 (Settings, then Apps and websites, then Tester invites) and in Threads as gil1906 (Settings, then Account, then Website permissions, then Invites).
-2. **Run the SQL.** In SQL Editor, run `migrations/20261018000100_social_results.sql`. It turns on pg_cron and schedules the nightly sync. On a project that already sends request emails, it also moves pg_net into the extensions schema, which clears a Security Advisor warning; SQL Editor asks you to confirm that step, so choose Run this query.
+2. **Run the SQL.** In SQL Editor, run `migrations/20261018000100_social_results.sql`, then `migrations/20261114000100_social_sync_health.sql`. The first turns on pg_cron and schedules the nightly sync; the second schedules the morning check that emails the media team when the numbers stop updating. On a project that already sends request emails, the first file also moves pg_net into the extensions schema, which clears a Security Advisor warning; SQL Editor asks you to confirm that step, so choose Run this query.
 3. **Deploy the Edge Function** `functions/calendar-social` with JWT verification off. Browsers reach its sign-in steps and pg_cron reaches its sync without a Supabase session; a one-time Connect code and a shared key in Vault protect them. With the Supabase CLI: `supabase functions deploy calendar-social --no-verify-jwt`.
 4. **Add its secrets** in the Supabase dashboard under Edge Functions, then Secrets: `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `THREADS_APP_ID`, and `THREADS_APP_SECRET`. The function also reads `SUPABASE_URL` and `SUPABASE_DB_URL`, which every project has.
 5. **Connect.** On the calendar, open Results and choose Connect Instagram. Instagram asks for the gil1906 password, then for permission, and sends you back to Results. For Threads, sign in to threads.com as gil1906 in the same browser first, then choose Connect Threads. The first sync takes a minute or two.
 
 Day to day:
 
-- **Needs attention:** a connection that stops working, for example after a password change, shows Needs attention and a Reconnect button.
+- **Needs attention:** a connection that has to be signed in again, for example after a password change or once its sign-in has run out, shows Needs attention and a Reconnect button.
+- **Not updating:** when a sync saves nothing, the account's card shows Not updating, the day its numbers were last updated, when the last try was, and the reason. Once the numbers are two days old the tab says so across the top. See When the numbers stop updating, below.
+- **The email:** every morning at 9:10 UTC, pg_cron runs `cal_private.social_health_check()`. Once a connected account has gone two days without a sync that saved, everyone with a media team login gets one email listing each stuck account: when it last updated, the latest note, what Instagram or Threads sent with the error, and when its sign-in runs out. It comes again each week while it lasts. It uses the same Resend setup as request emails, and stays off until that is set. If the email can't be handed over for sending, the run shows as failed in `cron.job_run_details` (Integrations, then Cron, in the dashboard), and the next morning tries again. Once it is handed over the account counts as told for the week, whatever Resend then does with it, so if no email arrives, check Resend's dashboard or the `net._http_response` query below within a few hours of 9:10 UTC.
 - **A wrong match:** open the post from Top posts or from the calendar post's panel, pick the right calendar post, and choose Save match. Match by date instead undoes a hand match.
 - **Disconnect:** Disconnect on the Results tab forgets the token. The numbers saved so far stay.
-- **Check the nightly sync:** each account's last sync and any note show on the Results tab. In SQL Editor, `select status_code, content from net._http_response order by created desc limit 3;` shows the function's latest answers (202 means it started), and the function's logs are under Edge Functions, then calendar-social, then Logs.
+- **Check the nightly sync:** each account's card on the Results tab shows its last sync and any note. In SQL Editor, `select platform, last_sync_at, last_error, last_error_at, last_error_detail from public.cal_social_accounts;` shows the same, with what Instagram or Threads sent with the latest error. `last_sync_at` only moves when a sync saves. pg_cron's "succeeded" only means the request was sent. For a few hours afterwards, `select status_code, content from net._http_response order by created desc limit 3;` shows how the function answered: 202 means the request arrived and the sync started, not that it saved; 401 means the function was deployed with JWT verification on, so no sync runs at all. The function's logs are under Edge Functions, then calendar-social, then Logs; they keep one day. A failed sync, a failed renewal, a sync that stopped partway, and numbers a post couldn't report are each logged with the request, HTTP status, code, subcode, and trace.
 - **Pause the nightly sync:** run `select cron.unschedule('gil-calendar-social-sync');`. The `cron.schedule` line at the end of the migration turns it back on.
+- **Pause the email:** run `select cron.unschedule('gil-calendar-social-health');`. To turn it back on, run `select cron.schedule('gil-calendar-social-health', '10 9 * * *', 'select cal_private.social_health_check()');`.
+
+### When the numbers stop updating
+
+The account's card gives the reason. Whatever it is, leave the connection in place. Disconnect forgets the saved sign-in, a new one can be refused for the same reason, and the saved one picks up by itself once the problem clears. The numbers saved so far stay.
+
+- **"... is refusing the calendar's requests (Meta says: API access blocked)".** Meta is turning away every request, whatever the sign-in, so Reconnect doesn't help. It did this from Oct. 20, 2026, the day after the accounts were first connected. Meta doesn't document the message. Going by other developers' reports, it lifts once one of these is cleared, most often the first:
+  1. **The Facebook account that created the two Meta apps.** Sign in at facebook.com and clear any security check. Then open developers.facebook.com/apps and complete any "Account confirmation needed" step.
+  2. **Each app** at developers.facebook.com/apps. Look for a banner, an alert, or a required action. Check that the app isn't archived or restricted, and that gil1906 is still a tester under App roles.
+  3. **The gil1906 account.** In the Instagram app, open Settings, then Account Status, and clear any "confirm it's you" notice. Under Apps and websites, both apps should still be listed.
+
+  Then choose Refresh now. The next sync renews the sign-in and brings in current numbers for posts from the last 60 days and for any published in the gap; older posts catch up on Sunday's sync. Daily follower counts for the missed days don't come back.
+- **"... didn't answer" or "... asked the calendar to slow down".** The next night's sync tries again.
+- **"Choose Reconnect".** The sign-in stopped working or ran out. Choose Reconnect and sign in as gil1906.
+- **"The nightly sync hasn't brought in new numbers, and no error was recorded", or "Nothing has been tried since".** The nightly request isn't reaching the Edge Function, or the function isn't running, so Refresh now won't change anything either. Whatever older note is on the card, this comes first. Check the function's logs, the `net._http_response` query above, and that the function is deployed with JWT verification off. The email says "No note" or "Nothing has reported in since that note" for the same thing.
+- **The sign-in's end date.** Each sign-in lasts 60 days and renews every week, but can't renew while Meta refuses requests. The card shows the date once it is under a month away, and the email does too. After that date the card shows Needs attention and a Reconnect button. Reconnect works once Meta takes requests again; until then it comes back with the same reason.
+- **Asking Meta for help.** `last_error_detail` and the email carry the request, HTTP status, code, subcode, and trace Meta sent. Meta support asks for the trace.
 
 ## Brother directory
 
 `directory.html` (www.gil1906.org/directory) is the chapter directory. It shares the calendar's Supabase project and sign-in: brothers use the chapter code, their name, and their PIN; the media team uses its email login. The fifth migration adds it.
+
+**Getting there.** Brother Directory sits under Chapter in the site's menu on every page, phone menu included. Anyone can follow it; a visitor gets the sign-in prompt and the visiting-brother form, and nothing else. Once signed in, the calendar's top row has a Brother directory button and the directory's has Content calendar, since one sign-in covers both.
 
 - **Who sees what.** Visitors see nothing. Brothers see every brother's name, standing, crossing date, birthday (month and day), chapter of initiation, and the phone, email, and city each brother chooses to share. Street addresses, birth years, emergency contacts, and notes are for the brother himself and the media team. The database enforces it; the page only shows what it is allowed to read.
 - **Self-service.** Under My record, a brother picks his name and confirms it with the last four digits of the phone on file, then edits his own record. A brother with no record adds himself, marked for the media team to confirm. When a number changed or none is on file, the media team links the record to his sign-in under Manage.
@@ -112,7 +134,7 @@ Setup, once:
 Day to day:
 
 - **Ask brothers to claim their records.** The old spreadsheet had no emails and only a handful of real birthdates, so the greetings reach brothers only after they claim a record and add both.
-- **Pause the greetings:** turn off Send greetings to brothers under Messages. `select cron.unschedule('gil-directory-greetings');` stops the job entirely; the `cron.schedule` line at the end of the migration turns it back on.
+- **Pause the greetings:** turn off Send greetings to brothers under Messages. `select cron.unschedule('gil-directory-greetings');` stops the job entirely; `select cron.schedule('gil-directory-greetings', '35 12 * * *', 'select cal_private.dir_run_greetings()');` turns it back on.
 - **See what went out:** the Sent panel under Messages, or `select * from public.dir_messages order by sent_at desc limit 20;`. Resend's answers for the last few hours are in `select status_code, content from net._http_response order by created desc limit 5;`.
 - **Remove a brother's data:** Remove on his record deletes it, his message log included.
 
@@ -127,8 +149,9 @@ Plan on about 30 minutes.
    3. `migrations/20261014000100_request_emails.sql`
    4. `migrations/20261018000100_social_results.sql`
    5. `migrations/20261030000100_brother_directory.sql`
-   6. `seed.sql`
-   7. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
+   6. `migrations/20261114000100_social_sync_health.sql`
+   7. `seed.sql`
+   8. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
 
    A project that already ran some of these runs only the migrations it hasn't, in order. Posts, requests, brothers, and codes all stay. After the second migration, brothers start as viewers, so mark the chairs in Manage access. Request emails also need `setup/2-request-emails.sql`; see Request emails above. Results also need the Edge Function and its secrets; see Instagram and Threads results above.
 3. **Turn on brother sign-in.** Under Authentication, open Sign In / Providers and turn on **Allow anonymous sign-ins**. Brothers don't create accounts; the chapter code and their PIN are their sign-in. Supabase allows 30 of these sign-ins per hour from one internet connection. Before a chapter meeting where many brothers sign in on the same Wi-Fi, raise that under Authentication, then Rate Limits.
@@ -164,9 +187,9 @@ From the repository root:
 ```bash
 npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 npx playwright install chromium        # once
-node --test "tests/calendar/*.test.mjs"  # 28 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, and the Edge Function
+node --test "tests/calendar/*.test.mjs"  # 56 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Function, the Results account states, the directory, and the site's menus
 node tests/calendar/demo-smoke.mjs     # the demo in a real browser, at desktop and phone widths
 node tests/calendar/live-smoke.mjs     # live mode against a local stand-in for Supabase
 ```
 
-The database tests run the real migrations and seed in PGlite, Postgres compiled to WebAssembly, with a small stand-in for Supabase's sign-in, storage, Vault, pg_net, and pg_cron. The pg_net stand-in records each request instead of sending it. The Edge Function tests run `functions/calendar-social/social.js` in Node against the same database, with Instagram and Threads simulated by `tests/calendar/meta-sim.mjs`: sign-in, token renewal, the nightly sync, expired and rate-limited tokens, and what the media team sees when something goes wrong. The live browser test runs the same database behind a local imitation of Supabase's Data API, sign-in, and file storage. It walks through a visitor, the media team, a brother who becomes a chair and sends files, and a brother on two devices. Then the media team connects Instagram and Threads through the real Edge Function, matches a post by hand, refreshes, and disconnects. Add `SCREENSHOTS=some-folder` to either browser test to save screenshots.
+The database tests run the real migrations and seed in PGlite, Postgres compiled to WebAssembly, with a small stand-in for Supabase's sign-in, storage, Vault, pg_net, and pg_cron. The pg_net stand-in records each request instead of sending it. The Edge Function tests run `functions/calendar-social/social.js` in Node against the same database, with Instagram and Threads simulated by `tests/calendar/meta-sim.mjs`: sign-in, token renewal, the nightly sync, expired and rate-limited tokens, Meta refusing every request, and what the media team sees when something goes wrong. The live browser test runs the same database behind a local imitation of Supabase's Data API, sign-in, and file storage. It walks through a visitor, the media team, a brother who becomes a chair and sends files, and a brother on two devices. Then the media team connects Instagram and Threads through the real Edge Function, matches a post by hand, refreshes, sees Not updating while Meta refuses requests and Connected again once it stops, and disconnects. Add `SCREENSHOTS=some-folder` to either browser test to save screenshots.

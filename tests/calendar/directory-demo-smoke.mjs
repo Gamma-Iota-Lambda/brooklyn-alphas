@@ -38,6 +38,8 @@ const role = async (page, r) => { await page.click(`[data-act="demo-role"][data-
   step('media team: the directory lists sample brothers grouped by letter');
   assert.ok((await page.locator('.bro').count()) >= 12);
   assert.equal(await page.locator('.tab[data-view="manage"]').isHidden(), false);
+  assert.equal(await page.locator('#gc-actions a.btn[href="calendar.html"]').innerText(), 'Content calendar');
+  assert.equal(await page.locator('#main-nav .nav-dropdown-menu a[href="directory.html"]').count(), 1);
   await shot(page, 'desktop-directory', { fullPage: true });
 
   step('search and filters narrow the list');
@@ -137,6 +139,7 @@ const role = async (page, r) => { await page.click(`[data-act="demo-role"][data-
   await page.waitForSelector('#gc-view .empty');
   assert.match(await page.textContent('#gc-view'), /Sign in to see the directory/);
   assert.equal(await page.locator('.bro').count(), 0);
+  assert.equal(await page.locator('#gc-actions a[href="calendar.html"]').count(), 0, 'the link to the calendar waits for a sign-in');
   await shot(page, 'desktop-visitor');
   await page.click('#gc-view [data-act="view"][data-view="guest"]');
   await page.waitForSelector('#gc-form[data-kind="guest"]');
@@ -176,6 +179,7 @@ const role = async (page, r) => { await page.click(`[data-act="demo-role"][data-
   await role(page, 'member');
   step('brother: shared details only, and a nudge to claim');
   await page.waitForSelector('.bro');
+  assert.equal(await page.locator('#gc-actions a.btn[href="calendar.html"]').count(), 1, 'brothers get the link to the calendar');
   await page.click('.bro:has-text("Marcus Bell")');
   const txt = await drawer(page).textContent();
   assert.doesNotMatch(txt, /12 Hancock St/, 'no street address for other brothers');

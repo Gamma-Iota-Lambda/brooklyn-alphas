@@ -1,6 +1,7 @@
 // The calendar-social Edge Function (supabase/functions/calendar-social/social.js), run in Node
 // against the real migrations in PGlite, with Instagram and Threads simulated (meta-sim.mjs). Covers Connect,
-// the nightly sync, token renewal, and what the media team sees when something goes wrong.
+// the nightly sync, token renewal, and what the media team sees when something goes wrong, including
+// Meta blocking the calendar outright.
 // Run with the other database tests: node --test "tests/calendar/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,8 +19,8 @@ const ENV = {
   THREADS_APP_ID: 'th-app-1',
   THREADS_APP_SECRET: 'th-secret-shh'
 };
-async function setup(now = '2026-10-21T16:00:00Z', env = ENV) {
-  const h = await createDb();
+async function setup(now = '2026-10-21T16:00:00Z', env = ENV, dbOptions = {}) {
+  const h = await createDb(dbOptions);
   await h.sql('delete from public.cal_posts');
   await h.setNow(now);
   const clock = { t: Date.parse(now) };
@@ -331,11 +332,14 @@ test('sync problems leave a note on the Results tab, and the numbers that came t
   assert.deepEqual(fresh.map((p) => p.likes), [7, 8]);
   assert.equal(fresh.filter((p) => p.views !== null).length, 1, 'one post got its numbers before the limit');
   s.meta.rateLimitAfter = Infinity;
+  assert.equal(s.logs.filter((l) => /^calendar-social: stopped partway through the numbers: \(#4\) Application request limit reached \(GET graph\.instagram\.com\/v25\.0\/\d+\/insights, HTTP 400, code 4, OAuthException\)$/.test(l)).length, 1,
+    'logged once, with what Instagram sent');
 
   // No answer at all.
   s.meta.down = true;
   await nightly('2026-10-23T08:20:00Z');
   assert.equal((await accountState(s, staff, 'instagram')).last_error, "Instagram didn't answer. The next sync tries again.");
+  assert.ok(s.logs.includes("calendar-social: instagram sync failed: Instagram didn't answer. (GET graph.instagram.com/v25.0/me)"));
   s.meta.down = false;
 
   // A token past its expiry date isn't sent anywhere.
@@ -357,6 +361,236 @@ test('sync problems leave a note on the Results tab, and the numbers that came t
   for (const secret of [igToken, thToken, 'ig-secret-shh', 'th-secret-shh']) assert.ok(!notes.includes(secret), 'no tokens or secrets in notes or logs');
 });
 
+const WHERE_TO_LOOK = 'Look for a security or "confirm your account" notice on the Facebook account that owns the chapter\'s Meta developer apps, and on @gil1906 in the Instagram app.';
+const BLOCKED_NOTE = (label, says = 'API access blocked') =>
+  `${label} is refusing the calendar's requests (Meta says: ${says}). Signing in again won't fix this. ${WHERE_TO_LOOK} The numbers pick up on their own once it's cleared.`;
+// After a sign-in, where no saved sign-in may be waiting to pick up.
+const BLOCKED_SIGN_IN = (label) =>
+  `${label} wasn't connected. ${label} is refusing the calendar's requests (Meta says: API access blocked). Signing in won't work until that is cleared. ${WHERE_TO_LOOK} Then connect again.`;
+const SENT = 'HTTP 400, code 200, subcode 5258005, OAuthException, trace AbCdEfGh1234567';
+const accountRow = (s, staff, platform) =>
+  s.h.select(staff, 'select last_sync_at, last_error, last_error_at, last_error_detail, token_refreshed_at from public.cal_social_accounts where platform = $1', [platform]).then((r) => r[0]);
+const vaultToken = (s, platform) =>
+  s.h.sql('select decrypted_secret from vault.decrypted_secrets where name = $1', [`calendar_${platform}_token`]).then((r) => r[0].decrypted_secret);
+
+test('when Meta blocks the calendar, the note says what to check, nothing is lost, and the sync picks up by itself', async () => {
+  const s = await setup('2026-10-19T08:20:00Z');
+  const staff = await s.h.staff();
+  const igToken = await connected(s, staff, 'instagram');
+  const thToken = await connected(s, staff, 'threads');
+  s.meta.add('instagram', '1801', '2026-10-18T22:00:00+0000', { media_type: 'IMAGE', media_product_type: 'FEED', like_count: 80, comments_count: 6 }, { views: 900, reach: 700, likes: 80 });
+  s.meta.add('threads', '3101', '2026-06-06T20:28:00+0000', { text: 'Hello', media_type: 'TEXT_POST' }, { views: 50, likes: 5 });
+  const key = await syncKey(s.h);
+  const nightly = async (iso) => {
+    await s.at(iso);
+    const from = s.meta.calls.length;
+    await s.post('/sync', { 'x-sync-key': key });
+    await s.settle();
+    return s.meta.calls.slice(from).map((c) => `${c.method} ${c.host}${c.path}`).sort();
+  };
+  await nightly('2026-10-19T08:20:00Z');
+  assert.equal((await accountRow(s, staff, 'instagram')).last_error, null);
+
+  // From the next night Meta refuses every request, the way it did from Oct. 20, 2026.
+  s.meta.blocked = true;
+  assert.deepEqual(await nightly('2026-10-20T08:20:00Z'), ['GET graph.instagram.com/v25.0/me', 'GET graph.threads.net/v1.0/me'],
+    'one refused request each, and nothing else is asked');
+  let ig = await accountRow(s, staff, 'instagram');
+  const th = await accountRow(s, staff, 'threads');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
+  assert.equal(th.last_error, BLOCKED_NOTE('Threads'));
+  assert.ok(ig.last_error.length <= 500 && !/reconnect/i.test(ig.last_error), 'it fits, and sends no one to Reconnect');
+  assert.equal(ig.last_sync_at.toISOString(), '2026-10-19T08:20:00.000Z', 'the last sync that saved stays');
+  assert.equal(ig.last_error_at.toISOString(), '2026-10-20T08:20:00.000Z');
+  assert.deepEqual(ig.last_error_detail,
+    { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'AbCdEfGh1234567' });
+  assert.equal(th.last_error_detail.request, 'GET graph.threads.net/v1.0/me');
+  assert.ok(s.logs.includes(`calendar-social: instagram sync failed: API access blocked. (GET graph.instagram.com/v25.0/me, ${SENT})`), s.logs.join('\n'));
+  assert.ok(s.logs.includes(`calendar-social: threads sync failed: API access blocked. (GET graph.threads.net/v1.0/me, ${SENT})`));
+  assert.deepEqual(await s.h.select(staff, 'select media_id, views::int from public.cal_social_posts order by media_id'),
+    [{ media_id: '1801', views: 900 }, { media_id: '3101', views: 50 }], 'the numbers saved so far stay');
+
+  // A week on, renewing the sign-in is refused too. It is logged in full, the sign-in is kept, and
+  // the sync goes on to ask for the numbers, which is where it fails.
+  assert.deepEqual(await nightly('2026-10-27T08:20:00Z'), [
+    'GET graph.instagram.com/refresh_access_token', 'GET graph.instagram.com/v25.0/me',
+    'GET graph.threads.net/refresh_access_token', 'GET graph.threads.net/v1.0/me'
+  ]);
+  assert.ok(s.logs.includes(`calendar-social: renewing the instagram token failed: API access blocked. (GET graph.instagram.com/refresh_access_token, ${SENT})`));
+  ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
+  assert.equal(ig.token_refreshed_at.toISOString(), '2026-10-19T08:20:00.000Z');
+  assert.deepEqual([await vaultToken(s, 'instagram'), await vaultToken(s, 'threads')], [igToken, thToken]);
+
+  // Signing in again is refused as well, and leaves the saved connection alone.
+  const state = await s.h.rpc1(staff, 'cal_social_connect_start', { p_platform: 'instagram', p_return: 'https://www.gil1906.org/calendar.html' });
+  const back = await s.get(`/callback?code=ig-code-1&state=${state}`);
+  assert.equal(note(back), BLOCKED_SIGN_IN('Instagram'));
+  assert.ok(s.logs.includes(`calendar-social: instagram connect failed: API access blocked. (POST api.instagram.com/oauth/access_token, ${SENT})`));
+  assert.equal(await vaultToken(s, 'instagram'), igToken);
+  assert.equal((await accountRow(s, staff, 'instagram')).last_error, BLOCKED_NOTE('Instagram'));
+
+  // Meta lets the calendar back in. The next sync renews the sign-in, saves, and clears the note.
+  s.meta.blocked = false;
+  s.meta.numbers.set('1801', { views: 1400, reach: 1000, likes: 120 });
+  await nightly('2026-10-28T08:20:00Z');
+  ig = await accountRow(s, staff, 'instagram');
+  assert.deepEqual([ig.last_error, ig.last_error_at, ig.last_error_detail], [null, null, null]);
+  assert.equal(ig.last_sync_at.toISOString(), '2026-10-28T08:20:00.000Z');
+  assert.equal(ig.token_refreshed_at.toISOString(), '2026-10-28T08:20:00.000Z');
+  assert.notEqual(await vaultToken(s, 'instagram'), igToken);
+  assert.equal((await s.h.select(staff, `select views::int from public.cal_social_posts where media_id = '1801'`))[0].views, 1400);
+
+  const kept = JSON.stringify([...(await s.h.sql('select last_error, last_error_detail from public.cal_social_accounts')), ...s.logs, note(back)]);
+  for (const secret of [igToken, thToken, 'ig-secret-shh', 'th-secret-shh']) assert.ok(!kept.includes(secret), `no ${secret} in notes, details, or logs`);
+  assert.ok(!/[?&=]|IG-|TH-/.test(kept.replace(/"[a-z_]+":/g, '')), 'requests are kept as host and path, with no query and no token');
+});
+
+test('a block that reaches only some requests fails the sync too, and is read as a block whatever code comes with it', async () => {
+  const s = await setup('2026-10-19T08:20:00Z');
+  const staff = await s.h.staff();
+  await connected(s, staff, 'instagram');
+  s.meta.add('instagram', '1801', '2026-10-18T22:00:00+0000', { media_type: 'IMAGE', media_product_type: 'FEED', like_count: 80, comments_count: 6 }, { views: 900, likes: 80 });
+  const key = await syncKey(s.h);
+  s.meta.blocked = /\/insights$/;
+  await s.post('/sync', { 'x-sync-key': key });
+  await s.settle();
+  const ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
+  assert.equal(ig.last_sync_at, null);
+  assert.deepEqual(ig.last_error_detail,
+    { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/1801/insights', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'AbCdEfGh1234567' });
+  assert.deepEqual(await s.h.select(staff, 'select media_id from public.cal_social_posts'), []);
+
+  // The message is the one thing Meta is known to send. With a token error's code beside it, the
+  // note still says blocked: Reconnect would be refused the same way.
+  s.meta.blocked = true;
+  s.meta.blockedReply = { message: 'API access blocked.', type: 'OAuthException', code: 190 };
+  await s.at('2026-10-20T08:20:00Z');
+  await s.post('/sync', { 'x-sync-key': key });
+  await s.settle();
+  const again = await accountRow(s, staff, 'instagram');
+  assert.equal(again.last_error, BLOCKED_NOTE('Instagram'));
+  assert.deepEqual(again.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 190, type: 'OAuthException' });
+});
+
+test('a block is recognized by its subcode, on the follower count, and with the trace in a header; a refused first sign-in says to connect again', async () => {
+  const s = await setup('2026-10-19T08:20:00Z');
+  const staff = await s.h.staff();
+
+  // A first sign-in while blocked saves nothing, so nothing is waiting to pick up afterwards.
+  s.meta.blocked = true;
+  const state = await s.h.rpc1(staff, 'cal_social_connect_start', { p_platform: 'threads', p_return: 'https://www.gil1906.org/calendar.html' });
+  assert.equal(note(await s.get(`/callback?code=th-code-1&state=${state}`)), BLOCKED_SIGN_IN('Threads'));
+  assert.deepEqual(await s.h.sql('select platform from public.cal_social_accounts'), []);
+  s.meta.blocked = false;
+
+  await connected(s, staff, 'instagram');
+  await connected(s, staff, 'threads');
+  s.meta.add('threads', '3101', '2026-10-18T13:00:00+0000', { text: 'Hello', media_type: 'TEXT_POST' }, { views: 50, likes: 5 });
+  const key = await syncKey(s.h);
+  const nightly = async (iso) => {
+    await s.at(iso);
+    await s.post('/sync', { 'x-sync-key': key });
+    await s.settle();
+  };
+
+  // Only the follower count is refused. Threads fails; Instagram, untouched, saves.
+  s.meta.blocked = /threads_insights$/;
+  await nightly('2026-10-19T08:20:00Z');
+  const th = await accountRow(s, staff, 'threads');
+  assert.deepEqual([th.last_error, th.last_sync_at], [BLOCKED_NOTE('Threads'), null]);
+  assert.equal(th.last_error_detail.request, 'GET graph.threads.net/v1.0/me/threads_insights');
+  assert.equal((await accountRow(s, staff, 'instagram')).last_error, null);
+
+  // Only renewing the sign-in is refused. The numbers Instagram still sends are saved, and the
+  // refusal is in the log.
+  s.meta.blocked = /refresh_access_token$/;
+  s.meta.add('instagram', '1801', '2026-10-25T22:00:00+0000', { media_type: 'IMAGE', media_product_type: 'FEED', like_count: 80, comments_count: 6 }, { views: 900, likes: 80 });
+  await nightly('2026-10-27T08:20:00Z');
+  const renewing = await accountRow(s, staff, 'instagram');
+  assert.deepEqual([renewing.last_error, renewing.last_sync_at.toISOString()], [null, '2026-10-27T08:20:00.000Z']);
+  assert.equal((await s.h.select(staff, `select views::int from public.cal_social_posts where media_id = '1801'`))[0].views, 900);
+  assert.ok(s.logs.some((l) => l.startsWith('calendar-social: renewing the instagram token failed: API access blocked. (GET graph.instagram.com/refresh_access_token')));
+
+  // The subcode alone, under wording Meta might change to, with the trace only in a header.
+  s.meta.blocked = true;
+  s.meta.blockedReply = { message: 'This app is temporarily unavailable.', type: 'OAuthException', code: 200, error_subcode: 5258005 };
+  s.meta.blockedHeaders = { 'x-fb-trace-id': 'HeaderTrace99' };
+  await nightly('2026-10-28T08:20:00Z');
+  const ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram', 'This app is temporarily unavailable'));
+  assert.deepEqual(ig.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'HeaderTrace99' });
+});
+
+test('odd replies never cost the note or put an address in it: stray characters, a detail that will not save, a broken next-page address', async () => {
+  const s = await setup('2026-10-19T08:20:00Z');
+  const staff = await s.h.staff();
+  const token = await connected(s, staff, 'instagram');
+  const key = await syncKey(s.h);
+  const nightly = async (iso) => {
+    await s.at(iso);
+    await s.post('/sync', { 'x-sync-key': key });
+    await s.settle();
+  };
+
+  // A NUL, an emoji where the type is cut, and a control character in the trace.
+  s.meta.blocked = true;
+  s.meta.blockedReply = { message: 'API access\u0000 blocked.', type: `${'a'.repeat(58)}😀tail`, code: 200, fbtrace_id: 'Ab\u0000Cd\n12' };
+  await nightly('2026-10-19T08:20:00Z');
+  let ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
+  assert.deepEqual(ig.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, type: `${'a'.repeat(58)}ta`, trace: 'AbCd12' });
+
+  // If the detail can't be saved for any reason, the note still is.
+  await s.h.sql(`create or replace function cal_private.social_sync_failed(p_platform text, p_message text, p_detail jsonb)
+    returns void language plpgsql as $$ begin raise exception 'no room for the detail'; end $$`);
+  s.meta.blockedReply = { message: 'API access blocked.', type: 'OAuthException', code: 200 };
+  await s.h.sql(`update public.cal_social_accounts set last_error = null, last_error_at = null`);
+  await nightly('2026-10-20T08:20:00Z');
+  ig = await accountRow(s, staff, 'instagram');
+  assert.deepEqual([ig.last_error, ig.last_error_at.toISOString()], [BLOCKED_NOTE('Instagram'), '2026-10-20T08:20:00.000Z']);
+  assert.deepEqual(s.logs.filter((l) => /could not record/.test(l)),
+    ['calendar-social: could not record the instagram sync failure with its detail: no room for the detail'], 'and the log says why');
+
+  // A next-page address that isn't a full address holds the token. It is never quoted.
+  s.meta.blocked = false;
+  s.meta.relativeNext = true;
+  for (const [id, ts] of [['1801', '2026-10-18T22:00:00+0000'], ['1702', '2026-10-12T14:00:00+0000'], ['1603', '2026-10-05T14:00:00+0000']]) {
+    s.meta.add('instagram', id, ts, { media_type: 'IMAGE', media_product_type: 'FEED', like_count: 10, comments_count: 1 }, { views: 100 });
+  }
+  await nightly('2026-10-21T08:20:00Z');
+  ig = await accountRow(s, staff, 'instagram');
+  assert.equal(ig.last_error, "Instagram sent an error: an address the calendar couldn't read");
+  const kept = JSON.stringify([ig, ...s.logs]);
+  assert.ok(!kept.includes(token) && !/access_token=|[?&]after=/.test(kept), 'no token and no query in the note or the log');
+});
+
+test('the function works before the sync health migration has run: the note saves, and the detail follows once it has', async () => {
+  const before = ['20261013000100_content_calendar.sql', '20261013000200_chairs_and_request_files.sql', '20261014000100_request_emails.sql',
+    '20261018000100_social_results.sql', '20261030000100_brother_directory.sql', '20261030000200_directory_last_name.sql',
+    '20261030000300_directory_email_design.sql', '20261031000100_directory_visiting_brothers.sql'];
+  const s = await setup('2026-11-14T08:20:00Z', ENV, { migrations: before });
+  const staff = await s.h.staff();
+  await connected(s, staff, 'instagram');
+  const key = await syncKey(s.h);
+  s.meta.blocked = true;
+  await s.post('/sync', { 'x-sync-key': key });
+  await s.settle();
+  const [row] = await s.h.select(staff, `select last_error, last_error_at from public.cal_social_accounts where platform = 'instagram'`);
+  assert.equal(row.last_error, BLOCKED_NOTE('Instagram'));
+  assert.equal(row.last_error_at.toISOString(), '2026-11-14T08:20:00.000Z');
+  assert.deepEqual(s.logs.filter((l) => /could not record/.test(l)), []);
+
+  // The migration runs on the account as it stands, and the next failed sync keeps what Meta sent.
+  await s.h.migrate('20261114000100_social_sync_health.sql');
+  assert.deepEqual(await accountRow(s, staff, 'instagram').then((a) => [a.last_error, a.last_error_detail]), [BLOCKED_NOTE('Instagram'), null]);
+  await s.at('2026-11-15T08:20:00Z');
+  await s.post('/sync', { 'x-sync-key': key });
+  await s.settle();
+  assert.equal((await accountRow(s, staff, 'instagram')).last_error_detail.code, 200);
+});
+
 test("Meta's uninstall and deletion callbacks answer, and anything else is not found", async () => {
   const s = await setup();
   const uninstall = await s.post('/uninstall');
@@ -367,6 +601,8 @@ test("Meta's uninstall and deletion callbacks answer, and anything else is not f
   const body = await deletion.json();
   assert.equal(body.url, `${DEFAULT_RETURN}#results`);
   assert.match(body.confirmation_code, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(s.logs, ['calendar-social: the uninstall callback was called', 'calendar-social: the data deletion callback was called'],
+    'the log is the only record that Meta called');
   assert.equal((await s.get('/sync')).status, 404);
   assert.equal((await s.get('/anything')).status, 404);
   assert.equal((await s.post('/connect')).status, 404);

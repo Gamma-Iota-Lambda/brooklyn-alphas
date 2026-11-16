@@ -63,18 +63,31 @@ export const PLATFORMS = {
   }
 };
 
-// An error from Instagram or Threads. kind: 'token' (the connection stopped working), 'rate'
-// (asked to slow down), 'network' (no answer), or 'api' (anything else).
+// An error from Instagram or Threads. kind: 'token' (the connection stopped working), 'blocked'
+// (Meta is refusing the app or the account, whatever the token), 'rate' (asked to slow down),
+// 'network' (no answer), or 'api' (anything else). The rest is what Meta sent with it: request is
+// the method, host, and path that was asked, never the query, which holds the token.
 export class GraphError extends Error {
-  constructor(message, { code = null, status = 0, kind = 'api' } = {}) {
+  constructor(message, { code = null, status = 0, kind = 'api', subcode = null, type = null, trace = null, request = null } = {}) {
     super(message);
     this.code = code;
     this.status = status;
     this.kind = kind;
+    this.subcode = subcode;
+    this.type = type;
+    this.trace = trace;
+    this.request = request;
   }
 }
 const TOKEN_CODES = new Set([102, 190]);
 const RATE_CODES = new Set([4, 17, 32, 613, 80001, 80002]);
+// Meta answers every request this way, token renewal included, while it holds back an app, the
+// developer account behind it, or the connected account. It documents neither. The message is what
+// it sent the calendar from Oct. 20, 2026; the subcode is from other developers' reports that year.
+const BLOCKED_MESSAGE = /\bAPI access blocked\b/i;
+const BLOCKED_SUBCODE = 5258005;
+// These end a sync at once: no other request will get through.
+const FATAL = new Set(['token', 'blocked']);
 
 // The database side: the cal_private functions in the fourth migration. query(sql, params) returns
 // rows. index.ts passes postgres.js, and the tests pass PGlite.
@@ -97,7 +110,19 @@ export function makeDb(query) {
     saveSync: async (platform, account, posts) =>
       (await one('select cal_private.social_save_sync($1::text, ($2::text)::jsonb, ($3::text)::jsonb) as r',
         [platform, JSON.stringify(account), JSON.stringify(posts)])).r,
-    syncFailed: (platform, message) => query('select cal_private.social_sync_failed($1::text, $2::text)', [platform, message])
+    // A note after a sync that saved (no detail), or a sync that failed, with what Meta sent.
+    syncFailed: async (platform, message, detail = null) => {
+      if (detail) {
+        try {
+          return await query('select cal_private.social_sync_failed($1::text, $2::text, ($3::text)::jsonb)',
+            [platform, message, JSON.stringify(detail)]);
+        } catch (e) {
+          // Until the sync health migration runs there is nowhere to keep the detail. Save the note.
+          if (!e || e.code !== '42883') throw e;
+        }
+      }
+      return query('select cal_private.social_sync_failed($1::text, $2::text)', [platform, message]);
+    }
   };
 }
 
@@ -124,15 +149,48 @@ function withParams(base, params) {
 // Some answers come wrapped in a data list, others don't.
 const unwrap = (j) => (Array.isArray(j?.data) ? j.data[0] || {} : j || {});
 
+// Text Meta sent, made safe to log and save: one line, no control characters (Postgres can't hold
+// a NUL), and cut on whole characters.
 function short(text, max = 200) {
-  const s = String(text || '').replace(/\s+/g, ' ').trim();
-  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+  const s = Array.from(String(text || '').replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim());
+  return s.length > max ? `${s.slice(0, max - 1).join('')}…` : s.join('');
+}
+// The same for a type or a trace, which are plain letters, digits, and punctuation.
+const plain = (text, max) => String(text || '').replace(/[^\x21-\x7e]+/g, '').slice(0, max);
+
+// An error for the function's log, with everything Meta sent. Meta support asks for the trace.
+export function logText(e) {
+  if (!(e instanceof GraphError)) return String(e && e.message ? e.message : e);
+  const parts = [
+    e.request,
+    e.status ? `HTTP ${e.status}` : '',
+    e.code !== null ? `code ${e.code}` : '',
+    e.subcode !== null ? `subcode ${e.subcode}` : '',
+    e.type || '',
+    e.trace ? `trace ${e.trace}` : ''
+  ].filter(Boolean);
+  return parts.length ? `${e.message} (${parts.join(', ')})` : e.message;
 }
 
-// What the media team reads on the Results tab when something goes wrong.
-export function friendly(e, label) {
+// The same, to keep with the note on the account, where it outlasts the log.
+export function detailOf(e) {
+  if (!(e instanceof GraphError)) return { kind: 'internal' };
+  const all = { kind: e.kind, request: e.request, status: e.status || null, code: e.code, subcode: e.subcode, type: e.type, trace: e.trace };
+  return Object.fromEntries(Object.entries(all).filter(([, v]) => v !== null && v !== undefined && v !== ''));
+}
+
+// What the media team reads on the Results tab when something goes wrong. connecting: the error
+// came from a sign-in, where no saved sign-in may be waiting to pick up afterwards.
+export function friendly(e, label, connecting = false) {
   if (e instanceof GraphError) {
     if (e.kind === 'token') return `The ${label} connection stopped working. Choose Reconnect on the Results tab.`;
+    if (e.kind === 'blocked') {
+      return `${label} is refusing the calendar's requests (Meta says: ${short(e.message, 120).replace(/[.\s]+$/, '')}). ` +
+        (connecting ? "Signing in won't work until that is cleared. " : "Signing in again won't fix this. ") +
+        'Look for a security or "confirm your account" notice on the Facebook account that owns the chapter\'s Meta developer apps, ' +
+        'and on @gil1906 in the Instagram app. ' +
+        (connecting ? 'Then connect again.' : "The numbers pick up on their own once it's cleared.");
+    }
     if (e.kind === 'rate') return `${label} asked the calendar to slow down. The next sync tries again.`;
     if (e.kind === 'network') return `${label} didn't answer. The next sync tries again.`;
     return `${label} sent an error: ${short(e.message)}`;
@@ -145,13 +203,23 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
   const base = () => get('SUPABASE_URL').replace(/\/+$/, '');
   const callbackUrl = () => `${base()}/functions/v1/calendar-social/callback`;
 
-  // One request to Instagram or Threads. Errors never include the address, which holds the token.
+  // One request to Instagram or Threads. Errors carry the host and path asked, never the query,
+  // which holds the token.
   async function call(url, init, label) {
+    let request;
+    try {
+      const asked = new URL(url);
+      request = `${init.method || 'GET'} ${asked.host}${asked.pathname}`;
+    } catch {
+      // A next-page address from Meta that isn't a full address. It holds the token, and some
+      // runtimes quote it in the error, so it stops here.
+      throw new GraphError("an address the calendar couldn't read");
+    }
     let res;
     try {
       res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(20000) });
     } catch {
-      throw new GraphError(`${label} didn't answer.`, { kind: 'network' });
+      throw new GraphError(`${label} didn't answer.`, { kind: 'network', request });
     }
     let body = null;
     try {
@@ -162,10 +230,18 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
     if (!res.ok || !body || body.error) {
       const err = body && body.error && typeof body.error === 'object' ? body.error : {};
       const code = num(err.code ?? body?.code);
-      const message = err.message || body?.error_message || body?.error_description ||
-        (typeof body?.error === 'string' ? body.error : '') || `HTTP ${res.status}`;
-      const kind = TOKEN_CODES.has(code) ? 'token' : RATE_CODES.has(code) || res.status === 429 ? 'rate' : 'api';
-      throw new GraphError(short(message), { code, status: res.status, kind });
+      const subcode = num(err.error_subcode);
+      const message = short(err.message || body?.error_message || body?.error_description ||
+        (typeof body?.error === 'string' ? body.error : '') || `HTTP ${res.status}`);
+      // Blocked comes first: whatever code comes with it, signing in again is refused the same way.
+      const kind = subcode === BLOCKED_SUBCODE || BLOCKED_MESSAGE.test(message) ? 'blocked'
+        : TOKEN_CODES.has(code) ? 'token'
+          : RATE_CODES.has(code) || res.status === 429 ? 'rate' : 'api';
+      throw new GraphError(message, {
+        code, status: res.status, kind, subcode, request,
+        type: plain(err.type || body?.error_type, 60) || null,
+        trace: plain(err.fbtrace_id || res.headers?.get('x-fb-trace-id'), 80) || null
+      });
     }
     return body;
   }
@@ -259,8 +335,8 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
         functionsUrl: `${base()}/functions/v1`
       });
     } catch (e) {
-      log.error(`calendar-social: ${p.key} connect failed: ${e && e.message}`);
-      return back(claim.return_to, { connect_error: `${p.label} wasn't connected. ${friendly(e, p.label)}` });
+      log.error(`calendar-social: ${p.key} connect failed: ${logText(e)}`);
+      return back(claim.return_to, { connect_error: `${p.label} wasn't connected. ${friendly(e, p.label, true)}` });
     }
     // The first sync runs after the page is back, so no one waits on it.
     waitUntil(syncPlatform(p.key, { full: true, started: now() }));
@@ -320,8 +396,12 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
         try {
           out[k] = await fn(items[k]);
         } catch (e) {
-          if (e instanceof GraphError && ['token', 'rate', 'network'].includes(e.kind)) ctx.stop = e.kind;
-          if (e instanceof GraphError && e.kind === 'token') throw e;
+          if (e instanceof GraphError && (FATAL.has(e.kind) || ['rate', 'network'].includes(e.kind))) {
+            // A fatal one is logged where the sync fails. This is the only record of the others.
+            if (!ctx.stop && !FATAL.has(e.kind)) log.warn(`calendar-social: stopped partway through the numbers: ${logText(e)}`);
+            ctx.stop = e.kind;
+          }
+          if (e instanceof GraphError && FATAL.has(e.kind)) throw e;
           if (!ctx.stop) out[k] = null;
         }
       }
@@ -346,7 +426,7 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
         lastError = e;
       }
     }
-    if (lastError) log.warn(`calendar-social: no ${label} insights for a post: ${lastError.message}`);
+    if (lastError) log.warn(`calendar-social: no ${label} insights for a post: ${logText(lastError)}`);
     return null;
   }
 
@@ -398,7 +478,8 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       const row = (Array.isArray(j.data) ? j.data : []).find((d) => d && d.name === 'followers_count');
       followers = num(row?.total_value?.value ?? row?.values?.[0]?.value);
     } catch (e) {
-      if (e instanceof GraphError && e.kind === 'token') throw e;
+      if (e instanceof GraphError && FATAL.has(e.kind)) throw e;
+      log.warn(`calendar-social: no Threads follower count: ${logText(e)}`);
       ctx.notes.push("Threads didn't send the follower count this time.");
     }
     const items = (await listPages(withParams(`${TH_GRAPH}/${TH_VERSION}/me/threads`, {
@@ -450,8 +531,11 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
             token = r.access_token;
           }
         } catch (e) {
+          // Only a dead sign-in ends the sync here. Anything else, a block included, goes on to ask
+          // for the numbers: if Meta still sends them they are worth saving, and if it refuses
+          // those too, that request fails the sync.
           if (e instanceof GraphError && e.kind === 'token') throw e;
-          log.warn(`calendar-social: renewing the ${platform} token failed: ${e && e.message}`);
+          log.warn(`calendar-social: renewing the ${platform} token failed: ${logText(e)}`);
           if (expiresAt && expiresAt - now() < 10 * DAY) {
             const day = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/New_York' });
             ctx.notes.push(`Renewing the ${p.label} connection didn't work. Choose Reconnect on the Results tab before ${day}.`);
@@ -469,11 +553,17 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       const message = e instanceof GraphError && e.kind === 'expired'
         ? `The ${p.label} connection expired. Choose Reconnect on the Results tab.`
         : friendly(e, p.label);
-      log.error(`calendar-social: ${platform} sync failed: ${e && e.message}`);
+      log.error(`calendar-social: ${platform} sync failed: ${logText(e)}`);
       try {
-        await db.syncFailed(platform, message);
+        await db.syncFailed(platform, message, detailOf(e));
       } catch (inner) {
-        log.error(`calendar-social: could not record the ${platform} sync failure: ${inner && inner.message}`);
+        // The note matters more than its detail: say why the detail didn't save, and save the note.
+        log.error(`calendar-social: could not record the ${platform} sync failure with its detail: ${inner && inner.message}`);
+        try {
+          await db.syncFailed(platform, message);
+        } catch (again) {
+          log.error(`calendar-social: could not record the ${platform} sync failure: ${again && again.message}`);
+        }
       }
       return { platform, error: message };
     }
@@ -504,9 +594,14 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       if (route === 'callback' && req.method === 'GET') return await callback(url);
       if (route === 'sync' && req.method === 'POST') return await sync(req);
       // Meta calls these if the account removes the app or asks for its data to be deleted. The
-      // media team disconnects from the Results tab, and the next sync notes a removed app.
-      if (route === 'uninstall' && req.method === 'POST') return json(200, { ok: true });
+      // media team disconnects from the Results tab, and the next sync notes a removed app. The log
+      // line is the only record that Meta called.
+      if (route === 'uninstall' && req.method === 'POST') {
+        log.warn('calendar-social: the uninstall callback was called');
+        return json(200, { ok: true });
+      }
       if (route === 'delete' && req.method === 'POST') {
+        log.warn('calendar-social: the data deletion callback was called');
         const code = crypto.randomUUID();
         return json(200, { url: `${DEFAULT_RETURN}#results`, confirmation_code: code });
       }
