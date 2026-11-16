@@ -20,7 +20,7 @@ const TOKEN = friendly(new GraphError('Session has expired.', { kind: 'token', c
 const RATE_NOTE = 'Instagram asked the calendar to slow down. Numbers for some posts update on the next sync.';
 
 test('an account that synced last night is fine, with or without a note from that sync', () => {
-  assert.deepEqual(health(), { state: 'ok', expired: false, failed: false, quiet: false, waiting: false, expires: NOW + 50 * D });
+  assert.deepEqual(health(), { state: 'ok', expired: false, failed: false, quiet: false, silent: false, waiting: false, expires: NOW + 50 * D });
   // A note saved with the sync carries the sync's time, give or take the moment between statements.
   for (const gap of [0, 400, 10000]) {
     const h = health({ lastError: RATE_NOTE, lastErrorAt: new Date(NOW - 7 * H + gap).toISOString() });
@@ -42,6 +42,18 @@ test('a try that saved nothing shows as stuck, and a block never asks for a new 
   // Never synced, and the first try failed.
   h = health({ connectedAt: ago(2 * H), lastSyncAt: '', lastError: BLOCKED, lastErrorAt: ago(2 * H) });
   assert.deepEqual([h.state, h.failed, h.waiting], ['stuck', true, false]);
+});
+
+test('a failure with no try since means the sync has stopped running too', () => {
+  // Blocked, and still trying every night.
+  assert.equal(health({ lastSyncAt: ago(28 * D), lastError: BLOCKED, lastErrorAt: ago(7 * H) }).silent, false);
+  assert.equal(health({ lastSyncAt: ago(28 * D), lastError: BLOCKED, lastErrorAt: ago(STUCK_AFTER) }).silent, false);
+  // The same note, but the last try was two weeks ago: the nightly request no longer arrives.
+  const h = health({ lastSyncAt: ago(28 * D), lastError: BLOCKED, lastErrorAt: ago(14 * D) });
+  assert.deepEqual([h.state, h.failed, h.silent, h.quiet], ['stuck', true, true, false]);
+  // A note that came with a sync is never a failure, however old; quiet covers that.
+  const old = health({ lastSyncAt: ago(5 * D), lastError: RATE_NOTE, lastErrorAt: new Date(NOW - 5 * D + 300).toISOString() });
+  assert.deepEqual([old.silent, old.quiet], [false, true]);
 });
 
 test('a sign-in that stopped working or ran out asks for Reconnect', () => {

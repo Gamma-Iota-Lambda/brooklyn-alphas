@@ -410,13 +410,15 @@ test('when Meta blocks the calendar, the note says what to check, nothing is los
   assert.deepEqual(await s.h.select(staff, 'select media_id, views::int from public.cal_social_posts order by media_id'),
     [{ media_id: '1801', views: 900 }, { media_id: '3101', views: 50 }], 'the numbers saved so far stay');
 
-  // A week on, the first request is the renewal. It is refused too, which ends the sync there, and
-  // the saved sign-in is kept.
-  assert.deepEqual(await nightly('2026-10-27T08:20:00Z'), ['GET graph.instagram.com/refresh_access_token', 'GET graph.threads.net/refresh_access_token']);
-  assert.ok(s.logs.includes(`calendar-social: instagram sync failed: API access blocked. (GET graph.instagram.com/refresh_access_token, ${SENT})`));
+  // A week on, renewing the sign-in is refused too. It is logged in full, the sign-in is kept, and
+  // the sync goes on to ask for the numbers, which is where it fails.
+  assert.deepEqual(await nightly('2026-10-27T08:20:00Z'), [
+    'GET graph.instagram.com/refresh_access_token', 'GET graph.instagram.com/v25.0/me',
+    'GET graph.threads.net/refresh_access_token', 'GET graph.threads.net/v1.0/me'
+  ]);
+  assert.ok(s.logs.includes(`calendar-social: renewing the instagram token failed: API access blocked. (GET graph.instagram.com/refresh_access_token, ${SENT})`));
   ig = await accountRow(s, staff, 'instagram');
   assert.equal(ig.last_error, BLOCKED_NOTE('Instagram'));
-  assert.equal(ig.last_error_detail.request, 'GET graph.instagram.com/refresh_access_token');
   assert.equal(ig.token_refreshed_at.toISOString(), '2026-10-19T08:20:00.000Z');
   assert.deepEqual([await vaultToken(s, 'instagram'), await vaultToken(s, 'threads')], [igToken, thToken]);
 
@@ -501,11 +503,21 @@ test('a block is recognized by its subcode, on the follower count, and with the 
   assert.equal(th.last_error_detail.request, 'GET graph.threads.net/v1.0/me/threads_insights');
   assert.equal((await accountRow(s, staff, 'instagram')).last_error, null);
 
+  // Only renewing the sign-in is refused. The numbers Instagram still sends are saved, and the
+  // refusal is in the log.
+  s.meta.blocked = /refresh_access_token$/;
+  s.meta.add('instagram', '1801', '2026-10-25T22:00:00+0000', { media_type: 'IMAGE', media_product_type: 'FEED', like_count: 80, comments_count: 6 }, { views: 900, likes: 80 });
+  await nightly('2026-10-27T08:20:00Z');
+  const renewing = await accountRow(s, staff, 'instagram');
+  assert.deepEqual([renewing.last_error, renewing.last_sync_at.toISOString()], [null, '2026-10-27T08:20:00.000Z']);
+  assert.equal((await s.h.select(staff, `select views::int from public.cal_social_posts where media_id = '1801'`))[0].views, 900);
+  assert.ok(s.logs.some((l) => l.startsWith('calendar-social: renewing the instagram token failed: API access blocked. (GET graph.instagram.com/refresh_access_token')));
+
   // The subcode alone, under wording Meta might change to, with the trace only in a header.
   s.meta.blocked = true;
   s.meta.blockedReply = { message: 'This app is temporarily unavailable.', type: 'OAuthException', code: 200, error_subcode: 5258005 };
   s.meta.blockedHeaders = { 'x-fb-trace-id': 'HeaderTrace99' };
-  await nightly('2026-10-20T08:20:00Z');
+  await nightly('2026-10-28T08:20:00Z');
   const ig = await accountRow(s, staff, 'instagram');
   assert.equal(ig.last_error, BLOCKED_NOTE('Instagram', 'This app is temporarily unavailable'));
   assert.deepEqual(ig.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'HeaderTrace99' });
@@ -538,7 +550,8 @@ test('odd replies never cost the note or put an address in it: stray characters,
   await nightly('2026-10-20T08:20:00Z');
   ig = await accountRow(s, staff, 'instagram');
   assert.deepEqual([ig.last_error, ig.last_error_at.toISOString()], [BLOCKED_NOTE('Instagram'), '2026-10-20T08:20:00.000Z']);
-  assert.deepEqual(s.logs.filter((l) => /could not record/.test(l)), []);
+  assert.deepEqual(s.logs.filter((l) => /could not record/.test(l)),
+    ['calendar-social: could not record the instagram sync failure with its detail: no room for the detail'], 'and the log says why');
 
   // A next-page address that isn't a full address holds the token. It is never quoted.
   s.meta.blocked = false;

@@ -22,7 +22,9 @@ alter table public.cal_social_accounts
   add column last_error_detail jsonb,
   add column stale_alerted_at timestamptz;
 
--- Records why a sync saved nothing, with what Instagram or Threads sent.
+-- Records why a sync saved nothing, with what Instagram or Threads sent. A sign-in that runs out
+-- while Meta is refusing requests keeps what Meta last sent: nothing is asked after that, and Meta
+-- support needs the trace.
 create or replace function cal_private.social_sync_failed(p_platform text, p_message text, p_detail jsonb)
 returns void
 language sql
@@ -32,7 +34,10 @@ as $$
   update public.cal_social_accounts
   set last_error = left(coalesce(nullif(trim(p_message), ''), 'The sync did not finish.'), 500),
       last_error_at = cal_private.clock(),
-      last_error_detail = case when jsonb_typeof(p_detail) = 'object' and char_length(p_detail::text) <= 1000 then p_detail end
+      last_error_detail = case
+        when p_detail ->> 'kind' = 'expired' and last_error_detail ->> 'kind' = 'blocked' then last_error_detail
+        when jsonb_typeof(p_detail) = 'object' and char_length(p_detail::text) <= 1000 then p_detail
+      end
   where platform = p_platform
 $$;
 

@@ -574,6 +574,7 @@ function accountHTML(sp) {
   if (h.expired) notes.push(['warn', 'The connection expired. Choose Reconnect and sign in again.']);
   else {
     if (a.lastError) notes.push([h.failed || reconnect ? 'warn' : '', a.lastError]);
+    if (h.silent) notes.push(['warn', 'Nothing has been tried since, so the nightly sync may have stopped running as well. Whoever looks after the website should check it.']);
     if (h.quiet) notes.push(['warn', "The nightly sync hasn't brought in new numbers, and no error was recorded. Choose Refresh now. If nothing changes in a few minutes, the sync isn't reaching the calendar, and whoever looks after the website should check it."]);
     // A sign-in renews every week, so one with under a month left hasn't been renewing.
     if (h.state === 'stuck' && left < 30 * 86400000) notes.push(['', `The saved sign-in lasts until ${until()}. After that, choose Reconnect, once the problem has cleared.`]);

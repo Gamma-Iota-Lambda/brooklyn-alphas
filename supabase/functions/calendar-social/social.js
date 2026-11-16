@@ -116,9 +116,9 @@ export function makeDb(query) {
         try {
           return await query('select cal_private.social_sync_failed($1::text, $2::text, ($3::text)::jsonb)',
             [platform, message, JSON.stringify(detail)]);
-        } catch {
-          // Until the sync health migration runs there is nowhere to keep the detail, and the note
-          // matters more than the detail whatever went wrong. Save the note on its own.
+        } catch (e) {
+          // Until the sync health migration runs there is nowhere to keep the detail. Save the note.
+          if (!e || e.code !== '42883') throw e;
         }
       }
       return query('select cal_private.social_sync_failed($1::text, $2::text)', [platform, message]);
@@ -531,7 +531,10 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
             token = r.access_token;
           }
         } catch (e) {
-          if (e instanceof GraphError && FATAL.has(e.kind)) throw e;
+          // Only a dead sign-in ends the sync here. Anything else, a block included, goes on to ask
+          // for the numbers: if Meta still sends them they are worth saving, and if it refuses
+          // those too, that request fails the sync.
+          if (e instanceof GraphError && e.kind === 'token') throw e;
           log.warn(`calendar-social: renewing the ${platform} token failed: ${logText(e)}`);
           if (expiresAt && expiresAt - now() < 10 * DAY) {
             const day = new Date(expiresAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'America/New_York' });
@@ -554,7 +557,13 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       try {
         await db.syncFailed(platform, message, detailOf(e));
       } catch (inner) {
-        log.error(`calendar-social: could not record the ${platform} sync failure: ${inner && inner.message}`);
+        // The note matters more than its detail: say why the detail didn't save, and save the note.
+        log.error(`calendar-social: could not record the ${platform} sync failure with its detail: ${inner && inner.message}`);
+        try {
+          await db.syncFailed(platform, message);
+        } catch (again) {
+          log.error(`calendar-social: could not record the ${platform} sync failure: ${again && again.message}`);
+        }
       }
       return { platform, error: message };
     }

@@ -562,6 +562,17 @@ test('what Instagram or Threads sent stays with its note, and goes when the note
   }
 
   await failed(h, 'instagram', 'Instagram sent an error: API access blocked.', BLOCKED);
+  // The sign-in runs out while Meta is still refusing requests. Nothing is asked after that, so
+  // what Meta last sent is kept for Meta support.
+  await failed(h, 'instagram', 'The Instagram connection expired. Choose Reconnect on the Results tab.', { kind: 'expired' });
+  assert.deepEqual(await account(h, 'instagram').then((a) => [a.last_error, a.last_error_detail]),
+    ['The Instagram connection expired. Choose Reconnect on the Results tab.', BLOCKED]);
+  await failed(h, 'instagram', "Instagram didn't answer. The next sync tries again.", { kind: 'network', request: 'GET graph.instagram.com/v25.0/me' });
+  assert.deepEqual(await detail(), { kind: 'network', request: 'GET graph.instagram.com/v25.0/me' }, 'any other failure replaces it');
+  await failed(h, 'instagram', 'The Instagram connection expired. Choose Reconnect on the Results tab.', { kind: 'expired' });
+  assert.deepEqual(await detail(), { kind: 'expired' });
+
+  await failed(h, 'instagram', 'Instagram sent an error: API access blocked.', BLOCKED);
   await sync(h, 'instagram', { username: 'gil1906', followers: 1500 }, []);
   assert.equal(await detail(), null, 'a sync that saves clears it');
 

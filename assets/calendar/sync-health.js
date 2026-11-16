@@ -7,6 +7,8 @@
 //   the next one) carries the sync's own time; an error from a later try is a failure.
 // quiet: no failure on record, yet nothing has come in for two nights. The sync isn't reaching the
 //   calendar at all. An old note doesn't hide it.
+// silent: the latest try failed, and nothing has been tried for two nights since. Whatever the
+//   note says, the sync has also stopped running.
 // waiting: connected, or connected again, since the last sync that saved, and nothing wrong so far.
 export const STUCK_AFTER = 48 * 3600000; // two missed nights
 
@@ -18,6 +20,7 @@ export function syncHealth(a, now = Date.now()) {
   const waiting = !failed && !Number.isNaN(connected) && !(synced >= connected);
   const since = Math.max(Number.isNaN(synced) ? -Infinity : synced, Number.isNaN(connected) ? -Infinity : connected);
   const quiet = !failed && Number.isFinite(since) && now - since > STUCK_AFTER;
+  const silent = failed && now - tried > STUCK_AFTER;
   const state = expired || /\bchoose reconnect\b/i.test(a.lastError || '') ? 'reconnect' : failed || quiet ? 'stuck' : 'ok';
-  return { state, expired, failed, quiet, waiting, expires };
+  return { state, expired, failed, quiet, silent, waiting, expires };
 }
