@@ -252,7 +252,8 @@ function renderShell() {
   } else if (S.role === 'visitor') {
     a = '<button class="btn primary" data-act="signin">Sign in</button>';
   }
-  if (signedIn()) a += `<span class="who">Signed in as <b>${esc(S.me.name)}</b><button class="btn link small" data-act="signout">Sign out</button></span>`;
+  // One sign-in covers the calendar and the directory, so each links to the other.
+  if (signedIn()) a += `<a class="btn" href="directory.html">Brother directory</a><span class="who">Signed in as <b>${esc(S.me.name)}</b><button class="btn link small" data-act="signout">Sign out</button></span>`;
   el.actions.innerHTML = a;
 
   // Visitors get no toolbar at all; brothers get no Requests tab.

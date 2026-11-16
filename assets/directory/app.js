@@ -126,6 +126,8 @@ function renderShell() {
     a = '<button class="btn primary" data-act="signin">Sign in</button><button class="btn" data-act="view" data-view="guest">Visiting brother?</button>';
   }
   if (isStaff()) a += `<button class="btn" data-act="add">${ICON.plus}Add a brother</button>`;
+  // One sign-in covers the directory and the calendar, so each links to the other.
+  if (isStaff() || isBrother()) a += '<a class="btn" href="calendar.html">Content calendar</a>';
   el.actions.innerHTML = a;
   el.count.innerHTML = S.loaded ? `<span class="countdown"><b>${S.list.filter((b) => b.status === 'current').length}</b> current brothers · <b>${S.list.length}</b> on the roll</span>` : '';
 

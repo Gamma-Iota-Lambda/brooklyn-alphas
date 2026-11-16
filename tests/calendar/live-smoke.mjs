@@ -91,6 +91,8 @@ visitor.page.on('request', (r) => { if (/\/rest\/v1\/cal_(posts|requests)/.test(
 await reload(visitor.page);
 await visitor.page.waitForSelector('.empty h2:has-text("Sign in to see the calendar")');
 assert.equal(await visitor.page.locator('#gc-bar').isHidden(), true, 'no tabs or filters for visitors');
+assert.equal(await visitor.page.locator('#gc-actions a[href="directory.html"]').count(), 0, 'the link to the directory waits for a sign-in');
+assert.equal(await visitor.page.locator('#main-nav .nav-dropdown-menu a[href="directory.html"]').count(), 1, 'the site menu carries it for everyone');
 assert.equal(visitorReads.length, 0, 'the page does not even ask for posts');
 
 step('the home page has a Sign in button that opens the sign-in panel');
@@ -119,6 +121,7 @@ await media.page.fill('#s-media-code', MEDIA_CODE.toUpperCase());
 await D(media.page).getByRole('button', { name: 'Join the media team' }).click();
 await toast(media.page, /Signed in as Eugene Aiken/);
 await media.page.waitForSelector('.who:has-text("Eugene Aiken")');
+assert.equal(await media.page.locator('#gc-actions a.btn[href="directory.html"]').innerText(), 'Brother directory');
 
 step('the media team sees the full seeded calendar, with no Facebook anywhere');
 await media.page.locator('.tab', { hasText: 'Agenda' }).click();
@@ -158,6 +161,7 @@ await D(phone.page).getByRole('button', { name: 'Sign in', exact: true }).click(
 await toast(phone.page, /Signed in as Jean Louis/);
 await phone.page.waitForSelector('#gc-view .row');
 assert.equal(await phone.page.locator('#gc-actions').getByRole('button', { name: 'Request a post' }).count(), 0, 'brothers cannot request');
+assert.equal(await phone.page.locator('#gc-actions a.btn[href="directory.html"]').count(), 1, 'brothers get the link to the directory');
 assert.equal(await phone.page.locator('.tab[data-view="requests"]').isHidden(), true, 'no Requests tab for brothers');
 assert.equal(await phone.page.locator('.tab[data-view="results"]').isHidden(), true, 'no Results tab for brothers');
 const brotherReads = await phone.page.evaluate(async () => {

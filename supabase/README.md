@@ -116,6 +116,8 @@ The account's card gives the reason. Whatever it is, leave the connection in pla
 
 `directory.html` (www.gil1906.org/directory) is the chapter directory. It shares the calendar's Supabase project and sign-in: brothers use the chapter code, their name, and their PIN; the media team uses its email login. The fifth migration adds it.
 
+**Getting there.** Brother Directory sits under Chapter in the site's menu on every page, phone menu included. Anyone can follow it; a visitor gets the sign-in prompt and the visiting-brother form, and nothing else. Once signed in, the calendar's top row has a Brother directory button and the directory's has Content calendar, since one sign-in covers both.
+
 - **Who sees what.** Visitors see nothing. Brothers see every brother's name, standing, crossing date, birthday (month and day), chapter of initiation, and the phone, email, and city each brother chooses to share. Street addresses, birth years, emergency contacts, and notes are for the brother himself and the media team. The database enforces it; the page only shows what it is allowed to read.
 - **Self-service.** Under My record, a brother picks his name and confirms it with the last four digits of the phone on file, then edits his own record. A brother with no record adds himself, marked for the media team to confirm. When a number changed or none is on file, the media team links the record to his sign-in under Manage.
 - **Visiting brothers.** A brother from another chapter, or not yet affiliated, adds himself at `gil1906.org/directory#guest` with no sign-in: name, how to reach him, his chapters, dates, and a note. He arrives with the Visiting standing, marked Needs review, with his contact details unshared until the media team confirms him, and the media team gets an email. Visiting brothers get the greeting emails too, for reclamation. A second submission with the same email updates the first; one session can add three a day; a hidden field catches bots. Put the link or its QR code on the sign-in sheet at meetings.
@@ -185,7 +187,7 @@ From the repository root:
 ```bash
 npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 npx playwright install chromium        # once
-node --test "tests/calendar/*.test.mjs"  # 44 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Function, and the directory
+node --test "tests/calendar/*.test.mjs"  # 45 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Function, the directory, and the site's menus
 node tests/calendar/demo-smoke.mjs     # the demo in a real browser, at desktop and phone widths
 node tests/calendar/live-smoke.mjs     # live mode against a local stand-in for Supabase
 ```
