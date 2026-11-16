@@ -332,11 +332,14 @@ test('sync problems leave a note on the Results tab, and the numbers that came t
   assert.deepEqual(fresh.map((p) => p.likes), [7, 8]);
   assert.equal(fresh.filter((p) => p.views !== null).length, 1, 'one post got its numbers before the limit');
   s.meta.rateLimitAfter = Infinity;
+  assert.equal(s.logs.filter((l) => /^calendar-social: stopped partway through the numbers: \(#4\) Application request limit reached \(GET graph\.instagram\.com\/v25\.0\/\d+\/insights, HTTP 400, code 4, OAuthException\)$/.test(l)).length, 1,
+    'logged once, with what Instagram sent');
 
   // No answer at all.
   s.meta.down = true;
   await nightly('2026-10-23T08:20:00Z');
   assert.equal((await accountState(s, staff, 'instagram')).last_error, "Instagram didn't answer. The next sync tries again.");
+  assert.ok(s.logs.includes("calendar-social: instagram sync failed: Instagram didn't answer. (GET graph.instagram.com/v25.0/me)"));
   s.meta.down = false;
 
   // A token past its expiry date isn't sent anywhere.
@@ -438,7 +441,7 @@ test('when Meta blocks the calendar, the note says what to check, nothing is los
   assert.ok(!/[?&=]|IG-|TH-/.test(kept.replace(/"[a-z_]+":/g, '')), 'requests are kept as host and path, with no query and no token');
 });
 
-test('a block that only reaches some requests still fails the sync, so a night with no new numbers is never recorded as a good one', async () => {
+test('a block that reaches only some requests fails the sync too, and is read as a block whatever code comes with it', async () => {
   const s = await setup('2026-10-19T08:20:00Z');
   const staff = await s.h.staff();
   await connected(s, staff, 'instagram');
@@ -453,6 +456,17 @@ test('a block that only reaches some requests still fails the sync, so a night w
   assert.deepEqual(ig.last_error_detail,
     { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/1801/insights', status: 400, code: 200, subcode: 5258005, type: 'OAuthException', trace: 'AbCdEfGh1234567' });
   assert.deepEqual(await s.h.select(staff, 'select media_id from public.cal_social_posts'), []);
+
+  // The message is the one thing Meta is known to send. With a token error's code beside it, the
+  // note still says blocked: Reconnect would be refused the same way.
+  s.meta.blocked = true;
+  s.meta.blockedReply = { message: 'API access blocked.', type: 'OAuthException', code: 190 };
+  await s.at('2026-10-20T08:20:00Z');
+  await s.post('/sync', { 'x-sync-key': key });
+  await s.settle();
+  const again = await accountRow(s, staff, 'instagram');
+  assert.equal(again.last_error, BLOCKED_NOTE('Instagram'));
+  assert.deepEqual(again.last_error_detail, { kind: 'blocked', request: 'GET graph.instagram.com/v25.0/me', status: 400, code: 190, type: 'OAuthException' });
 });
 
 test('the function works before the sync health migration has run: the note saves, and the detail follows once it has', async () => {

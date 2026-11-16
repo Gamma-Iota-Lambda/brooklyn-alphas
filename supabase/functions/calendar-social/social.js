@@ -82,8 +82,8 @@ export class GraphError extends Error {
 const TOKEN_CODES = new Set([102, 190]);
 const RATE_CODES = new Set([4, 17, 32, 613, 80001, 80002]);
 // Meta answers every request this way, token renewal included, while it holds back an app, the
-// developer account behind it, or the connected account. It documents neither the message nor the
-// subcode; both come from what it sent the calendar and other developers in 2026.
+// developer account behind it, or the connected account. It documents neither. The message is what
+// it sent the calendar from Oct. 20, 2026; the subcode is from other developers' reports that year.
 const BLOCKED_MESSAGE = /\bAPI access blocked\b/i;
 const BLOCKED_SUBCODE = 5258005;
 // These end a sync at once: no other request will get through.
@@ -219,8 +219,9 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       const subcode = num(err.error_subcode);
       const message = err.message || body?.error_message || body?.error_description ||
         (typeof body?.error === 'string' ? body.error : '') || `HTTP ${res.status}`;
-      const kind = TOKEN_CODES.has(code) ? 'token'
-        : subcode === BLOCKED_SUBCODE || BLOCKED_MESSAGE.test(message) ? 'blocked'
+      // Blocked comes first: whatever code comes with it, signing in again is refused the same way.
+      const kind = subcode === BLOCKED_SUBCODE || BLOCKED_MESSAGE.test(message) ? 'blocked'
+        : TOKEN_CODES.has(code) ? 'token'
           : RATE_CODES.has(code) || res.status === 429 ? 'rate' : 'api';
       throw new GraphError(short(message), {
         code, status: res.status, kind, subcode, request,
@@ -381,7 +382,11 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
         try {
           out[k] = await fn(items[k]);
         } catch (e) {
-          if (e instanceof GraphError && (FATAL.has(e.kind) || ['rate', 'network'].includes(e.kind))) ctx.stop = e.kind;
+          if (e instanceof GraphError && (FATAL.has(e.kind) || ['rate', 'network'].includes(e.kind))) {
+            // A fatal one is logged where the sync fails. This is the only record of the others.
+            if (!ctx.stop && !FATAL.has(e.kind)) log.warn(`calendar-social: stopped partway through the numbers: ${logText(e)}`);
+            ctx.stop = e.kind;
+          }
           if (e instanceof GraphError && FATAL.has(e.kind)) throw e;
           if (!ctx.stop) out[k] = null;
         }
@@ -460,6 +465,7 @@ export function createHandler({ env, db, fetch: fetchImpl, waitUntil = (_promise
       followers = num(row?.total_value?.value ?? row?.values?.[0]?.value);
     } catch (e) {
       if (e instanceof GraphError && FATAL.has(e.kind)) throw e;
+      log.warn(`calendar-social: no Threads follower count: ${logText(e)}`);
       ctx.notes.push("Threads didn't send the follower count this time.");
     }
     const items = (await listPages(withParams(`${TH_GRAPH}/${TH_VERSION}/me/threads`, {
