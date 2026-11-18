@@ -23,6 +23,7 @@ const FADE = 1200; // the cross-fade, the same as --sc-fade in screen.css
 const CHECK_EVERY = 60000; // ask the server for the approved photos this often
 const CHECK_TIMEOUT = 20000;
 const LOAD_TIMEOUT = 25000; // a photo that hasn't loaded by now is skipped
+const DECODE_WAIT = 3000; // a photo that has loaded but never says it is ready to draw is shown anyway after this
 const BACK_WAIT = 1500; // how long a loaded photo waits for its blurred background
 const RETRY = [1000, 2000, 4000, 8000]; // the pause after one, two, three and more failed loads in a row
 const AWAKE_FOR = 3000; // how long the controls and the cursor stay after the mouse moves
@@ -115,9 +116,9 @@ const S = {
   ticker: 0,
   checker: 0
 };
-// A slide: { id, back, ready, main, mainAt, hasBack, startedAt, img, backImg, el, frame, cap, w, h,
-// tilt, removeAt }. back: it was asked for with Previous. main: null while the photo loads, then
-// true or false. hasBack: the same for its blurred background.
+// A slide: { id, back, ready, main, mainAt, loadedAt, hasBack, startedAt, img, backImg, el, frame,
+// cap, w, h, tilt, removeAt }. back: it was asked for with Previous. main: null while the photo
+// loads, then true or false. hasBack: the same for its blurred background.
 
 // ---------------------------------------------------------------- the setup card
 function notReady() {
@@ -370,6 +371,10 @@ function tick() {
   // The photo being got ready: has it arrived, failed, or taken too long?
   const coming = S.next;
   if (coming && !coming.ready) {
+    if (coming.main === null && coming.loadedAt && t - coming.loadedAt >= DECODE_WAIT) {
+      coming.main = true; // loaded, but the browser never said it was ready to draw: show it anyway
+      coming.mainAt = t;
+    }
     if (coming.main === false || (coming.main === null && t - coming.startedAt >= LOAD_TIMEOUT)) miss(t);
     else if (coming.main && (coming.hasBack !== null || t - coming.mainAt >= BACK_WAIT) && !build(coming)) miss(t);
   }
@@ -398,20 +403,22 @@ function arrived(img) {
   const usable = () => img.complete && img.naturalWidth > 0;
   if (typeof img.decode === 'function') return img.decode().then(() => true, usable);
   return new Promise((resolve) => {
-    img.onload = () => resolve(true);
-    img.onerror = () => resolve(false);
+    img.addEventListener('load', () => resolve(true));
+    img.addEventListener('error', () => resolve(false));
   });
 }
 
 // Starts loading a photo, out of the page. tick() puts it in the page once it has arrived.
 function prepare(id, back, t) {
   const photo = S.photos.get(id);
-  const slide = { id, back, ready: false, main: null, mainAt: 0, hasBack: null, startedAt: t, img: new Image(), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
+  const slide = { id, back, ready: false, main: null, mainAt: 0, loadedAt: 0, hasBack: null, startedAt: t, img: new Image(), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
   S.next = slide;
   slide.img.alt = '';
   slide.img.decoding = 'async';
+  slide.img.addEventListener('load', () => { slide.loadedAt = clock(); });
   slide.img.src = photo.url;
   arrived(slide.img).then((ok) => {
+    if (slide.main !== null) return; // tick() stopped waiting for this answer
     slide.main = ok;
     slide.mainAt = clock();
     if (S.next === slide) tick();
@@ -466,7 +473,7 @@ function build(slide) {
   const el = document.createElement('div');
   el.className = 'sc-slide';
   el.dataset.id = slide.id;
-  if (slide.hasBack) {
+  if (slide.hasBack || (slide.backImg && slide.backImg.complete && slide.backImg.naturalWidth > 0)) {
     slide.backImg.className = 'sc-back';
     el.append(slide.backImg);
   } else if (slide.backImg) {
