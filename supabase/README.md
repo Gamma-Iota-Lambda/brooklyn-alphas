@@ -250,7 +250,7 @@ From the repository root:
 ```bash
 npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 npx playwright install chromium        # once
-node --test "tests/calendar/*.test.mjs"  # 91 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Functions, the Results account states, the directory, the photo drop, and the site's menus
+node --test "tests/calendar/*.test.mjs"  # 92 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Functions, the Results account states, the directory, the photo drop, and the site's menus
 node tests/calendar/demo-smoke.mjs     # the demo in a real browser, at desktop and phone widths
 node tests/calendar/live-smoke.mjs     # live mode against a local stand-in for Supabase
 ```
