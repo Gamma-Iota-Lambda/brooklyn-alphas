@@ -23,6 +23,7 @@ const IDS_AT_ONCE = 200; // the most photos the server changes in one go
 const CAPTION_MAX = 80;
 const SETTLE = 400; // after photos move, taps wait this long: a double tap must not hit the next one
 const MOVED = 900; // and this long when the list changed on its own, which nobody saw coming
+const LOOK = 700; // and this long after a photo appears in the full view, so it is seen before it is judged
 const MONTHS = ['Jan.', 'Feb.', 'March', 'April', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
 const VIEWS = ['loading', 'signin', 'trouble', 'app'];
 const TABS = ['waiting', 'approved', 'rejected'];
@@ -548,8 +549,13 @@ async function setStatus(ids, status) {
       const answer = await change('set', { ids: rows.slice(sent, sent + IDS_AT_ONCE).map((p) => p.id), status, by: S.name });
       changed += Number(answer.changed) || 0;
     }
-    // Fewer changed than asked: someone else got to some first. See how things stand now.
-    if (session === S.session && changed < rows.length) again();
+    // Fewer changed than asked: someone else got to some first. Say so, and see how things stand.
+    if (session === S.session && changed < rows.length) {
+      toast(rows.length === 1
+        ? `Someone else had already decided the photo from ${rows[0].name}. It is shown where it stands now.`
+        : `Someone else had already decided ${plural(rows.length - changed, 'photo')}. They are shown where they stand now.`);
+      again();
+    }
   } catch (e) {
     if (session !== S.session) return;
     const undone = rows.slice(sent);
@@ -666,7 +672,10 @@ async function deletePhoto(id) {
   say('Photo deleted.');
   try {
     const answer = await change('delete', { ids: [id] });
-    if (session === S.session && !answer.deleted) again();
+    if (session === S.session && !answer.deleted) {
+      toast(`The photo from ${p.name} wasn't deleted: someone else had moved it out of Rejected. It is shown where it stands now.`);
+      again();
+    }
   } catch (e) {
     if (session !== S.session) return;
     if (!byId(id)) S.photos.splice(Math.min(at, S.photos.length), 0, p);
@@ -705,7 +714,9 @@ function askDeleteEverything() {
       S.editing.clear();
       if (S.settings) Object.assign(S.settings, { photos: 0, bytes: 0 });
       render();
-      toast(`Deleted ${plural(Number(answer.deleted) || 0, 'photo')}. The drop is empty.`, 'ok');
+      const deleted = `Deleted ${plural(Number(answer.deleted) || 0, 'photo')}.`;
+      if (answer.swept === false) toast(`${deleted} Some leftover files couldn't be checked yet. Choose Delete everything again in 10 minutes to be sure nothing is left.`);
+      else toast(`${deleted} The drop is empty.`, 'ok');
       again();
     }
   });
@@ -1132,6 +1143,9 @@ function listen() {
   $('#rv-view-prev').addEventListener('click', () => step(S.viewPrev));
   $('#rv-view-next').addEventListener('click', () => step(S.viewNext));
   view.addEventListener('keydown', (e) => {
+    // A key held down (or something resting on it) presses the button again and again. One press,
+    // one photo: the repeats are dropped.
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) return e.preventDefault();
     if (e.key === 'ArrowLeft') step(S.viewPrev);
     if (e.key === 'ArrowRight') step(S.viewNext);
   });
@@ -1142,7 +1156,11 @@ function listen() {
     if (status) moveFromViewer(status);
   });
   const img = $('#rv-view-img');
-  img.addEventListener('load', () => { $('#rv-view-stage').className = 'rv-view-stage'; });
+  img.addEventListener('load', () => {
+    $('#rv-view-stage').className = 'rv-view-stage';
+    // A slow photo has only now appeared. A tap already on its way was not a decision about it.
+    S.settleAt = Math.max(S.settleAt, Date.now() + LOOK);
+  });
   img.addEventListener('error', () => {
     if (!img.getAttribute('src')) return;
     $('#rv-view-stage').className = 'rv-view-stage is-broken';
