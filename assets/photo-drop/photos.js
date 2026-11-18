@@ -37,6 +37,7 @@ const S = {
   code: '',
   typed: false, // the code was typed here rather than carried in the link
   perPerson: 5,
+  got: new Set(), // the ids the server gave for photos counted in this batch
   left: 5, // how many more photos this email may send, as far as the page knows
   leftFor: '', // the email that count came back for
   limits: { ...LIMITS },
@@ -417,7 +418,10 @@ async function sendPhotos(only) {
 async function sendOne(card, me) {
   try {
     const answer = await deliver(card, me);
-    S.sent += 1;
+    // The server keeps one copy of a photo. A second copy of one already counted (the same
+    // picture picked twice under two names) is sent, but it isn't another photo.
+    if (!answer.id || !S.got.has(answer.id)) S.sent += 1;
+    if (answer.id) S.got.add(answer.id);
     S.left = Number.isInteger(answer.left) ? Math.max(0, answer.left) : S.left - 1;
     S.leftFor = me.email.toLowerCase();
     card.message = '';
@@ -534,6 +538,7 @@ function showDone({ note = '', more = true } = {}) {
 
 function sendMore() {
   S.sent = 0;
+  S.got.clear();
   clearCards();
   clearProblems();
   pickNote('');

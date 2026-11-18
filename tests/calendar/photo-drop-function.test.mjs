@@ -827,12 +827,13 @@ test('delete removes the files and then the rows, and Delete everything empties 
   is(await s.review('empty', { confirm: 'DELETE' }, SCREEN), 403, { error: "That code isn't right.", reason: 'code' });
   assert.equal((await s.rows()).length, 82);
   const removesBefore = s.calls('remove').length;
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 82 });
+  // swept: the bucket was looked through afterwards and nothing without a row is left in it.
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 82, swept: true });
   assert.deepEqual(await s.rows(), []);
   assert.deepEqual(s.storage.paths(), []);
   const batches = s.calls('remove').slice(removesBefore).map((call) => call.json.prefixes.length);
   assert.deepEqual(batches, [REMOVE_BATCH, 64], 'at most 100 paths a call');
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 }, 'nothing left to delete');
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0, swept: true }, 'nothing left to delete');
   assert.deepEqual((await s.review('list')).body.photos, []);
   assertQuietLogs(s, ['Guest']);
 });
@@ -876,7 +877,7 @@ test('Delete everything also takes out files no row points to, and still answers
     late = (await s.send({ email: 'late@example.com' })).body.id;
     await at(21);
   };
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1 });
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1, swept: true });
   assert.match(late, /^[0-9a-f-]{36}$/);
   const left = await s.rows('select id, url, thumb_url from public.drop_photos');
   assert.deepEqual(left.map((r) => r.id), [late]);
@@ -894,26 +895,26 @@ test('Delete everything also takes out files no row points to, and still answers
   leave();
   await at(31);
   s.storage.failList = true;
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1 });
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1, swept: false });
   assert.deepEqual(await s.rows(), []);
   assert.deepEqual(s.storage.paths(), [...stray].sort(), "the late photo's files went with its row, and the strays are still there");
   assert.deepEqual(s.logs, ['photo-drop: Delete everything could not check the bucket for leftover files: list: HTTP 500 Internal: Internal Server Error']);
   // It finds them but can't remove them: the same answer, and a line of its own.
   s.storage.failList = false;
   s.storage.failRemove = /^photos\/1111/;
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0, swept: false });
   assert.deepEqual(s.storage.paths(), [...stray].sort());
   assert.deepEqual(s.logs.slice(1), ['photo-drop: Delete everything could not check the bucket for leftover files: remove: HTTP 500 Internal: Internal Server Error']);
   // Storage is well again. Asked once more, the leftovers go.
   s.storage.failRemove = false;
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0, swept: true });
   assert.deepEqual(s.storage.paths(), []);
 
   // More leftovers than one listing holds: the folder is listed again until it is clear.
   for (let n = 0; n < LIST_BATCH + 5; n += 1) s.storage.seed(`thumbs/left-${String(n).padStart(4, '0')}.jpg`, 'x');
   await at(41);
   const before = { list: s.calls('list').length, remove: s.calls('remove').length };
-  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0, swept: true });
   assert.deepEqual(s.storage.paths(), []);
   assert.deepEqual(s.calls('list').slice(before.list).map((c) => c.json.prefix), ['photos', 'thumbs', 'thumbs', 'thumbs']);
   assert.deepEqual(s.calls('remove').slice(before.remove).map((c) => c.json.prefixes.length), [...Array(LIST_BATCH / REMOVE_BATCH).fill(REMOVE_BATCH), 5]);
@@ -952,18 +953,18 @@ test('Delete everything leaves a file under ten minutes old where it is, and rem
 
   // Nine minutes and 59 seconds after the older pair: both pairs are left where they are.
   await s.at('2026-11-19T15:09:59Z');
-  is(await empty(), 200, { ok: true, deleted: 0 });
+  is(await empty(), 200, { ok: true, deleted: 0, swept: false });
   assert.deepEqual(s.storage.paths(), [...older, ...younger].sort());
   assert.equal(s.calls('remove').length, 0);
   assert.deepEqual(s.calls('list').map((c) => c.json.prefix), ['photos', 'thumbs'], 'it looked, and found nothing old enough');
   // At ten minutes the older pair is taken, and the younger pair, a second short, is not.
   await s.at('2026-11-19T15:10:00Z');
-  is(await empty(), 200, { ok: true, deleted: 0 });
+  is(await empty(), 200, { ok: true, deleted: 0, swept: false });
   assert.deepEqual(s.storage.paths(), [...younger].sort());
   assert.deepEqual(s.calls('remove').map((c) => c.json.prefixes), [[older[0]], [older[1]]]);
   // A second later, so is the younger pair.
   await s.at('2026-11-19T15:10:01Z');
-  is(await empty(), 200, { ok: true, deleted: 0 });
+  is(await empty(), 200, { ok: true, deleted: 0, swept: true });
   assert.deepEqual(s.storage.paths(), []);
   assert.deepEqual(s.logs, []);
 
@@ -976,22 +977,22 @@ test('Delete everything leaves a file under ten minutes old where it is, and rem
   const lists = s.calls('list').length;
   const line = 'photo-drop: Delete everything could not check the bucket for leftover files: ';
   unreadable = { give: async () => ({ ok: false, status: 403, reason: 'code', error: "That code isn't right." }) };
-  is(await empty(), 200, { ok: true, deleted: 1 });
+  is(await empty(), 200, { ok: true, deleted: 1, swept: false });
   assert.deepEqual(await s.rows(), []);
   assert.deepEqual(s.storage.paths(), [...older].sort(), `the files of ${a} went with its row, and the leftovers stay`);
   assert.deepEqual(s.logs, [`${line}the rows could not be read`]);
   unreadable = { give: async () => null };
-  is(await empty(), 200, { ok: true, deleted: 0 });
+  is(await empty(), 200, { ok: true, deleted: 0, swept: false });
   assert.deepEqual(s.logs.slice(1), [`${line}the rows could not be read`]);
   unreadable = { give: async () => { throw new Error('connection terminated unexpectedly'); } };
-  is(await empty(), 200, { ok: true, deleted: 0 });
+  is(await empty(), 200, { ok: true, deleted: 0, swept: false });
   assert.deepEqual(s.logs.slice(2), [`${line}connection terminated unexpectedly`]);
   assert.deepEqual(s.storage.paths(), [...older].sort());
   assert.equal(s.calls('list').length, lists, 'the bucket was never listed');
   assert.equal(unreadable, null, 'each of the three got as far as the second read');
 
   // The rows can be read again, and the leftovers go.
-  is(await empty(), 200, { ok: true, deleted: 0 });
+  is(await empty(), 200, { ok: true, deleted: 0, swept: true });
   assert.deepEqual(s.storage.paths(), []);
   assert.equal(s.logs.length, 3, 'one line for each time the rows could not be read');
   assertQuietLogs(s);

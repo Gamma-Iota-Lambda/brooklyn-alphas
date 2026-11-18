@@ -370,9 +370,12 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       body: JSON.stringify({ prefix: folder, limit: LIST_BATCH, offset: 0, sortBy: { column: 'name', order: 'asc' } })
     });
     if (!Array.isArray(answer)) throw new StorageError('list: an answer that made no sense');
-    // A file under 10 minutes old may belong to a photo that is arriving right now.
-    const settled = (item) => !(Date.parse(item.created_at) > now() - 600000);
-    return answer.filter((item) => item && typeof item.name === 'string' && item.id && settled(item)).map((item) => `${folder}/${item.name}`);
+    // A file under 10 minutes old may belong to a photo that is arriving right now, so it is
+    // left for a later look. `young` is the paths left for that reason.
+    const files = answer.filter((item) => item && typeof item.name === 'string' && item.id);
+    const isYoung = (item) => Date.parse(item.created_at) > now() - 600000;
+    const path = (item) => `${folder}/${item.name}`;
+    return { settled: files.filter((item) => !isYoung(item)).map(path), young: files.filter(isYoung).map(path) };
   }
 
   // ---------------------------------------------------------------------------
@@ -663,28 +666,38 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       if (!done || !done.ok) return refused(done);
       deleted = done.deleted;
     }
-    if (ids === null) await sweep(code);
+    if (ids === null) return json(200, { ok: true, deleted, swept: await sweep(code) });
     return json(200, { ok: true, deleted });
   }
 
   // After Delete everything: takes out any file no row points to. A send that failed partway
   // while Storage was struggling can leave one, and a guest's photo must not stay behind. Files
-  // of a photo that arrived a moment ago keep their row and are left alone.
+  // of a photo that arrived a moment ago keep their row and are left alone. True when the bucket
+  // was looked through and nothing without a row is left in it. False when the look failed, or
+  // when a file too new to judge was left: the page then asks for another go in ten minutes.
   async function sweep(code) {
     try {
       const kept = await db.reviewPaths(code, null);
       // Without the list of files to keep, nothing can be told apart, so nothing is removed.
       if (!kept || !kept.ok || !Array.isArray(kept.paths)) throw new Error('the rows could not be read');
       const keep = new Set(kept.paths);
+      let left = 0;
       for (const folder of ['photos', 'thumbs']) {
-        for (let round = 0; round < 20; round += 1) {
-          const stray = (await listFiles(folder)).filter((path) => !keep.has(path));
-          if (!stray.length) break;
+        for (let round = 0; ; round += 1) {
+          const found = await listFiles(folder);
+          const stray = found.settled.filter((path) => !keep.has(path));
+          if (!stray.length) {
+            left += found.young.filter((path) => !keep.has(path)).length;
+            break;
+          }
+          if (round >= 20) throw new Error('files kept turning up');
           await removeFiles(stray);
         }
       }
+      return left === 0;
     } catch (e) {
       log.error(`photo-drop: Delete everything could not check the bucket for leftover files: ${errorText(e)}`);
+      return false;
     }
   }
 
