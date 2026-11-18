@@ -2,6 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "redirects": [
+    { "source": "/school-daze", "destination": "/school-daze/photos.html", "permanent": false },
+    { "source": "/school-daze/:page([A-Za-z0-9_-]+)", "destination": "/school-daze/:page.html", "permanent": false },
     { "source": "/:page([A-Za-z0-9_-]+)", "destination": "/:page.html", "permanent": true }
   ]
 }
