@@ -22,6 +22,7 @@ This folder holds everything the live mode needs:
 | `migrations/20261114000100_social_sync_health.sql` | Results: an email to the media team when the numbers stop updating, and what Instagram or Threads sent with each error |
 | `migrations/20261118000100_photo_drop.sql` | The School Daze photo drop (school-daze/): the photos table, its private storage bucket, the three codes, the limits, and the functions its Edge Function calls |
 | `migrations/20261118000200_photo_drop_repeats.sql` | Photo drop: a photo sent twice is kept once, the slideshow takes the screen code only, and the per-connection limit starts turned off |
+| `migrations/20261118000300_photo_drop_review_order.sql` | Photo drop: Approve and Reject apply to waiting photos only, Delete takes only rejected ones, and a send that was cut off stops holding up its photo after 2 minutes |
 | `seed.sql` | The 128 planned posts for October 2026 to August 2027 |
 | `setup/1-codes.sql` | Sets the chapter code and the media code |
 | `setup/2-request-emails.sql` | Saves the Resend API key that request emails and directory greetings use |
@@ -155,7 +156,7 @@ The three pages in `school-daze/` collect photos for School Daze, the chapter's 
 
 Setup, once:
 
-1. **Run the SQL.** In SQL Editor, run `migrations/20261118000100_photo_drop.sql`, then `migrations/20261118000200_photo_drop_repeats.sql`. They run after the nine migrations before them. The first creates the table, the bucket, and the settings, with uploads open until noon New York time on Saturday, Nov. 21. The second adds the fingerprint, makes the slideshow take the screen code only, and turns the per-connection limit off. Run both before deploying the Edge Function.
+1. **Run the SQL.** In SQL Editor, run `migrations/20261118000100_photo_drop.sql`, then `migrations/20261118000200_photo_drop_repeats.sql`, then `migrations/20261118000300_photo_drop_review_order.sql`. They run after the nine migrations before them. The first creates the table, the bucket, and the settings, with uploads open until noon New York time on Saturday, Nov. 21. The second adds the fingerprint, makes the slideshow take the screen code only, and turns the per-connection limit off. Run both before deploying the Edge Function.
 2. **Set the three codes.** In `setup/4-photo-drop.sql`, replace the three placeholder phrases and run the three `drop_set_code` lines. Each code must be different, and 72 characters at most. Case and extra spaces don't matter when a code is typed. Make the review and screen codes random, not a phrase someone could guess from the event's name: nothing counts wrong guesses.
    - **Upload code:** at least 8 characters. Letters, numbers, and dashes only, because it travels inside a link. Everyone with a ticket has it.
    - **Review code:** at least 12 characters. It shows every photo with its sender's name and email, and it deletes. Keep it to the organizers.

@@ -148,7 +148,11 @@ export function callerIp(req) {
   const mapped = /^::ffff:([0-9]{1,3}(?:\.[0-9]{1,3}){3})$/.exec(last);
   if (mapped) last = mapped[1];
   if (PRIVATE_ADDRESS.test(last)) return '';
-  return last.includes(':') ? network64(last) : last;
+  if (!last.includes(':')) return last;
+  // The all-zero network holds no real sender: it is "no address", this machine, or an IPv4
+  // address written in a form not unwrapped above. None of those is anyone's connection.
+  const network = network64(last);
+  return network === '0:0:0:0::/64' ? '' : network;
 }
 
 // A home line or a phone is given a whole block of IPv6 addresses (a /64) and can use any of
@@ -366,7 +370,9 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       body: JSON.stringify({ prefix: folder, limit: LIST_BATCH, offset: 0, sortBy: { column: 'name', order: 'asc' } })
     });
     if (!Array.isArray(answer)) throw new StorageError('list: an answer that made no sense');
-    return answer.filter((item) => item && typeof item.name === 'string' && item.id).map((item) => `${folder}/${item.name}`);
+    // A file under 10 minutes old may belong to a photo that is arriving right now.
+    const settled = (item) => !(Date.parse(item.created_at) > now() - 600000);
+    return answer.filter((item) => item && typeof item.name === 'string' && item.id && settled(item)).map((item) => `${folder}/${item.name}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -667,7 +673,9 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
   async function sweep(code) {
     try {
       const kept = await db.reviewPaths(code, null);
-      const keep = new Set(kept && kept.ok ? kept.paths : []);
+      // Without the list of files to keep, nothing can be told apart, so nothing is removed.
+      if (!kept || !kept.ok || !Array.isArray(kept.paths)) throw new Error('the rows could not be read');
+      const keep = new Set(kept.paths);
       for (const folder of ['photos', 'thumbs']) {
         for (let round = 0; round < 20; round += 1) {
           const stray = (await listFiles(folder)).filter((path) => !keep.has(path));
