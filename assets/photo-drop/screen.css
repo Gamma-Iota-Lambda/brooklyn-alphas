@@ -198,6 +198,8 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   pointer-events: none;
 }
 .sc-slide.is-on { opacity: 1; }
+/* The last photo fading away to the title card. Its zoom carries on while it goes. */
+.sc-slide.is-on.is-leaving { opacity: 0; }
 
 /* A blurred, darkened copy of the photo fills the screen behind it. Wider than the stage, so the
    blur's soft edge stays out of sight. */
