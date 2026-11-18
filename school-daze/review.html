@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Photo review | School Daze | Gamma Iota Lambda</title>
+  <meta name="description" content="For the School Daze organizers: approve the photos that play on the big screens." />
+  <!-- For the organizers only: kept out of search results, the sitemap, and the nav. -->
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- The photos here are private. Don't tell any other site where a request came from. -->
+  <meta name="referrer" content="no-referrer" />
+  <link rel="icon" type="image/png" href="../favicon.png" />
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/photo-drop/drop.css">
+  <link rel="stylesheet" href="../assets/photo-drop/review.css">
+</head>
+<body class="pd">
+<div class="pd-wrap wide">
+
+  <main id="rv-main">
+
+    <header class="rv-head">
+      <div class="rv-head-text">
+        <p class="pd-eyebrow">Photo review</p>
+        <h1 class="pd-title rv-title">School Daze</h1>
+      </div>
+      <div class="rv-me" id="rv-me" hidden>
+        <span class="rv-me-name" id="rv-me-name"></span>
+        <button class="pd-btn small" type="button" id="rv-signout">Sign out</button>
+      </div>
+    </header>
+
+    <noscript><p class="pd-note">This page needs JavaScript to show the photos. Turn it on and reload the page.</p></noscript>
+
+    <!-- One of the four sections below shows at a time. assets/photo-drop/review.js decides which. -->
+
+    <!-- Hidden until a script shows it, so a browser with scripts off sees only the line above. -->
+    <section class="pd-card rv-narrow" id="rv-loading" hidden>
+      <p class="rv-plain" id="rv-loading-text" role="status">Loading the photos.</p>
+    </section>
+
+    <section class="pd-card rv-narrow" id="rv-signin" hidden>
+      <h2 class="pd-h2" tabindex="-1" data-heading>Sign in</h2>
+      <p class="rv-plain">For the School Daze organizers. Approve the photos that play on the big screens.</p>
+      <form id="rv-signin-form" novalidate>
+        <p class="pd-note bad" id="rv-signin-err" role="alert" hidden></p>
+        <div class="pd-field">
+          <label for="rv-code">Review code</label>
+          <input id="rv-code" type="password" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="200" required />
+          <label class="rv-check" for="rv-code-show">
+            <input id="rv-code-show" type="checkbox" />
+            <span>Show the code</span>
+          </label>
+        </div>
+        <div class="pd-field">
+          <label for="rv-name">Your name</label>
+          <input id="rv-name" type="text" autocomplete="name" autocapitalize="words" maxlength="60" required aria-describedby="rv-name-hint" />
+          <p class="pd-hint" id="rv-name-hint">So the team can see who approved what.</p>
+        </div>
+        <div class="pd-btnrow">
+          <button class="pd-btn primary block" type="submit" id="rv-signin-go">Sign in</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- The server didn't answer, with a code already kept on this device. -->
+    <section class="pd-card rv-narrow" id="rv-trouble" hidden>
+      <h2 class="pd-h2" tabindex="-1" data-heading>The photos didn't load</h2>
+      <p class="rv-plain" id="rv-trouble-text">We couldn't reach the chapter's server. Check your connection and try again.</p>
+      <div class="pd-btnrow">
+        <button class="pd-btn primary" type="button" id="rv-retry">Try again</button>
+        <button class="pd-btn" type="button" id="rv-trouble-out">Sign out</button>
+      </div>
+    </section>
+
+    <div id="rv-app" hidden>
+
+      <div class="rv-bar">
+        <p class="rv-usage" id="rv-usage"></p>
+        <p class="rv-stamp" id="rv-stamp" role="status" aria-live="polite"></p>
+        <button class="pd-btn small" type="button" id="rv-refresh">Refresh</button>
+      </div>
+
+      <div class="rv-folds">
+
+        <details class="pd-card rv-fold" id="rv-uploads">
+          <summary>
+            <span class="rv-fold-name">Uploads</span>
+            <span class="pd-pill" id="rv-state-pill"></span>
+            <span class="rv-fold-line" id="rv-state-short"></span>
+          </summary>
+          <div class="rv-fold-body">
+            <p class="rv-state" id="rv-state" role="status" aria-live="polite"></p>
+            <label class="rv-switch" for="rv-open">
+              <input id="rv-open" type="checkbox" role="switch" aria-describedby="rv-state" />
+              <span class="rv-switch-track" aria-hidden="true"></span>
+              <span>Open for new photos</span>
+            </label>
+            <form id="rv-deadline-form" novalidate>
+              <div class="pd-field">
+                <label for="rv-deadline">Deadline</label>
+                <p class="pd-note bad rv-field-err" id="rv-deadline-err" role="alert" hidden></p>
+                <input id="rv-deadline" type="datetime-local" aria-describedby="rv-zone" />
+                <p class="pd-hint" id="rv-zone"></p>
+              </div>
+              <div class="pd-btnrow">
+                <button class="pd-btn primary" type="submit" id="rv-deadline-save">Save</button>
+                <button class="pd-btn" type="button" id="rv-deadline-none">No deadline</button>
+              </div>
+            </form>
+          </div>
+        </details>
+
+        <details class="pd-card rv-fold" id="rv-tools">
+          <summary>
+            <span class="rv-fold-name">Tools</span>
+            <span class="rv-fold-line">Slideshow, download, clean up</span>
+          </summary>
+          <div class="rv-fold-body">
+            <div class="rv-tool">
+              <a class="pd-btn" href="screen.html" target="_blank" rel="noopener">Open the slideshow</a>
+              <p class="pd-hint">The page the venue's computer plays. It asks for the screen code. Your review code works too.</p>
+            </div>
+            <div class="rv-tool">
+              <button class="pd-btn" type="button" id="rv-download">Download approved photos</button>
+              <p class="pd-hint">Saves the approved photos to this device at full size, as a ZIP file.</p>
+              <p class="rv-progress" id="rv-download-status"></p>
+              <p class="pd-note bad" id="rv-download-missed" hidden></p>
+              <ul class="rv-zips" id="rv-zips" aria-label="ZIP files ready to save"></ul>
+            </div>
+            <div class="rv-tool">
+              <button class="pd-btn danger" type="button" id="rv-empty-all">Delete everything</button>
+              <p class="pd-hint">For after the party. Removes every photo and its files for good.</p>
+            </div>
+          </div>
+        </details>
+
+      </div>
+
+      <div class="rv-tabs" role="tablist" aria-label="Photos by status">
+        <button class="rv-tab" type="button" role="tab" id="rv-tab-waiting" data-tab="waiting" aria-controls="rv-panel" aria-selected="true">
+          <span class="rv-count" data-count="waiting">0</span> <span>Waiting</span>
+        </button>
+        <button class="rv-tab" type="button" role="tab" id="rv-tab-approved" data-tab="approved" aria-controls="rv-panel" aria-selected="false" tabindex="-1">
+          <span class="rv-count" data-count="approved">0</span> <span>Approved</span>
+        </button>
+        <button class="rv-tab" type="button" role="tab" id="rv-tab-rejected" data-tab="rejected" aria-controls="rv-panel" aria-selected="false" tabindex="-1">
+          <span class="rv-count" data-count="rejected">0</span> <span>Rejected</span>
+        </button>
+      </div>
+
+      <section class="rv-panel" id="rv-panel" role="tabpanel" aria-labelledby="rv-tab-waiting">
+        <div class="rv-panel-top">
+          <p class="rv-shown" id="rv-shown"></p>
+          <button class="pd-btn small" type="button" id="rv-approve-all" hidden>Approve all shown</button>
+        </div>
+        <p class="rv-empty" id="rv-empty" hidden></p>
+        <ul class="rv-grid" id="rv-grid"></ul>
+      </section>
+
+    </div>
+
+  </main>
+
+</div>
+
+  <!-- One photo, as large as the screen allows and never larger than it is. -->
+  <dialog class="rv-view" id="rv-view" aria-label="One photo, full size">
+    <div class="rv-view-top">
+      <p class="rv-view-pos" id="rv-view-pos" role="status" aria-live="polite"></p>
+      <button class="pd-btn small" type="button" id="rv-view-close">Close</button>
+    </div>
+    <div class="rv-view-stage" id="rv-view-stage">
+      <p class="rv-view-wait" id="rv-view-wait">Loading the photo</p>
+      <img id="rv-view-img" alt="" decoding="async" />
+    </div>
+    <div class="rv-view-foot">
+      <div class="rv-view-who" id="rv-view-who"></div>
+      <div class="rv-view-row">
+        <button class="rv-step" type="button" id="rv-view-prev" aria-label="Previous photo">
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="rv-view-actions" id="rv-view-actions"></div>
+        <button class="rv-step" type="button" id="rv-view-next" aria-label="Next photo">
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- "Are you sure?", for approving many at once and for deleting. -->
+  <dialog class="rv-ask" id="rv-confirm" aria-labelledby="rv-confirm-title" aria-describedby="rv-confirm-text">
+    <form id="rv-confirm-form" novalidate>
+      <h2 class="pd-h2" id="rv-confirm-title"></h2>
+      <p class="rv-plain" id="rv-confirm-text"></p>
+      <div class="pd-field" id="rv-confirm-word" hidden>
+        <label for="rv-confirm-input" id="rv-confirm-label"></label>
+        <input id="rv-confirm-input" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="20" />
+      </div>
+      <p class="pd-note bad" id="rv-confirm-err" role="alert" hidden></p>
+      <div class="pd-btnrow">
+        <button class="pd-btn" type="button" id="rv-confirm-no">Cancel</button>
+        <button class="pd-btn primary" type="submit" id="rv-confirm-yes"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- What just went wrong, or a short "done". Moves into whichever box is open so it is seen. -->
+  <div class="rv-toast" id="rv-toast" role="alert" hidden>
+    <p id="rv-toast-text"></p>
+    <button class="pd-btn small" type="button" id="rv-toast-close">OK</button>
+  </div>
+  <p class="pd-sr" id="rv-say" role="status" aria-live="polite"></p>
+
+  <script>
+    // If the page's own script never arrives (a weak signal, a very old browser), say so
+    // instead of leaving "Loading the photos." up forever.
+    document.getElementById('rv-loading').hidden = false;
+    setTimeout(function () {
+      var line = document.getElementById('rv-loading-text');
+      if (line && !window.GIL_DROP_STARTED) line.textContent = "This page didn't finish loading. Check your connection and reload it.";
+    }, 15000);
+  </script>
+  <script src="../assets/calendar/config.js"></script>
+  <script type="module" src="../assets/photo-drop/review.js"></script>
+</body>
+</html>

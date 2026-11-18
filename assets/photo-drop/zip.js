@@ -117,18 +117,19 @@ export function createZip() {
   const files = []; // what the directory needs to know about each file
   let offset = 0; // bytes written so far
   let directory = 0; // bytes the directory will take
+  const size = () => offset + directory + DIRECTORY_END;
 
   return {
     get count() { return files.length; },
 
     // The size of the finished ZIP, were it finished now.
-    get size() { return offset + directory + DIRECTORY_END; },
+    get size() { return size(); },
 
     // `bytes` is a Uint8Array. `when` is the time shown beside the file once unzipped.
     add(name, bytes, when = new Date()) {
       const encoded = encoder.encode(String(name));
       if (!encoded.length || encoded.length > 0xffff) throw new Error('A file in a ZIP needs a name, and a short one.');
-      if (files.length >= MAX_FILES || this.size + zipCost(name, bytes.length) > MAX_BYTES) {
+      if (files.length >= MAX_FILES || size() + zipCost(name, bytes.length) > MAX_BYTES) {
         throw new Error('This ZIP is full. Start another one.');
       }
       const file = { name: encoded, size: bytes.length, crc: crc32(bytes), offset, ...dosTime(when) };
@@ -145,5 +146,29 @@ export function createZip() {
       const entries = files.map(directoryEntry);
       return new Blob([...parts, ...entries, directoryEnd(files.length, directory, offset)], { type: 'application/zip' });
     }
+  };
+}
+
+// Several ZIPs in a row, none larger than `limit` bytes. add() works like a single ZIP's, and
+// starts a new ZIP whenever the next file would take the current one past the limit. Each
+// finished ZIP is handed to done(blob, count). Call close() after the last file.
+//   const zips = createZips(250 * 1000 * 1000, (blob, count) => save(blob));
+//   zips.add(name, bytes, when);
+//   zips.close();
+// A file larger than the limit goes in a ZIP of its own.
+export function createZips(limit, done) {
+  let zip = createZip();
+  const close = () => {
+    if (!zip.count) return;
+    const full = zip;
+    zip = createZip();
+    done(full.blob(), full.count);
+  };
+  return {
+    add(name, bytes, when) {
+      if (zip.count && zip.size + zipCost(name, bytes.length) > limit) close();
+      zip.add(name, bytes, when);
+    },
+    close
   };
 }

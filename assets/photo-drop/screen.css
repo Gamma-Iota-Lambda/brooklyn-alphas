@@ -1,0 +1,322 @@
+/* Photo drop: the slideshow (school-daze/screen.html). The look the three School Daze pages share
+   is in drop.css; this file adds what only this page has. Every class here starts with sc-.
+   Two halves: the setup card, which is an ordinary page, and the stage, which fills the venue's
+   screens for the night. Everything on the stage is sized from the screen (vmin), so it reads
+   the same at 1920x1080 and 3840x2160. */
+
+/* A warm glow at the top, like the stadium lights on the flyer. */
+body.pd {
+  background-image: radial-gradient(130% 420px at 50% -80px, rgba(212, 160, 23, 0.2), rgba(212, 160, 23, 0) 70%);
+  background-repeat: no-repeat;
+}
+
+.sc-plain { margin: 8px 0 0; }
+.pd-card > .sc-plain:first-child { margin-top: 0; }
+.sc-notready { margin: 22vh 0; font-size: 1.1rem; text-align: center; }
+#sc-setup-title:focus { outline: none; }
+
+/* ---------------------------------------------------------------- the top of the setup page */
+.sc-hero {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 4.5vw, 28px);
+  padding-top: 8px;
+}
+.sc-flyer {
+  flex: none;
+  width: clamp(92px, 28vw, 170px);
+  height: auto;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 6px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
+  transform: rotate(-3deg);
+}
+.sc-hero-text { min-width: 0; }
+.sc-hero .pd-title { font-size: clamp(2rem, 10vw, 4rem); }
+.sc-when {
+  margin: 10px 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- the setup card */
+.sc-field-err { margin: 0 0 6px; padding: 8px 12px; }
+.pd-field input[aria-invalid="true"] { border-color: var(--pd-danger); }
+/* The code shows as dots: the setup card may be up on the big screens while it is typed. */
+.sc-secret { -webkit-text-security: disc; }
+
+.sc-set { min-width: 0; margin: 18px 0 0; padding: 0; border: 0; }
+.sc-set legend { padding: 0; }
+.sc-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.sc-choice { position: relative; display: inline-flex; }
+/* The real radio button lies over its label, unseen, so it still takes the keyboard and taps. */
+.sc-choice input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.sc-choice span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 48px;
+  padding: 8px 20px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 999px;
+  font-family: var(--pd-font-label);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sc-choice input:checked + span {
+  border-color: var(--pd-gold);
+  background: linear-gradient(180deg, var(--pd-gold-hi), var(--pd-gold));
+  color: var(--pd-on-gold);
+}
+.sc-choice input:focus-visible + span { outline: 3px solid var(--pd-gold-hi); outline-offset: 2px; }
+
+.sc-check {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  cursor: pointer;
+}
+.sc-check input {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--pd-gold);
+}
+
+.sc-start { min-height: 64px; margin-top: 20px; font-size: 1.35rem; }
+.sc-status { min-height: 1.5em; margin: 10px 0 0; color: var(--pd-muted); text-align: center; }
+
+.sc-how-title {
+  margin: 0 0 10px;
+  font-family: var(--pd-font-label);
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+}
+.sc-how ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.sc-how li { position: relative; padding-left: 22px; color: var(--pd-muted); }
+.sc-how li::before {
+  content: "";
+  position: absolute;
+  top: 0.5em;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  background: var(--pd-gold);
+  transform: rotate(45deg);
+}
+.sc-how strong { font-weight: 600; color: var(--pd-gold-hi); }
+.sc-how a { display: inline-block; padding: 4px 0; }
+
+/* ---------------------------------------------------------------- the stage */
+/* While the slideshow plays the page behind it can't scroll, so no scrollbar can show. */
+html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
+
+.sc-stage {
+  --sc-fade: 1.2s; /* the cross-fade: FADE in screen.js says the same */
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  background: #000;
+  cursor: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sc-stage:focus { outline: none; }
+/* The mouse moved: the cursor and the controls show for a few seconds. */
+.sc-stage.is-awake { cursor: default; }
+
+/* The title card: what the screens show whenever there is no photo to show. */
+.sc-title {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7vmin;
+  padding: 6vmin;
+  background: radial-gradient(90% 75% at 50% -10%, rgba(212, 160, 23, 0.24), rgba(212, 160, 23, 0) 72%);
+}
+.sc-title-flyer {
+  flex: none;
+  width: auto;
+  height: min(70vh, 84vw);
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 0.8vmin;
+  box-shadow: 0 3vmin 8vmin rgba(0, 0, 0, 0.8);
+  transform: rotate(-3deg);
+}
+.sc-title-text { min-width: 0; }
+.sc-title .pd-eyebrow { margin-bottom: 1.6vmin; font-size: 2.7vmin; }
+.sc-title .pd-title { font-size: 13vmin; }
+.sc-title-line {
+  margin: 3vmin 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 3.4vmin;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+@media (orientation: portrait) {
+  .sc-title { flex-direction: column; text-align: center; }
+  .sc-title-flyer { height: min(48vh, 100vw); }
+}
+
+/* The photos. Each slide covers the whole stage and is solid, so one fading in over another
+   never shows the title card through. */
+.sc-slides { position: absolute; inset: 0; }
+.sc-slide {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #000;
+  opacity: 0;
+  transition: opacity var(--sc-fade) ease-in-out;
+  pointer-events: none;
+}
+.sc-slide.is-on { opacity: 1; }
+
+/* A blurred, darkened copy of the photo fills the screen behind it. Wider than the stage, so the
+   blur's soft edge stays out of sight. */
+.sc-back {
+  position: absolute;
+  top: -8%;
+  left: -8%;
+  width: 116%;
+  height: 116%;
+  max-width: none;
+  object-fit: cover;
+  filter: blur(4vmin) brightness(0.42) saturate(1.15);
+}
+
+/* The photo's box. screen.js gives it its size in pixels, so a photo is never stretched past
+   one and a half times its own pixels. */
+.sc-frame {
+  position: relative;
+  box-sizing: content-box;
+  transform: rotate(var(--sc-tilt, 0deg)) scale(var(--sc-from, 1));
+}
+.sc-photo { display: block; width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; }
+
+/* A gentle zoom while the photo shows. */
+.sc-slide.is-on .sc-frame { animation: sc-drift var(--sc-dwell, 12s) linear both; }
+.sc-stage.is-paused .sc-frame { animation-play-state: paused; }
+@keyframes sc-drift {
+  from { transform: rotate(var(--sc-tilt, 0deg)) scale(var(--sc-from, 1)); }
+  to { transform: rotate(var(--sc-tilt, 0deg)) scale(var(--sc-to, 1)); }
+}
+
+/* A small photo: a framed print lying on the blurred ground, at a slight tilt. */
+.sc-slide.is-print .sc-frame {
+  padding: clamp(8px, 1.2vmin, 30px);
+  border-radius: 2px;
+  background: #fbf8ef;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25), 0 2.4vmin 7vmin rgba(0, 0, 0, 0.7);
+}
+
+/* The caption: one quiet gold line, bottom left, over a dark fade so it reads on any photo. */
+.sc-caption {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  margin: 0;
+  padding: 11vmin 4vmin 3.6vmin;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.82), rgba(0, 0, 0, 0.5) 42%, rgba(0, 0, 0, 0));
+}
+.sc-caption span {
+  display: -webkit-box;
+  max-width: min(80%, 44em);
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-family: var(--pd-font-label);
+  font-size: clamp(18px, 3.1vmin, 84px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+  color: var(--pd-gold-hi);
+  text-shadow: 0 0.2vmin 1vmin rgba(0, 0, 0, 0.9);
+}
+.sc-stage.no-captions .sc-caption { display: none; }
+
+/* The mark in the corner. Not over the title card, which says it already. */
+.sc-mark {
+  position: absolute;
+  top: 3vmin;
+  right: 3.4vmin;
+  font-size: clamp(14px, 2.6vmin, 72px);
+  filter: drop-shadow(0 0.2vmin 0.7vmin rgba(0, 0, 0, 0.85));
+  opacity: 0;
+  transition: opacity var(--sc-fade) ease-in-out;
+  pointer-events: none;
+}
+.sc-stage.has-photo .sc-mark { opacity: 0.92; }
+
+/* The controls: out of sight until the mouse moves. */
+.sc-bar {
+  position: absolute;
+  bottom: max(3vmin, 14px);
+  left: 50%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5em;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 0.6em;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 2.2em;
+  background: rgba(10, 10, 10, 0.88);
+  box-shadow: 0 1vmin 4vmin rgba(0, 0, 0, 0.6);
+  font-size: clamp(16px, 1.55vmin, 34px);
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 0.8em);
+  transition: opacity 0.25s ease, transform 0.25s ease, visibility 0s linear 0.25s;
+}
+.sc-stage.is-awake .sc-bar {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition-delay: 0s;
+}
+.sc-bar .pd-btn {
+  min-height: max(44px, 2.75em);
+  padding: 0.3em 1.1em;
+  background: var(--pd-raised);
+  font-size: 1em;
+}
+.sc-bar .pd-btn[aria-pressed="true"] { border-color: var(--pd-gold); color: var(--pd-gold-hi); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* No zoom. The photo holds still at its full size. */
+  .sc-slide.is-on .sc-frame { animation: none; }
+  .sc-frame { transform: rotate(var(--sc-tilt, 0deg)); }
+}

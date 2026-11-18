@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>The slideshow | School Daze | Gamma Iota Lambda</title>
+  <meta name="description" content="The photo slideshow for the big screens at School Daze, Saturday, Nov. 21 at The Ivory on Park." />
+  <!-- For the venue's computer on the night: kept out of search results, the sitemap, and the nav. -->
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- The link can carry the screen code. Don't pass it along to any other site. -->
+  <meta name="referrer" content="no-referrer" />
+  <link rel="icon" type="image/png" href="../favicon.png" />
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/photo-drop/drop.css">
+  <link rel="stylesheet" href="../assets/photo-drop/screen.css">
+</head>
+<body class="pd">
+
+<!-- Setting up. Hidden while the slideshow plays. -->
+<div class="pd-wrap" id="sc-wrap">
+
+  <main id="sc-main">
+
+    <header class="sc-hero">
+      <img class="sc-flyer" src="../assets/photo-drop/school-daze-flyer.jpg" width="1080" height="1440" alt="The School Daze flyer" decoding="async" />
+      <div class="sc-hero-text">
+        <p class="pd-eyebrow">Gamma Iota Lambda presents</p>
+        <h1 class="pd-title">School Daze</h1>
+        <p class="sc-when">The slideshow for the big screens</p>
+      </div>
+    </header>
+
+    <noscript><p class="pd-note">This page needs JavaScript to play the slideshow. Turn it on and reload the page.</p></noscript>
+
+    <!-- Hidden until a script shows it, so a browser with scripts off sees only the line above. -->
+    <section class="pd-card" id="sc-loading" hidden>
+      <p class="sc-plain" id="sc-loading-text" role="status">Getting the slideshow ready.</p>
+    </section>
+
+    <section class="pd-card" id="sc-setup" hidden>
+      <h2 class="pd-h2" id="sc-setup-title" tabindex="-1">Set up this screen</h2>
+      <p class="pd-note" id="sc-demo-note" hidden>This is the test. It plays six test pictures and doesn't ask the server for photos. <a id="sc-real-link" href="screen.html">Go to the real slideshow</a></p>
+
+      <form id="sc-form" novalidate>
+        <div class="pd-field" id="sc-code-field">
+          <label for="sc-code">Screen code</label>
+          <p class="pd-note bad sc-field-err" id="sc-code-err" role="alert" hidden></p>
+          <!-- Dots, like a password, without a browser offering to save it over the slideshow. -->
+          <input class="sc-secret" id="sc-code" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="120" aria-describedby="sc-code-hint" />
+          <p class="pd-hint" id="sc-code-hint">The organizers have it. This computer keeps it after the first time.</p>
+        </div>
+
+        <fieldset class="sc-set">
+          <legend class="pd-label">Seconds per photo</legend>
+          <div class="sc-choices">
+            <label class="sc-choice"><input type="radio" name="seconds" value="5" /><span>5</span></label>
+            <label class="sc-choice"><input type="radio" name="seconds" value="8" checked /><span>8</span></label>
+            <label class="sc-choice"><input type="radio" name="seconds" value="12" /><span>12</span></label>
+            <label class="sc-choice"><input type="radio" name="seconds" value="20" /><span>20</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="sc-set">
+          <legend class="pd-label">Order</legend>
+          <div class="sc-choices">
+            <label class="sc-choice"><input type="radio" name="order" value="shuffle" checked /><span>Shuffle</span></label>
+            <label class="sc-choice"><input type="radio" name="order" value="oldest" /><span>Oldest first</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="sc-set">
+          <legend class="pd-label">On screen</legend>
+          <label class="sc-check" for="sc-captions">
+            <input id="sc-captions" type="checkbox" checked />
+            <span>Captions</span>
+          </label>
+          <label class="sc-check" for="sc-mark">
+            <input id="sc-mark" type="checkbox" checked />
+            <span>The "School Daze" mark in the corner</span>
+          </label>
+        </fieldset>
+
+        <p class="pd-note bad" id="sc-err" role="alert" hidden></p>
+        <button class="pd-btn primary block sc-start" type="submit" id="sc-start">Start the slideshow</button>
+        <p class="sc-status" id="sc-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="pd-card sc-how" id="sc-how" hidden>
+      <h2 class="sc-how-title">Once it's playing</h2>
+      <ul>
+        <li>The page goes full screen and keeps this computer awake.</li>
+        <li><strong>Move the mouse</strong> to see the controls. They hide again after 3 seconds.</li>
+        <li><strong>Keys:</strong> Space pauses. The arrow keys go back and forward. C turns captions on or off. F is full screen. Esc leaves full screen.</li>
+        <li>A newly approved photo joins within a minute or two. If the connection drops, the photos keep playing.</li>
+        <li id="sc-demo-line">No photos approved yet? <a id="sc-demo-link" href="screen.html?demo=1">Try this screen with test pictures</a></li>
+      </ul>
+    </section>
+
+  </main>
+
+  <footer class="pd-foot" id="sc-foot">
+    <p><a href="https://www.gil1906.org/">Gamma Iota Lambda Chapter, Alpha Phi Alpha Fraternity, Inc.</a></p>
+  </footer>
+
+</div>
+
+<!-- The slideshow. The title card sits at the bottom of the pile, so whenever there is no photo to
+     show, it is what the screens show. assets/photo-drop/screen.js puts the photos over it. -->
+<div class="sc-stage" id="sc-stage" tabindex="-1" aria-label="The School Daze slideshow" hidden>
+  <div class="sc-title" id="sc-title">
+    <img class="sc-title-flyer" src="../assets/photo-drop/school-daze-flyer.jpg" width="1080" height="1440" alt="" decoding="async" />
+    <div class="sc-title-text">
+      <p class="pd-eyebrow">Gamma Iota Lambda presents</p>
+      <p class="pd-title">School Daze</p>
+      <p class="sc-title-line">Your college days, on the big screen</p>
+    </div>
+  </div>
+
+  <div class="sc-slides" id="sc-slides"></div>
+
+  <p class="pd-title sc-mark" id="sc-mark-text" aria-hidden="true">School Daze</p>
+
+  <div class="sc-bar" id="sc-bar" role="toolbar" aria-label="Slideshow controls">
+    <button class="pd-btn small" type="button" data-act="pause">Pause</button>
+    <button class="pd-btn small" type="button" data-act="previous">Previous</button>
+    <button class="pd-btn small" type="button" data-act="next">Next</button>
+    <button class="pd-btn small" type="button" data-act="captions" aria-pressed="true">Captions</button>
+    <button class="pd-btn small" type="button" data-act="full">Full screen</button>
+    <button class="pd-btn small" type="button" data-act="setup">Setup</button>
+  </div>
+</div>
+
+  <script>
+    // If the page's own script never arrives (a weak signal, a very old browser), say so
+    // instead of leaving "Getting the slideshow ready." up forever.
+    document.getElementById('sc-loading').hidden = false;
+    setTimeout(function () {
+      var line = document.getElementById('sc-loading-text');
+      if (line && !window.GIL_DROP_STARTED) line.textContent = "This page didn't finish loading. Check the connection and reload it.";
+    }, 15000);
+  </script>
+  <script src="../assets/calendar/config.js"></script>
+  <script type="module" src="../assets/photo-drop/screen.js"></script>
+</body>
+</html>
