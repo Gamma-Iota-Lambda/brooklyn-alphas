@@ -30,6 +30,7 @@ export const MAX_JSON_BYTES = 65536;
 export const DRAIN_MAX = 40000000;
 export const SIGN_DAYS = 14; // how long a signed link lasts; the review list renews them
 export const REMOVE_BATCH = 100;
+export const LIST_BATCH = 1000;
 export const SIGN_BATCH = 200;
 // What a filled honeypot is told, as if the photo had been taken.
 const PRETEND_LEFT = 4;
@@ -73,9 +74,9 @@ export function makeDb(query) {
     open: (code) => value('cal_private.drop_open($1::text)', [code]),
     reserve: (p) =>
       value(`cal_private.drop_reserve($1::text, $2::text, $3::text, $4::text, $5::integer, $6::integer, $7::integer,
-        ($8::text)::boolean, $9::text, ($10::text)::jsonb)`,
+        ($8::text)::boolean, $9::text, ($10::text)::jsonb, $11::text)`,
         [p.code, p.name, p.email, p.caption, p.width, p.height, p.bytes, p.hasThumb ? 'true' : 'false', p.ip,
-          p.original ? JSON.stringify(p.original) : null]),
+          p.original ? JSON.stringify(p.original) : null, p.sha256 || null]),
     stored: async (id, url, thumbUrl, until) =>
       (await value('cal_private.drop_stored($1::uuid, $2::text, $3::text, ($4::text)::timestamptz)', [id, url, thumbUrl, until])) === true,
     abandon: (id) => query('select cal_private.drop_abandon($1::uuid)', [id]),
@@ -141,9 +142,23 @@ export function jpegSize(bytes) {
 // connection, so it counts as none rather than as everyone.
 const PRIVATE_ADDRESS = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|::1$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/;
 export function callerIp(req) {
-  const last = (req.headers.get('x-forwarded-for') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean).pop() || '';
+  let last = (req.headers.get('x-forwarded-for') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean).pop() || '';
   if (last.length > 45 || !/^[0-9a-f:.]+$/.test(last)) return '';
-  return PRIVATE_ADDRESS.test(last) ? '' : last;
+  // An IPv4 address written the IPv6 way.
+  const mapped = /^::ffff:([0-9]{1,3}(?:\.[0-9]{1,3}){3})$/.exec(last);
+  if (mapped) last = mapped[1];
+  if (PRIVATE_ADDRESS.test(last)) return '';
+  return last.includes(':') ? network64(last) : last;
+}
+
+// A home line or a phone is given a whole block of IPv6 addresses (a /64) and can use any of
+// them, so the block is the connection: its first four groups.
+function network64(address) {
+  const [head, tail] = address.split('::');
+  const first = head ? head.split(':') : [];
+  const rest = tail ? tail.split(':') : [];
+  const groups = address.includes('::') ? [...first, ...Array(Math.max(0, 8 - first.length - rest.length)).fill('0'), ...rest] : first;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
 }
 
 // Text for a log line: one line, no control characters, cut on whole characters.
@@ -231,6 +246,13 @@ export async function readBody(req, keep) {
     at += chunk.byteLength;
   }
   return { bytes, over };
+}
+
+// A photo's fingerprint: the SHA-256 of its bytes, in hex. The database uses it to notice the
+// same photo sent twice by the same person.
+async function fingerprint(bytes) {
+  const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return Array.from(hash, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 const isFile = (v) => !!v && typeof v === 'object' && typeof v.arrayBuffer === 'function' && typeof v.size === 'number';
@@ -335,6 +357,16 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
         body: JSON.stringify({ prefixes: paths.slice(i, i + REMOVE_BATCH) })
       });
     }
+  }
+
+  // The paths of the files in one of the bucket's two folders, up to a thousand a call.
+  async function listFiles(folder) {
+    const answer = await storage('list', 'POST', `/object/list/${BUCKET}`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefix: folder, limit: LIST_BATCH, offset: 0, sortBy: { column: 'name', order: 'asc' } })
+    });
+    if (!Array.isArray(answer)) throw new StorageError('list: an answer that made no sense');
+    return answer.filter((item) => item && typeof item.name === 'string' && item.id).map((item) => `${folder}/${item.name}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -467,9 +499,13 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       bytes: photo.bytes.length + (thumb ? thumb.length : 0),
       hasThumb: !!thumb,
       ip: callerIp(req),
-      original: originalOf(form.get('original'))
+      original: originalOf(form.get('original')),
+      sha256: await fingerprint(photo.bytes)
     });
     if (!held || !held.ok) return refused(held);
+    // We already have this photo from this person: their phone lost our first answer and sent it
+    // again. Nothing more to store.
+    if (held.duplicate) return json(200, { ok: true, id: held.id, left: held.left });
 
     const paths = [held.path, held.thumb_path].filter(Boolean);
     try {
@@ -615,10 +651,33 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       log.error(`photo-drop: deleting ${found.ids.length} photos stopped at their files: ${errorText(e)}`);
       return json(502, { error: "We couldn't delete those photos. Try again.", reason: 'storage' });
     }
-    if (!found.ids.length) return json(200, { ok: true, deleted: 0 });
-    const done = await db.reviewDelete(code, found.ids);
-    if (!done || !done.ok) return refused(done);
-    return json(200, { ok: true, deleted: done.deleted });
+    let deleted = 0;
+    if (found.ids.length) {
+      const done = await db.reviewDelete(code, found.ids);
+      if (!done || !done.ok) return refused(done);
+      deleted = done.deleted;
+    }
+    if (ids === null) await sweep(code);
+    return json(200, { ok: true, deleted });
+  }
+
+  // After Delete everything: takes out any file no row points to. A send that failed partway
+  // while Storage was struggling can leave one, and a guest's photo must not stay behind. Files
+  // of a photo that arrived a moment ago keep their row and are left alone.
+  async function sweep(code) {
+    try {
+      const kept = await db.reviewPaths(code, null);
+      const keep = new Set(kept && kept.ok ? kept.paths : []);
+      for (const folder of ['photos', 'thumbs']) {
+        for (let round = 0; round < 20; round += 1) {
+          const stray = (await listFiles(folder)).filter((path) => !keep.has(path));
+          if (!stray.length) break;
+          await removeFiles(stray);
+        }
+      }
+    } catch (e) {
+      log.error(`photo-drop: Delete everything could not check the bucket for leftover files: ${errorText(e)}`);
+    }
   }
 
   async function review(req) {

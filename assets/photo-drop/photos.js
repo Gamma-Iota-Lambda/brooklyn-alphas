@@ -437,7 +437,7 @@ async function sendOne(card, me) {
 // One photo to the server. If the server finds it too large, a smaller copy goes once more.
 async function deliver(card, me) {
   try {
-    return await inTime(send(formFor(card, me)));
+    return await inTime((signal) => send(formFor(card, me), signal));
   } catch (e) {
     const tooLarge = e instanceof DropError && (e.status === 413 || e.reason === 'size');
     if (!tooLarge || card.shrunk) throw e;
@@ -445,18 +445,24 @@ async function deliver(card, me) {
     const again = await smaller(card.file, S.limits);
     if (!again.ok) throw e;
     card.prepared = { ...card.prepared, blob: again.blob, thumb: again.thumb || card.prepared.thumb, width: again.width, height: again.height };
-    return inTime(send(formFor(card, me)));
+    return inTime((signal) => send(formFor(card, me), signal));
   }
 }
 
 // A phone that loses its signal mid-send can leave a request hanging. Give up after a while, so
-// the person gets a Try again instead of a page that says "Sending" forever.
-function inTime(request) {
+// the person gets a Try again instead of a page that says "Sending" forever. Giving up stops the
+// upload itself, so the next photo doesn't have to share a weak signal with it. If it had already
+// arrived, sending it again is safe: the server keeps one copy of a photo.
+function inTime(start) {
+  const stop = new AbortController();
   let timer;
   const late = new Promise((resolve, reject) => {
-    timer = setTimeout(() => reject(new DropError('That took too long. Check your connection and try again.', { reason: 'network' })), SEND_TIMEOUT);
+    timer = setTimeout(() => {
+      stop.abort();
+      reject(new DropError('That took too long. Check your connection and try again.', { reason: 'network' }));
+    }, SEND_TIMEOUT);
   });
-  return Promise.race([request, late]).finally(() => clearTimeout(timer));
+  return Promise.race([start(stop.signal), late]).finally(() => clearTimeout(timer));
 }
 
 // The fields the function's /send route reads. Text first, then the files.

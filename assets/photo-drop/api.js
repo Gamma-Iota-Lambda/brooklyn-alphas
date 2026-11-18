@@ -11,7 +11,7 @@ export const READY = !!config.supabaseUrl;
 const BASE = `${String(config.supabaseUrl || '').replace(/\/+$/, '')}/functions/v1/photo-drop`;
 
 // What went wrong, in words the page can show. `reason` is one of: network, code, closed, full,
-// limit, photo, size, or empty when the function gave none.
+// limit, busy, photo, size, input, storage, or empty when the function gave none.
 export class DropError extends Error {
   constructor(message, { status = 0, reason = '' } = {}) {
     super(message);
@@ -21,13 +21,14 @@ export class DropError extends Error {
   }
 }
 
-async function post(route, body) {
+async function post(route, body, signal) {
   let res;
   try {
     res = await fetch(`${BASE}/${route}`, {
       method: 'POST',
       body: body instanceof FormData ? body : JSON.stringify(body),
-      cache: 'no-store'
+      cache: 'no-store',
+      signal
     });
   } catch {
     throw new DropError("We couldn't reach the chapter's server. Check your connection and try again.", { reason: 'network' });
@@ -51,8 +52,9 @@ async function post(route, body) {
 // The upload page: is this link good, and are photos still being taken?
 export const open = (code) => post('open', { code });
 
-// The upload page: one photo. `form` is a FormData; SPEC and drop.js list its fields.
-export const send = (form) => post('send', form);
+// The upload page: one photo. `form` is a FormData; drop.js lists its fields. `signal` (optional)
+// stops the upload, for a send that has taken too long.
+export const send = (form, signal) => post('send', form, signal);
 
 // The review page: action is list, set, caption, settings, delete or empty.
 export const review = (code, action, more = {}) => post('review', { ...more, code, action });

@@ -107,6 +107,19 @@ export class Storage {
       }));
     }
 
+    // List: POST /object/list/<bucket> { prefix, limit, offset }. Answers with the files directly
+    // in that folder, by name, the way Storage does (a name, and an id that a folder would lack).
+    if (method === 'POST' && rest.startsWith('list/')) {
+      if (rest !== `list/${this.bucket}`) return noBucket();
+      const asked = fromJson();
+      if (!asked || typeof asked.prefix !== 'string') return error(400, 'Bad Request', 'body must have a prefix');
+      const folder = `${asked.prefix.replace(/\/+$/, '')}/`;
+      const names = this.paths().filter((path) => path.startsWith(folder) && !path.slice(folder.length).includes('/')).map((path) => path.slice(folder.length));
+      const from = Number.isInteger(asked.offset) ? asked.offset : 0;
+      const to = from + (Number.isInteger(asked.limit) ? asked.limit : 100);
+      return reply(200, names.slice(from, to).map((name) => ({ name, id: randomUUID(), metadata: { mimetype: 'image/jpeg' } })));
+    }
+
     // Remove: DELETE /object/<bucket> { prefixes }. Answers with the files that were there.
     if (method === 'DELETE') {
       if (rest !== this.bucket) return noBucket();

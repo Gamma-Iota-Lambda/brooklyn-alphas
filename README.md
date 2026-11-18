@@ -34,9 +34,14 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── gil-crest.png               # Chapter crest — used in nav and as headshot placeholder
 ├── zelle-qr.png                # Zelle QR code (Impact $20 page)
 ├── chapter-photo1.png          # Chapter group photo
+├── school-daze/                # School Daze photo drop (no site nav, not in the sitemap)
+│   ├── photos.html             # Ticket buyers send photos from their college days
+│   ├── review.html             # The organizers approve photos for the big screens
+│   └── screen.html             # The slideshow for the venue's computer
 ├── assets/calendar/            # The calendar's script, styles, demo data, and Supabase client
-├── supabase/                   # The calendar's database (migrations, seed, setup, go-live steps) and its Edge Function
-├── tests/calendar/             # The calendar's database and browser tests
+├── assets/photo-drop/          # The photo drop's scripts, styles, and the event flyer
+├── supabase/                   # The calendar's and the photo drop's database (migrations, seed, setup, go-live steps) and their Edge Functions
+├── tests/calendar/             # The calendar's database and browser tests, and the photo drop's database and Edge Function tests
 └── headshots/                 # Current board first, then photos of past officers
     ├── robert-brissett.jpeg
     ├── lucien-allen.jpg
