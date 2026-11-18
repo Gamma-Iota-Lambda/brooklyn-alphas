@@ -1,6 +1,7 @@
-// A stand-in for Supabase Storage: the three calls the photo-drop Edge Function makes (put a file,
-// sign links, remove files), checked the way Storage checks them (the secret key on both headers,
-// the bucket's size limit and allowed types, links that run out), with switches to make them fail.
+// A stand-in for Supabase Storage: the four calls the photo-drop Edge Function makes (put a file,
+// sign links, list a folder, remove files), checked the way Storage checks them (the secret key on
+// both headers, the bucket's size limit and allowed types, links that run out), with switches to
+// make them fail.
 // photo-drop-function.test.mjs uses it, and the live stand-in (live-server.mjs) can serve its files.
 import { randomUUID } from 'node:crypto';
 
@@ -23,9 +24,10 @@ export class Storage {
     // Storage not answering at all.
     this.down = false;
     // Storage answering with an error. true fails every such call; a pattern fails the calls
-    // whose path (or any of whose paths) it matches.
+    // whose path (or any of whose paths, or for a list, whose folder) it matches.
     this.failPut = false;
     this.failSign = false;
+    this.failList = false;
     this.failRemove = false;
   }
 
@@ -113,6 +115,7 @@ export class Storage {
       if (rest !== `list/${this.bucket}`) return noBucket();
       const asked = fromJson();
       if (!asked || typeof asked.prefix !== 'string') return error(400, 'Bad Request', 'body must have a prefix');
+      if (failing(this.failList, [asked.prefix])) return broken();
       const folder = `${asked.prefix.replace(/\/+$/, '')}/`;
       const names = this.paths().filter((path) => path.startsWith(folder) && !path.slice(folder.length).includes('/')).map((path) => path.slice(folder.length));
       const from = Number.isInteger(asked.offset) ? asked.offset : 0;

@@ -1,16 +1,17 @@
 // The photo-drop Edge Function (supabase/functions/photo-drop/drop.js), run in Node against the
 // real migrations in PGlite, with Storage simulated (storage-sim.mjs). Covers what the three
 // School Daze pages ask of it: opening the upload page, sending a photo and every way that is
-// refused, a Storage failure partway, the organizers' review actions, the slideshow's list, and
-// what never reaches the log.
+// refused, a photo sent twice, a Storage failure partway, the organizers' review actions, the
+// slideshow's list, and what never reaches the log.
 // Run with the other database tests: node --test "tests/calendar/*.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { createDb } from './harness.mjs';
 import { Storage } from './storage-sim.mjs';
 import {
-  createHandler, makeDb, jpegSize, callerIp, DRAIN_MAX, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, MAX_THUMB_BYTES, MIN_EDGE, REMOVE_BATCH, SIGN_DAYS
+  createHandler, makeDb, jpegSize, callerIp, DRAIN_MAX, LIST_BATCH, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, MAX_THUMB_BYTES, MIN_EDGE, REMOVE_BATCH, SIGN_DAYS
 } from '../../supabase/functions/photo-drop/drop.js';
 
 const BASE = 'https://uqfoifrpyysqjvwtkgia.supabase.co';
@@ -33,21 +34,25 @@ const CORS = {
 // A JPEG with a real header and no real picture: the function reads sizes and never decodes.
 // frame is the start-of-frame marker (C0 baseline, C2 progressive). exif adds a camera's
 // thumbnail, a small JPEG of its own inside the Exif segment. before goes in ahead of the frame
-// header. bytes pads the file out to a size.
-function jpeg(width, height, { bytes = 4096, frame = 0xc0, exif = false, before = [], precision = 8 } = {}) {
+// header. bytes pads the file out to a size. mark is a number written into the padding, so that
+// two files of one size are two different photos.
+function jpeg(width, height, { bytes = 4096, frame = 0xc0, exif = false, before = [], precision = 8, mark = 0 } = {}) {
   const segment = (marker, data) => Buffer.concat([Buffer.from([0xff, marker, (data.length + 2) >> 8, (data.length + 2) & 0xff]), Buffer.from(data)]);
   const sof = (marker, w, h) => segment(marker, [precision, h >> 8, h & 0xff, w >> 8, w & 0xff, 3, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
   const parts = [Buffer.from([0xff, 0xd8]), segment(0xe0, [...Buffer.from('JFIF\0'), 1, 1, 0, 0, 1, 0, 1, 0, 0])];
   if (exif) parts.push(segment(0xe1, Buffer.concat([Buffer.from('Exif\0\0'), Buffer.from([0xff, 0xd8]), sof(0xc0, 160, 120), Buffer.from([0xff, 0xd9])])));
   parts.push(segment(0xdb, Buffer.alloc(65, 1)), Buffer.from(before), sof(frame, width, height), segment(0xda, [3, 1, 0, 2, 0x11, 3, 0x11, 0, 63, 0]));
   const head = Buffer.concat(parts);
-  const out = Buffer.alloc(Math.max(bytes, head.length + 2), 0x2a);
+  const out = Buffer.alloc(Math.max(bytes, head.length + (mark ? 6 : 2)), 0x2a);
   head.copy(out);
+  if (mark) out.writeUInt32BE(mark, out.length - 6);
   out[out.length - 2] = 0xff;
   out[out.length - 1] = 0xd9;
   return out;
 }
 const file = (bytes, name = 'photo.jpg', type = 'image/jpeg') => new File([bytes], name, { type });
+// A photo's fingerprint, as the function works it out and the database keeps it.
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a0000000d49484452', 'hex'), Buffer.alloc(2000, 7)]);
 
 async function setup({ now = NOW, env = ENV, db = (real) => real } = {}) {
@@ -72,12 +77,16 @@ async function setup({ now = NOW, env = ENV, db = (real) => real } = {}) {
   // The pages send JSON as plain text, with no content type of their own.
   const post = async (route, body, headers = { 'content-type': 'text/plain;charset=UTF-8' }) =>
     answer(await handler(new Request(`${FN}/${route}`, { method: 'POST', headers, body: typeof body === 'string' ? body : JSON.stringify(body) })));
-  // One photo, as the upload page sends it. A field set to undefined is left out.
+  // One photo, as the upload page sends it. A field set to undefined is left out. Each send is
+  // a new photo: a count in its padding makes its bytes differ from the last one's. The very same
+  // bytes from the same email are a repeat, and a test that means one passes the same photo twice.
+  let sent = 0;
   const send = async (over = {}, headers = {}) => {
+    sent += 1;
     const fields = {
       code: UPLOAD, name: 'Ada Lovelace', email: 'ada@example.com', caption: 'Howard, class of 1998', width: '1600', height: '1200',
       original: JSON.stringify({ name: 'IMG_0042.HEIC', width: 4032, height: 3024, bytes: 2310456, type: 'image/heic' }), website: '',
-      photo: file(jpeg(1600, 1200, { bytes: 300000 })), thumb: file(jpeg(480, 360, { bytes: 30000 }), 'thumb.jpg'), ...over
+      photo: file(jpeg(1600, 1200, { bytes: 300000, mark: sent })), thumb: file(jpeg(480, 360, { bytes: 30000 }), 'thumb.jpg'), ...over
     };
     const form = new FormData();
     for (const [k, v] of Object.entries(fields)) if (v !== undefined) form.set(k, v);
@@ -91,9 +100,12 @@ async function setup({ now = NOW, env = ENV, db = (real) => real } = {}) {
     },
     review: (action, more = {}, code = REVIEW) => post('review', { ...more, code, action }),
     rows: (sql = 'select * from public.drop_photos order by created_at, id') => h.sql(sql),
-    // Storage calls by kind: put, sign, or remove.
-    calls: (kind) => storage.calls.filter((c) =>
-      (kind === 'remove' ? c.method === 'DELETE' : c.method === 'POST' && (kind === 'sign') === c.path.includes('/object/sign/')))
+    // Storage calls by kind: put, sign, list, or remove.
+    calls: (kind) => storage.calls.filter((c) => {
+      if (c.method !== 'POST') return kind === 'remove' && c.method === 'DELETE';
+      if (c.path.includes('/object/sign/')) return kind === 'sign';
+      return kind === (c.path.includes('/object/list/') ? 'list' : 'put');
+    })
   };
 }
 
@@ -206,8 +218,8 @@ test('a photo is stored with its thumbnail, waits for review, and its links open
     width: 1600, height: 1200, bytes: 330000, has_thumb: true,
     original: { name: 'IMG_0042.HEIC', width: 4032, height: 3024, bytes: 2310456, type: 'image/heic' },
     path: `photos/${id}.jpg`, thumb_path: `thumbs/${id}.jpg`, url: row.url, thumb_url: row.thumb_url,
-    signed_until: '2026-12-03T15:00:00.000Z', ip_hash: row.ip_hash, created_at: '2026-11-19T15:00:00.000Z', stored_at: '2026-11-19T15:00:00.000Z',
-    reviewed_at: null, reviewed_by: null
+    signed_until: '2026-12-03T15:00:00.000Z', ip_hash: row.ip_hash, sha256: sha256(photo), created_at: '2026-11-19T15:00:00.000Z',
+    stored_at: '2026-11-19T15:00:00.000Z', reviewed_at: null, reviewed_by: null
   });
   assert.ok(s.storage.fileFor(row.url).equals(photo), 'the saved link opens the photo');
   assert.ok(s.storage.fileFor(row.thumb_url).equals(thumb));
@@ -240,6 +252,70 @@ test('a photo is stored with its thumbnail, waits for review, and its links open
     original: { name: `IMG _1${'x'.repeat(114)}`, width: 4032, height: null, bytes: null, type: 'image/jpeg' } });
   const empty = await s.send({ email: 'grace@example.com', original: '{"path": "/Users/grace"}' });
   assert.deepEqual(await s.rows(`select original from public.drop_photos where id = '${empty.body.id}'`), [{ original: null }]);
+  assert.deepEqual(s.logs, []);
+});
+
+test('the very same photo sent again by the same person is stored once, and both sends hear the same answer', async () => {
+  const s = await setup();
+  const photo = jpeg(1600, 1200, { bytes: 300000 });
+  const form = { photo: file(photo), thumb: file(jpeg(480, 360, { bytes: 30000 }), 'thumb.jpg') };
+  const first = await s.send(form);
+  assert.deepEqual([first.status, first.body], [200, { ok: true, id: first.body.id, left: 4 }]);
+  const id = first.body.id;
+  const [row] = await s.rows();
+  const calls = s.storage.calls.length;
+  assert.equal(s.calls('put').length, 2);
+
+  // The phone never heard that answer: the signal dropped, or the browser threw the tab away. It
+  // sends the very same form again, and hears what it would have heard the first time.
+  await s.at('2026-11-19T15:02:00Z');
+  const second = await s.send(form);
+  assert.deepEqual([second.status, second.body, second.headers], [200, { ok: true, id, left: 4 }, CORS]);
+  assert.equal(s.calls('put').length, 2, 'the two files went in once, not twice');
+  assert.equal(s.storage.calls.length, calls, 'the repeat never reached Storage');
+  assert.deepEqual(s.storage.paths(), [`photos/${id}.jpg`, `thumbs/${id}.jpg`]);
+  assert.deepEqual(await s.rows(), [row], 'one row, just as the first send left it');
+  // The same person, however the email is typed.
+  const third = await s.send({ ...form, email: ' ADA@Example.com ' });
+  assert.deepEqual([third.status, third.body], [200, { ok: true, id, left: 4 }]);
+
+  // A different photo from the same person is a new photo, even one the same size to the byte.
+  const other = jpeg(1600, 1200, { bytes: 300000, mark: 1906 });
+  const next = await s.send({ ...form, photo: file(other) });
+  assert.deepEqual([next.status, next.body], [200, { ok: true, id: next.body.id, left: 3 }]);
+  assert.notEqual(next.body.id, id);
+  assert.equal(s.calls('put').length, 4);
+  // The same bytes from another email are someone else's photo: two people sent the same picture.
+  const theirs = await s.send({ ...form, name: 'Grace Hopper', email: 'grace@example.com' });
+  assert.deepEqual([theirs.status, theirs.body], [200, { ok: true, id: theirs.body.id, left: 4 }]);
+  assert.equal(s.calls('put').length, 6);
+  assert.ok(s.storage.read(`photos/${theirs.body.id}.jpg`).equals(photo));
+  assert.deepEqual(await s.rows('select id, email, sha256 from public.drop_photos order by created_at, email'), [
+    { id, email: 'ada@example.com', sha256: sha256(photo) },
+    { id: next.body.id, email: 'ada@example.com', sha256: sha256(other) },
+    { id: theirs.body.id, email: 'grace@example.com', sha256: sha256(photo) }
+  ]);
+
+  // A repeat is still answered after uploads close: the photo is already here. A new one is not taken.
+  await s.h.sql(`update cal_private.config set value = 'false' where key = 'drop_open'`);
+  const late = await s.send(form);
+  assert.deepEqual([late.status, late.body], [200, { ok: true, id, left: 3 }]);
+  assert.deepEqual((await s.send()).body, { error: 'Photo uploads have closed.', reason: 'closed' });
+  await s.h.sql(`update cal_private.config set value = 'true' where key = 'drop_open'`);
+
+  // A send still on its way in has its row but not yet its files. The same photo again is asked
+  // to wait, and nothing goes to Storage.
+  const slow = jpeg(2000, 1500, { bytes: 200000 });
+  await s.h.sql(`select cal_private.drop_reserve($1, 'Ada Lovelace', 'ada@example.com', null, 2000, 1500, 200000, false, '', null, $2)`, [UPLOAD, sha256(slow)]);
+  const wait = await s.send({ photo: file(slow), thumb: undefined });
+  assert.deepEqual([wait.status, wait.body], [409, { error: 'That photo is still on its way in. Give it a minute, then try again.', reason: 'busy' }]);
+  assert.equal(s.calls('put').length, 6);
+  assert.equal(s.calls('remove').length, 0, 'and nothing of the send under way is touched');
+  // Sixteen minutes on, that send never finished, and the photo goes through.
+  await s.at('2026-11-19T15:18:00Z');
+  const through = await s.send({ photo: file(slow), thumb: undefined });
+  assert.deepEqual([through.status, through.body.left], [200, 2]);
+  assert.ok(s.storage.read(`photos/${through.body.id}.jpg`).equals(slow));
   assert.deepEqual(s.logs, []);
 });
 
@@ -373,7 +449,9 @@ test('the honeypot, a wrong link, closed, full, and the limits each answer in th
   assert.deepEqual([sixth.status, sixth.body], [409, { error: "You've sent 5 photos, which is the most one person can send.", reason: 'limit' }]);
   assert.equal(s.storage.paths().length, 10, 'the sixth never reached Storage');
 
-  // One connection: the limit goes by the last address in the list, whatever comes before it.
+  // One connection. That limit starts off, so it is turned on here. It goes by the last address
+  // in the list, whatever comes before it.
+  assert.deepEqual(await s.h.sql(`select value from cal_private.config where key = 'drop_per_ip_day'`), [{ value: '0' }]);
   await s.h.sql(`update cal_private.config set value = '2' where key = 'drop_per_ip_day'`);
   const from = (n, forwarded) => s.send({ email: `guest${n}@example.com` }, forwarded ? { 'x-forwarded-for': forwarded } : {});
   assert.equal((await from(1, '198.51.100.7')).status, 200);
@@ -383,20 +461,40 @@ test('the honeypot, a wrong link, closed, full, and the limits each answer in th
   assert.equal((await from(3, '198.51.100.7, 5.6.7.8')).status, 200, 'another connection');
   // With no address to go by, or only the platform's own, the connection limit is not applied.
   for (let n = 4; n <= 6; n += 1) assert.equal((await from(n, n === 4 ? '' : '198.51.100.7, 10.0.0.12')).status, 200);
+  // The same address written the IPv6 way is the same connection.
+  assert.equal((await from(7, '::ffff:198.51.100.7')).status, 409);
+  // An IPv6 connection is its whole /64: any address in it counts toward the one limit.
+  assert.equal((await from(7, '2001:db8:aa:bb:1:2:3:4')).status, 200);
+  assert.equal((await from(8, '2001:db8:aa:bb::9')).status, 200);
+  const ninth = await from(9, '2001:0DB8:00AA:00BB:ffff::1');
+  assert.deepEqual([ninth.status, ninth.body.reason], [409, 'limit']);
+  assert.equal((await from(9, '2001:db8:aa:bc::1')).status, 200, 'the next /64 along is another connection');
   assertQuietLogs(s);
 });
 
-test('the address a photo came from: the last in the list, and never a private one', () => {
+test('the address a photo came from: the last in the list, never a private one, and an IPv6 address as its /64 network', () => {
   const ip = (forwarded) => callerIp(new Request(FN, { headers: forwarded === null ? {} : { 'x-forwarded-for': forwarded } }));
   assert.equal(ip(null), '');
   assert.equal(ip(''), '');
   assert.equal(ip('203.0.113.9'), '203.0.113.9');
   assert.equal(ip('1.1.1.1, 203.0.113.9'), '203.0.113.9');
   assert.equal(ip(' 1.1.1.1 ,203.0.113.9 , '), '203.0.113.9');
-  assert.equal(ip('2001:DB8::1:2'), '2001:db8::1:2');
-  for (const inside of ['10.4.5.6', '127.0.0.1', '192.168.1.20', '172.16.0.1', '172.31.255.1', '169.254.1.1', '100.64.0.1', '100.127.9.9', '::1', 'fd12:3456::1', 'fe80::1']) {
+  // A home line or a phone has a whole /64 of IPv6 addresses to use, so the /64 is the connection:
+  // the first four groups, however the address is written.
+  assert.equal(ip('2001:DB8::1:2'), '2001:db8:0:0::/64');
+  for (const same of ['2001:db8:aa:bb:1:2:3:4', '2001:db8:aa:bb::9', '2001:0db8:00aa:00bb::1', '2001:DB8:AA:BB:ffff:ffff:ffff:ffff', '1.1.1.1, 2001:db8:aa:bb::']) {
+    assert.equal(ip(same), '2001:db8:aa:bb::/64', same);
+  }
+  assert.equal(ip('2001:db8:aa:bc::9'), '2001:db8:aa:bc::/64', 'the next network along is another connection');
+  // An IPv4 address written the IPv6 way is the IPv4 address.
+  assert.equal(ip('::ffff:203.0.113.9'), '203.0.113.9');
+  assert.equal(ip('1.1.1.1, ::FFFF:203.0.113.9'), '203.0.113.9');
+  for (const inside of ['10.4.5.6', '127.0.0.1', '192.168.1.20', '172.16.0.1', '172.31.255.1', '169.254.1.1', '100.64.0.1', '100.127.9.9', '::1', 'fd00::1', 'fd12:3456::1', 'fe80::1',
+    '::ffff:10.4.5.6', '::ffff:192.168.1.20']) {
     assert.equal(ip(`203.0.113.9, ${inside}`), '', inside);
   }
+  assert.equal(ip('::1'), '');
+  assert.equal(ip('fd00::1'), '');
   for (const outside of ['172.15.0.1', '172.32.0.1', '100.63.0.1', '100.128.0.1', '11.0.0.1']) assert.equal(ip(outside), outside);
   for (const odd of ['unknown', 'ada@example.com', '<script>', `${'1'.repeat(46)}`, '203.0.113.9; drop table']) assert.equal(ip(odd), '', odd);
 });
@@ -408,10 +506,13 @@ test('when Storage fails partway, the stray file is removed, the row is given up
     assert.deepEqual(await s.rows(), [], what);
     assert.deepEqual(s.storage.paths(), [], what);
   };
+  // The sender tries again with the very same photo every time. A send that failed leaves no row
+  // behind, so the next try is never taken for a repeat or told to wait.
+  const same = { photo: file(jpeg(1600, 1200, { bytes: 300000 })) };
 
   // The photo goes in, then the thumbnail is refused.
   s.storage.failPut = /^thumbs\//;
-  let res = await s.send();
+  let res = await s.send(same);
   assert.deepEqual([res.status, res.body, res.headers], [502, failed, CORS]);
   assert.equal(s.calls('put').length, 2);
   assert.equal(s.calls('remove').length, 1);
@@ -424,7 +525,7 @@ test('when Storage fails partway, the stray file is removed, the row is given up
   // Both files go in, then signing fails.
   s.storage.failPut = false;
   s.storage.failSign = true;
-  res = await s.send();
+  res = await s.send(same);
   assert.deepEqual([res.status, res.body], [502, failed]);
   await nothingKept('sign failed');
   assert.match(s.logs[1], /was not saved: sign: HTTP 500/);
@@ -432,7 +533,7 @@ test('when Storage fails partway, the stray file is removed, the row is given up
   // The files are in and signed, but the row went while they were on their way (Delete everything).
   s.storage.failSign = false;
   const gone = await setup({ db: (real) => ({ ...real, stored: async () => false }) });
-  res = await gone.send();
+  res = await gone.send(same);
   assert.deepEqual([res.status, res.body], [502, failed]);
   assert.deepEqual(gone.storage.paths(), []);
   assert.deepEqual(await gone.rows(), []);
@@ -441,12 +542,12 @@ test('when Storage fails partway, the stray file is removed, the row is given up
 
   // Storage refuses the bucket's own rules: a wrong key, then a file over the bucket's 8 MB.
   s.storage.key = 'sb_secret_another';
-  res = await s.send();
+  res = await s.send(same);
   assert.deepEqual([res.status, res.body], [502, failed]);
   assert.match(s.logs[2], /was not saved: put: HTTP 403 Unauthorized/);
   s.storage.key = KEY;
   s.storage.maxBytes = 1000;
-  res = await s.send();
+  res = await s.send(same);
   assert.deepEqual([res.status, res.body], [502, failed]);
   assert.match(s.logs[3], /was not saved: put: HTTP 413 Payload too large/);
   s.storage.maxBytes = 8388608;
@@ -454,7 +555,7 @@ test('when Storage fails partway, the stray file is removed, the row is given up
 
   // Storage is not answering at all: nothing can be removed either, and the log says so.
   s.storage.down = true;
-  res = await s.send();
+  res = await s.send(same);
   assert.deepEqual([res.status, res.body], [502, failed]);
   assert.deepEqual(await s.rows(), [], 'the place is given back even though Storage is down');
   assert.match(s.logs[4], /was not saved: put: Storage didn't answer\. Its files may still be in the bucket$/);
@@ -462,8 +563,9 @@ test('when Storage fails partway, the stray file is removed, the row is given up
 
   // None of that counted against the sender.
   s.storage.down = false;
-  res = await s.send();
+  res = await s.send(same);
   assert.deepEqual([res.status, res.body.left], [200, 4]);
+  assert.equal(s.storage.paths().length, 2, 'and this time the photo is in');
   assertQuietLogs(s);
 });
 
@@ -712,6 +814,82 @@ test('delete removes the files and then the rows, and Delete everything empties 
   assertQuietLogs(s, ['Guest']);
 });
 
+test('Delete everything also takes out files no row points to, and still answers when it can not look for them', async () => {
+  // arriving is something to happen between the rows being deleted and the bucket being looked over.
+  let arriving = null;
+  const s = await setup({ db: (real) => ({
+    ...real,
+    reviewDelete: async (code, ids) => {
+      const done = await real.reviewDelete(code, ids);
+      if (arriving) await arriving();
+      return done;
+    }
+  }) });
+  const is = (res, status, body, what) => assert.deepEqual([res.status, res.body], [status, body], what);
+  const a = (await s.send()).body.id;
+  const b = (await s.send({ email: 'grace@example.com', thumb: undefined })).body.id;
+  // What a send that failed while Storage was struggling leaves behind: files with no row.
+  const stray = ['photos/11111111-1111-4111-8111-111111111111.jpg', 'thumbs/11111111-1111-4111-8111-111111111111.jpg', 'thumbs/22222222-2222-4222-8222-222222222222.jpg'];
+  const leave = () => {
+    for (const path of stray) s.storage.seed(path, jpeg(1600, 1200));
+  };
+  leave();
+
+  // Deleting chosen photos never looks through the bucket, and neither does a wrong code.
+  is(await s.review('delete', { ids: [b] }), 200, { ok: true, deleted: 1 });
+  is(await s.review('empty', { confirm: 'DELETE' }, SCREEN), 403, { error: "That code isn't right.", reason: 'code' });
+  assert.equal(s.calls('list').length, 0);
+  assert.deepEqual(s.storage.paths(), [`photos/${a}.jpg`, `thumbs/${a}.jpg`, ...stray].sort());
+
+  // Delete everything does. A photo that arrives while it runs keeps its row, and so its files.
+  let late = null;
+  arriving = async () => {
+    arriving = null;
+    late = (await s.send({ email: 'late@example.com' })).body.id;
+  };
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1 });
+  assert.match(late, /^[0-9a-f-]{36}$/);
+  const left = await s.rows('select id, url, thumb_url from public.drop_photos');
+  assert.deepEqual(left.map((r) => r.id), [late]);
+  assert.deepEqual(s.storage.paths(), [`photos/${late}.jpg`, `thumbs/${late}.jpg`], 'the strays are gone, and nothing else is');
+  assert.ok(s.storage.fileFor(left[0].url) && s.storage.fileFor(left[0].thumb_url), 'its links still open its files');
+  // Each folder is listed with the secret key, and again until nothing stray is left in it.
+  assert.deepEqual(s.calls('list').map((c) => `${c.method} ${c.path} ${c.json.prefix}`), ['photos', 'photos', 'thumbs', 'thumbs'].map((folder) => `POST /storage/v1/object/list/photo-drop ${folder}`));
+  assert.deepEqual(s.calls('list')[0].json, { prefix: 'photos', limit: LIST_BATCH, offset: 0, sortBy: { column: 'name', order: 'asc' } });
+  for (const c of s.calls('list')) assert.deepEqual([c.headers.apikey, c.headers.authorization], [KEY, `Bearer ${KEY}`]);
+  assert.deepEqual(s.calls('remove').slice(-3).map((c) => [...c.json.prefixes].sort()), [[`photos/${a}.jpg`, `thumbs/${a}.jpg`], [stray[0]], [stray[1], stray[2]]]);
+  assert.deepEqual(s.logs, []);
+
+  // Storage can't list the bucket. Everything that was asked for is deleted all the same, and
+  // the log says the bucket went unchecked.
+  leave();
+  s.storage.failList = true;
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1 });
+  assert.deepEqual(await s.rows(), []);
+  assert.deepEqual(s.storage.paths(), [...stray].sort(), "the late photo's files went with its row, and the strays are still there");
+  assert.deepEqual(s.logs, ['photo-drop: Delete everything could not check the bucket for leftover files: list: HTTP 500 Internal: Internal Server Error']);
+  // It finds them but can't remove them: the same answer, and a line of its own.
+  s.storage.failList = false;
+  s.storage.failRemove = /^photos\/1111/;
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), [...stray].sort());
+  assert.deepEqual(s.logs.slice(1), ['photo-drop: Delete everything could not check the bucket for leftover files: remove: HTTP 500 Internal: Internal Server Error']);
+  // Storage is well again. Asked once more, the leftovers go.
+  s.storage.failRemove = false;
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), []);
+
+  // More leftovers than one listing holds: the folder is listed again until it is clear.
+  for (let n = 0; n < LIST_BATCH + 5; n += 1) s.storage.seed(`thumbs/left-${String(n).padStart(4, '0')}.jpg`, 'x');
+  const before = { list: s.calls('list').length, remove: s.calls('remove').length };
+  is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), []);
+  assert.deepEqual(s.calls('list').slice(before.list).map((c) => c.json.prefix), ['photos', 'thumbs', 'thumbs', 'thumbs']);
+  assert.deepEqual(s.calls('remove').slice(before.remove).map((c) => c.json.prefixes.length), [...Array(LIST_BATCH / REMOVE_BATCH).fill(REMOVE_BATCH), 5]);
+  assert.equal(s.logs.length, 2, 'one line for each time the bucket went unchecked');
+  assertQuietLogs(s);
+});
+
 test('the slideshow gets approved photos only, in the order they were approved, with nothing about who sent them', async () => {
   const s = await setup();
   const a = (await s.send()).body.id;
@@ -738,10 +916,10 @@ test('the slideshow gets approved photos only, in the order they were approved, 
   assert.doesNotMatch(JSON.stringify(res.body), /Hopper|Johnson|Lovelace|example\.com|Eugene|IMG_0042|reviewed|status/);
   assert.ok(s.storage.fileFor(res.body.photos[0].url), 'the slideshow can open what it is given');
 
-  // The review code works too. The upload code, which every ticket buyer has, does not.
-  assert.deepEqual((await s.post('screen', { code: REVIEW })).body, res.body);
+  // Only the screen code opens it. The review code would stay behind on the venue's computer,
+  // so it is turned away here, like the upload code, which every ticket buyer has.
   const wrong = { error: "That code isn't right.", reason: 'code' };
-  for (const code of [UPLOAD, 'nope', '', undefined]) {
+  for (const code of [REVIEW, ` ${REVIEW.toUpperCase()} `, UPLOAD, 'nope', '', undefined]) {
     const no = await s.post('screen', { code });
     assert.deepEqual([no.status, no.body], [403, wrong], String(code));
   }
@@ -782,7 +960,7 @@ test('an unexpected failure answers in plain words and logs nothing a person typ
   assert.deepEqual(named.logs, ['photo-drop: open failed: new row for relation (…) violates check constraint (…) (code 23514, drop_photos_name_check)']);
 });
 
-test('the Storage stand-in keeps the rules of the real one: the key, JPEG only, 8 MB, and links that run out', async () => {
+test('the Storage stand-in keeps the rules of the real one: the key, JPEG only, 8 MB, links that run out, and a folder listed by name', async () => {
   const clock = { t: Date.parse(NOW) };
   const storage = new Storage({ url: BASE, key: KEY, now: () => clock.t });
   const call = async (method, path, { key = KEY, headers = {}, body = undefined } = {}) => {
@@ -835,6 +1013,21 @@ test('the Storage stand-in keeps the rules of the real one: the key, JPEG only, 
   assert.deepEqual(storage.paths(), []);
   assert.equal((await call('DELETE', '/object/photo-drop', { headers: json, body: JSON.stringify({ prefixes: [] }) }))[0], 400);
 
+  // List answers with the files directly in one folder, by name, each with an id.
+  for (const path of ['photos/b.jpg', 'photos/a.jpg', 'photos/inside/c.jpg', 'thumbs/a.jpg']) storage.seed(path, photo);
+  const list = (bucket, body) => call('POST', `/object/list/${bucket}`, { headers: json, body: JSON.stringify(body) });
+  const listed = await list('photo-drop', { prefix: 'photos', limit: 1000, offset: 0 });
+  assert.deepEqual([listed[0], listed[1].map((f) => f.name)], [200, ['a.jpg', 'b.jpg']]);
+  for (const f of listed[1]) assert.match(f.id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual((await list('photo-drop', { prefix: 'photos/', limit: 1, offset: 1 }))[1].map((f) => f.name), ['b.jpg']);
+  assert.deepEqual(await list('photo-drop', { prefix: 'nowhere' }), [200, []]);
+  assert.equal((await list('photo-drop', { limit: 1000 }))[0], 400);
+  assert.equal((await list('calendar-files', { prefix: 'photos' }))[0], 404);
+  storage.failList = /^thumbs$/;
+  assert.equal((await list('photo-drop', { prefix: 'thumbs' }))[0], 500);
+  assert.equal((await list('photo-drop', { prefix: 'photos' }))[0], 200);
+  storage.files.clear();
+
   // The switches.
   storage.seed('photos/b.jpg', photo);
   storage.failRemove = /^photos\//;
@@ -847,7 +1040,7 @@ test('the Storage stand-in keeps the rules of the real one: the key, JPEG only, 
   storage.down = true;
   await assert.rejects(() => call('DELETE', '/object/photo-drop', { headers: json, body: '{}' }), /fetch failed/);
   assert.deepEqual(storage.paths(), ['photos/b.jpg', 'photos/c.jpg']);
-  assert.equal(storage.calls.length, 21, 'every call is recorded, whatever became of it');
+  assert.equal(storage.calls.length, 28, 'every call is recorded, whatever became of it');
 });
 
 test('the size of a JPEG is read from its frame header, and anything odd is not a photo', () => {

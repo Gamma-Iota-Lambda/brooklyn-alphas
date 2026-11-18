@@ -1,6 +1,7 @@
-// School Daze photo drop, the database side (supabase/migrations/20261118000100_photo_drop.sql) on
-// real Postgres (PGlite): the three codes, every reason a photo is refused and the order they come
-// in, the limits, closing, review, the slideshow list, and that no API role gets near any of it.
+// School Daze photo drop, the database side (supabase/migrations/20261118000100_photo_drop.sql and
+// 20261118000200_photo_drop_repeats.sql) on real Postgres (PGlite): the three codes, every reason a
+// photo is refused and the order they come in, a photo sent twice, the limits, closing, review, the
+// slideshow list, and that no API role gets near any of it.
 // The Edge Function that calls these is tested in photo-drop-function.test.mjs.
 //   node --test "tests/calendar/photo-drop.test.mjs"
 import { test } from 'node:test';
@@ -35,12 +36,17 @@ const setting = (h, key, value) =>
 const rows = (h, sql = 'select * from public.drop_photos order by created_at, id') => h.sql(sql);
 const minutes = (n) => new Date(Date.parse(NOW) + n * 60000).toISOString();
 
+// A photo's fingerprint, as the Edge Function works it out from the bytes: 64 hex characters.
+// print('a') is one a test can send again. Left alone, each reserve gets a fingerprint of its
+// own, the way each photo has.
+let prints = 0;
+const print = (letter) => letter.repeat(64);
 const reserve = (h, over = {}) => {
   const p = { code: UPLOAD, name: 'Ada Lovelace', email: 'ada@example.com', caption: null, width: 2560, height: 1707,
-    bytes: 1500000, thumb: true, ip: '203.0.113.9', original: null, ...over };
-  return run(h, `drop_reserve($1, $2, $3, $4, $5::integer, $6::integer, $7::integer, ($8::text)::boolean, $9, ($10::text)::jsonb)`,
+    bytes: 1500000, thumb: true, ip: '203.0.113.9', original: null, sha: (prints += 1).toString(16).padStart(64, '0'), ...over };
+  return run(h, `drop_reserve($1, $2, $3, $4, $5::integer, $6::integer, $7::integer, ($8::text)::boolean, $9, ($10::text)::jsonb, $11)`,
     [p.code, p.name, p.email, p.caption, p.width, p.height, p.bytes, p.thumb === null ? null : String(p.thumb), p.ip,
-      p.original === null ? null : JSON.stringify(p.original)]);
+      p.original === null ? null : JSON.stringify(p.original), p.sha]);
 };
 const stored = (h, r, until = '2026-12-03T15:00:00Z') =>
   run(h, `drop_stored($1::uuid, $2, $3, ($4::text)::timestamptz)`,
@@ -105,9 +111,12 @@ test('each page has its own code, compared without regard to case or extra space
     assert.deepEqual(await run(h, 'drop_review_delete($1, null)', [code]), no);
   }
   assert.equal((await run(h, 'drop_state()')).open, true, 'a wrong code changed nothing');
-  for (const code of [UPLOAD, 'nope', '']) assert.deepEqual(await run(h, 'drop_screen_list($1)', [code]), no);
+  // The slideshow takes the screen code and no other. The review code must never be left on the
+  // venue's computer, so it opens nothing there.
+  for (const code of [UPLOAD, REVIEW, ` ${REVIEW.toUpperCase()} `, 'nope', '', null]) {
+    assert.deepEqual(await run(h, 'drop_screen_list($1)', [code]), no, String(code));
+  }
   assert.equal((await run(h, 'drop_screen_list($1)', [SCREEN])).ok, true);
-  assert.equal((await run(h, 'drop_screen_list($1)', [REVIEW])).ok, true, 'an organizer can preview the slideshow');
 
   // Changing a code turns the old one off at once.
   await setCode('upload', 'daze-2026-new');
@@ -197,17 +206,19 @@ test('a photo is refused for one reason at a time, in the order a person would w
   assert.equal((await reserve(h, { email: 'fourth@example.com', ip: null })).ok, true);
 });
 
-test('what a reserved photo keeps: tidy text, a lower-case email, its paths, and only a hash of the address', async () => {
+test('what a reserved photo keeps: tidy text, a lower-case email, its paths, its fingerprint, and only a hash of the address', async () => {
   const h = await ready();
   const original = { name: 'IMG_0042.HEIC', width: 4032, height: 3024, bytes: 2310456, type: 'image/heic' };
-  const r = await reserve(h, { code: '  daze-2026-bk', name: '  Ada   Lovelace ', email: ' Ada@Example.COM ', caption: '  Howard,  class of 1998 ', original });
+  const sha = '0123456789abcdef'.repeat(4);
+  const r = await reserve(h, { code: '  daze-2026-bk', name: '  Ada   Lovelace ', email: ' Ada@Example.COM ', caption: '  Howard,  class of 1998 ', original,
+    sha: ` ${sha.toUpperCase()} ` });
   assert.match(r.id, /^[0-9a-f-]{36}$/);
   assert.deepEqual(r, { ok: true, id: r.id, path: `photos/${r.id}.jpg`, thumb_path: `thumbs/${r.id}.jpg`, left: 4 });
   const [row] = await rows(h);
   assert.deepEqual({ ...row, created_at: row.created_at.toISOString() }, {
     id: r.id, status: 'sending', name: 'Ada Lovelace', email: 'ada@example.com', caption: 'Howard, class of 1998',
     width: 2560, height: 1707, bytes: 1500000, has_thumb: true, original, path: `photos/${r.id}.jpg`, thumb_path: `thumbs/${r.id}.jpg`,
-    url: null, thumb_url: null, signed_until: null, ip_hash: row.ip_hash, created_at: '2026-11-19T15:00:00.000Z',
+    url: null, thumb_url: null, signed_until: null, ip_hash: row.ip_hash, sha256: sha, created_at: '2026-11-19T15:00:00.000Z',
     stored_at: null, reviewed_at: null, reviewed_by: null
   });
   assert.match(row.ip_hash, /^[0-9a-f]{64}$/);
@@ -215,15 +226,17 @@ test('what a reserved photo keeps: tidy text, a lower-case email, its paths, and
   assert.notEqual(row.ip_hash, plain.hash, 'salted, so the hash can not be looked up');
   assert.ok(!JSON.stringify(row).includes('203.0.113'), 'the address itself is nowhere in the row');
 
-  // No thumbnail, no caption, and things that aren't a small object in place of the original.
-  const bare = await reserve(h, { thumb: false, caption: '   ', original: ['IMG_1.jpg'], ip: '' });
+  // No thumbnail, no caption, no fingerprint, and things that aren't a small object in place of
+  // the original.
+  const bare = await reserve(h, { thumb: false, caption: '   ', original: ['IMG_1.jpg'], ip: '', sha: null });
   assert.deepEqual(bare, { ok: true, id: bare.id, path: `photos/${bare.id}.jpg`, thumb_path: null, left: 3 });
-  const big = await reserve(h, { thumb: null, original: { name: 'x'.repeat(600) } });
-  const kept = await rows(h, `select id, has_thumb, thumb_path, caption, original, ip_hash from public.drop_photos where id <> '${r.id}' order by created_at, id`);
+  const big = await reserve(h, { thumb: null, original: { name: 'x'.repeat(600) }, sha: print('b') });
+  const kept = await rows(h, `select id, has_thumb, thumb_path, caption, original, ip_hash, sha256 from public.drop_photos where id <> '${r.id}' order by created_at, id`);
   for (const k of kept) {
     assert.deepEqual({ has_thumb: k.has_thumb, thumb_path: k.thumb_path, caption: k.caption, original: k.original }, { has_thumb: false, thumb_path: null, caption: null, original: null });
   }
   assert.equal(kept.find((k) => k.id === bare.id).ip_hash, null);
+  assert.deepEqual([kept.find((k) => k.id === bare.id).sha256, kept.find((k) => k.id === big.id).sha256], [null, print('b')]);
   assert.equal(big.left, 2);
 
   // The files are in: the photo waits for review. It only happens once, and only with a link.
@@ -242,6 +255,147 @@ test('what a reserved photo keeps: tidy text, a lower-case email, its paths, and
   await run(h, 'drop_abandon($1::uuid)', [r.id]);
   assert.deepEqual((await rows(h, 'select id from public.drop_photos order by created_at, id')).map((x) => x.id).sort(), [r.id, big.id].sort());
   assert.equal((await reserve(h)).left, 2);
+});
+
+test('the same photo sent again from the same email is kept once, and is answered with the one already here', async () => {
+  const h = await ready();
+  const first = await reserve(h, { sha: print('a') });
+  assert.equal(first.left, 4);
+  assert.equal(await stored(h, first), true);
+  await photo(h);
+  const same = { ok: true, duplicate: true, id: first.id, left: 3 };
+
+  // Her phone never heard the answer and sends the photo again. She has two photos here, so
+  // three left: the repeat doesn't use one up.
+  assert.deepEqual(await reserve(h, { sha: print('a') }), same);
+  // The same email however it is typed, the fingerprint in capitals, from another connection.
+  assert.deepEqual(await reserve(h, { sha: ` ${print('A')} `, email: ' ADA@Example.com ', ip: '198.51.100.7' }), same);
+  // It is the photo already here, so nothing else that came with it is looked at.
+  assert.deepEqual(await reserve(h, { sha: print('a'), name: ' ', caption: 'x'.repeat(81), width: 400, height: 300, bytes: null }), same);
+  // The link still comes first.
+  assert.deepEqual(await reserve(h, { sha: print('a'), code: 'nope' }), { ok: false, status: 403, reason: 'code', error: WRONG_LINK });
+  // Whatever the organizers have made of the photo since.
+  for (const status of ['approved', 'rejected', 'waiting']) {
+    assert.deepEqual(await set(h, [first.id], status), { ok: true, changed: 1 });
+    assert.deepEqual(await reserve(h, { sha: print('a') }), same, status);
+  }
+
+  // A repeat is answered before anything that turns a new photo away: uploads closed by the
+  // switch, a full drop, her own limit, her connection's, and the deadline.
+  const fresh = async () => {
+    const r = await reserve(h);
+    return [r.reason, r.error];
+  };
+  await setting(h, 'drop_open', 'false');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), same);
+  assert.deepEqual(await fresh(), ['closed', 'Photo uploads have closed.']);
+  await setting(h, 'drop_open', 'true');
+  await setting(h, 'drop_max_photos', '2');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), same);
+  assert.deepEqual(await fresh(), ['full', 'We have all the photos we can take. Thank you!']);
+  await setting(h, 'drop_max_photos', '600');
+  await setting(h, 'drop_per_person', '2');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), { ...same, left: 0 });
+  assert.deepEqual(await fresh(), ['limit', "You've sent 2 photos, which is the most one person can send."]);
+  await setting(h, 'drop_per_person', '1');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), { ...same, left: 0 }, 'never fewer than none left');
+  await setting(h, 'drop_per_person', '5');
+  await setting(h, 'drop_per_ip_day', '1');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), same);
+  assert.deepEqual(await fresh(), ['limit', 'Too many photos have come from this connection today. Try again tomorrow.']);
+  await setting(h, 'drop_per_ip_day', '0');
+  await h.setNow('2026-11-21T17:00:00Z');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), same);
+  assert.deepEqual(await fresh(), ['closed', 'Photo uploads have closed.']);
+
+  assert.equal((await rows(h)).length, 2, 'none of that saved a second copy, or anything else');
+  assert.deepEqual(await rows(h, `select id from public.drop_photos where sha256 = '${print('a')}'`), [{ id: first.id }]);
+
+  // Once the organizers delete it, the same photo is a new one.
+  await h.setNow(NOW);
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([first.id])]), { ok: true, deleted: 1 });
+  const anew = await reserve(h, { sha: print('a') });
+  assert.deepEqual(anew, { ok: true, id: anew.id, path: `photos/${anew.id}.jpg`, thumb_path: `thumbs/${anew.id}.jpg`, left: 3 });
+  assert.notEqual(anew.id, first.id);
+});
+
+test('a repeat of a photo still on its way in is asked to wait, and after 15 minutes it goes through as new', async () => {
+  const h = await ready();
+  const busy = { ok: false, status: 409, reason: 'busy', error: 'That photo is still on its way in. Give it a minute, then try again.' };
+  const first = await reserve(h, { sha: print('a') });
+  // Sent twice at once, or sent again while the first is still going into the bucket.
+  assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
+  assert.deepEqual(await reserve(h, { sha: print('A'), email: ' ADA@Example.com ' }), busy);
+  // Like a repeat that arrived, it is answered before closed, and after the link.
+  await setting(h, 'drop_open', 'false');
+  assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
+  assert.deepEqual(await reserve(h, { sha: print('a'), code: 'nope' }), { ok: false, status: 403, reason: 'code', error: WRONG_LINK });
+  await setting(h, 'drop_open', 'true');
+  await h.setNow(minutes(14));
+  assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
+  assert.deepEqual((await rows(h)).map((r) => [r.id, r.status]), [[first.id, 'sending']], 'being asked to wait saves nothing');
+
+  // 15 minutes after the first: it never finished, so it is passed over and the photo is taken.
+  await h.setNow(minutes(15));
+  const second = await reserve(h, { sha: print('a') });
+  assert.deepEqual(second, { ok: true, id: second.id, path: `photos/${second.id}.jpg`, thumb_path: `thumbs/${second.id}.jpg`, left: 4 });
+  assert.notEqual(second.id, first.id);
+  // Now the second is the one on its way in. Once it arrives, it is the one a repeat hears about.
+  assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
+  assert.equal(await stored(h, second), true);
+  assert.deepEqual(await reserve(h, { sha: print('a') }), { ok: true, duplicate: true, id: second.id, left: 4 });
+  assert.equal((await rows(h)).length, 2);
+
+  // A send that Storage failed is forgotten at once, so its photo can be tried again straight away.
+  const failed = await reserve(h, { sha: print('b') });
+  assert.deepEqual(await reserve(h, { sha: print('b') }), busy);
+  await run(h, 'drop_abandon($1::uuid)', [failed.id]);
+  const retried = await reserve(h, { sha: print('b') });
+  assert.deepEqual([retried.ok, retried.duplicate, retried.left], [true, undefined, 3]);
+});
+
+test('the same photo from another email is a new photo, and with no fingerprint to go by nothing is compared', async () => {
+  const h = await ready();
+  const hers = await photo(h, { sha: print('a') });
+  // Two people at one table can send the same picture. Each has their own five.
+  const his = await reserve(h, { sha: print('a'), name: 'Charles Babbage', email: 'charles@example.com' });
+  assert.deepEqual(his, { ok: true, id: his.id, path: `photos/${his.id}.jpg`, thumb_path: `thumbs/${his.id}.jpg`, left: 4 });
+  assert.notEqual(his.id, hers);
+  assert.equal(await stored(h, his), true);
+  assert.deepEqual(await rows(h, `select email from public.drop_photos where sha256 = '${print('a')}' order by email`),
+    [{ email: 'ada@example.com' }, { email: 'charles@example.com' }]);
+  // A repeat from either of them is answered with their own.
+  assert.deepEqual(await reserve(h, { sha: print('a'), email: 'charles@example.com' }), { ok: true, duplicate: true, id: his.id, left: 4 });
+  assert.deepEqual(await reserve(h, { sha: print('a') }), { ok: true, duplicate: true, id: hers, left: 4 });
+
+  // A fingerprint that is missing, or isn't 64 hex characters, is not kept and not compared:
+  // sent twice, the photo is saved twice.
+  const unusable = [null, '', '   ', 'a'.repeat(63), 'a'.repeat(65), 'g'.repeat(64), `${'a'.repeat(32)} ${'a'.repeat(31)}`, `sha256:${'a'.repeat(57)}`];
+  for (const [i, sha] of unusable.entries()) {
+    const email = `guest${i}@example.com`;
+    const once = await reserve(h, { email, sha });
+    const twice = await reserve(h, { email, sha });
+    assert.deepEqual([once.ok, once.left, twice.ok, twice.duplicate, twice.left], [true, 4, true, undefined, 3], JSON.stringify(sha));
+    assert.notEqual(twice.id, once.id);
+  }
+  assert.deepEqual(await rows(h, `select count(*)::int as photos, count(sha256)::int as fingerprints from public.drop_photos where email like 'guest%'`),
+    [{ photos: 16, fingerprints: 0 }]);
+
+  // The ten-argument form, which the Edge Function deployed before this migration calls, still
+  // takes photos. It has no fingerprint to give, so it checks for no repeats.
+  const old = (code, email) => run(h, `drop_reserve($1, ' Grace  Hopper ', $2, 'Vassar, class of 1928', 2560, 1707, 1500000, true, '198.51.100.7', '{"name": "IMG_1.jpg"}'::jsonb)`, [code, email]);
+  const one = await old(UPLOAD, 'Grace@Example.com');
+  const two = await old(UPLOAD, 'grace@example.com');
+  assert.deepEqual(one, { ok: true, id: one.id, path: `photos/${one.id}.jpg`, thumb_path: `thumbs/${one.id}.jpg`, left: 4 });
+  assert.deepEqual(two, { ok: true, id: two.id, path: `photos/${two.id}.jpg`, thumb_path: `thumbs/${two.id}.jpg`, left: 3 });
+  const kept = await rows(h, `select status, name, caption, original, sha256, ip_hash is not null as hashed from public.drop_photos where email = 'grace@example.com'`);
+  assert.deepEqual(kept, Array.from({ length: 2 }, () => (
+    { status: 'sending', name: 'Grace Hopper', caption: 'Vassar, class of 1928', original: { name: 'IMG_1.jpg' }, sha256: null, hashed: true })));
+  // And it refuses what it always refused.
+  assert.deepEqual(await old('nope', 'grace@example.com'), { ok: false, status: 403, reason: 'code', error: WRONG_LINK });
+  assert.deepEqual(await old(UPLOAD, 'grace at example dot com'), { ok: false, status: 400, reason: 'input', error: 'Add the email you bought your ticket with.' });
+  await setting(h, 'drop_open', 'false');
+  assert.deepEqual(await old(UPLOAD, 'grace@example.com'), { ok: false, status: 409, reason: 'closed', error: 'Photo uploads have closed.' });
 });
 
 test('the limits count a photo on its way in for 15 minutes and no longer', async () => {
@@ -304,12 +458,29 @@ test('the limits count a photo on its way in for 15 minutes and no longer', asyn
   assert.equal((await reserve(h, { email: 'more@example.com' })).error, "You've sent 1 photo, which is the most one person can send.");
 });
 
-test('one connection can only send so many in a day, and the limit can be turned off', async () => {
+test('the limit on one connection is off after the migrations, and turned on it counts a day of photos', async () => {
   const h = await ready();
-  await setting(h, 'drop_per_ip_day', '3');
   const from = (n, ip = '198.51.100.7') => reserve(h, { email: `guest${n}@example.com`, ip });
-  for (let n = 1; n <= 3; n += 1) assert.equal((await from(n)).ok, true);
   const no = { ok: false, status: 409, reason: 'limit', error: 'Too many photos have come from this connection today. Try again tomorrow.' };
+
+  // Off to begin with: nobody has checked yet which address the platform reports for a guest, and
+  // a shared one would stop everybody. More than the 60 the first migration allowed get in from
+  // one address.
+  assert.deepEqual(await h.sql(`select value from cal_private.config where key = 'drop_per_ip_day'`), [{ value: '0' }]);
+  for (let n = 101; n <= 161; n += 1) assert.equal((await from(n, '198.51.100.99')).ok, true, `photo ${n - 100} from one address`);
+  // A setting that is mistyped or missing counts as off too.
+  await setting(h, 'drop_per_ip_day', 'sixty');
+  assert.equal((await from(162, '198.51.100.99')).ok, true);
+  await h.sql(`delete from cal_private.config where key = 'drop_per_ip_day'`);
+  assert.equal((await from(163, '198.51.100.99')).ok, true);
+  // The address is still kept as a hash, so the hashes can be looked over before the limit goes on.
+  assert.deepEqual(await h.sql(`select count(*)::int as photos, count(ip_hash)::int as hashed, count(distinct ip_hash)::int as addresses from public.drop_photos`),
+    [{ photos: 63, hashed: 63, addresses: 1 }]);
+  // Turned on, it counts what that address sent while it was off.
+  await setting(h, 'drop_per_ip_day', '3');
+  assert.deepEqual(await from(164, '198.51.100.99'), no);
+
+  for (let n = 1; n <= 3; n += 1) assert.equal((await from(n)).ok, true);
   assert.deepEqual(await from(4), no);
   assert.equal((await from(4, '198.51.100.8')).ok, true, 'another connection is fine');
   await h.setNow(minutes(23 * 60 + 59));
@@ -488,9 +659,15 @@ test('the slideshow gets approved photos in the order they were approved, and no
   // Sent back to waiting, a photo leaves the slideshow. Approved again, it goes to the end.
   await h.setNow(minutes(20));
   await set(h, [c], 'waiting');
-  assert.deepEqual((await run(h, 'drop_screen_list($1)', [REVIEW])).photos.map((p) => p.id), [a, b]);
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).photos.map((p) => p.id), [a, b]);
   await set(h, [c], 'approved');
-  assert.deepEqual((await run(h, 'drop_screen_list($1)', [REVIEW])).photos.map((p) => p.id), [a, b, c]);
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).photos.map((p) => p.id), [a, b, c]);
+
+  // The list opens to the screen code only. The review code, typed on the venue's computer, would
+  // stay there with everything it opens, so it is turned away like any other.
+  for (const code of [REVIEW, UPLOAD]) {
+    assert.deepEqual(await run(h, 'drop_screen_list($1)', [code]), { ok: false, status: 403, reason: 'code', error: WRONG_CODE });
+  }
 });
 
 test('links that run out within three days are due for renewal, and fresh ones are saved', async () => {
@@ -541,10 +718,16 @@ test('no API role can run any of the functions, read a row, or reach the bucket'
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'cal_private' and p.proname like 'drop\\_%'
     order by 1`);
-  assert.equal(fns.length, 21);
+  assert.equal(fns.length, 22);
   for (const f of fns) {
     assert.deepEqual([f.anon, f.authenticated, f.service_role], [false, false, false], f.signature);
   }
+  // Both forms of drop_reserve are among them: the one that takes a fingerprint, and the one the
+  // first Edge Function calls.
+  assert.deepEqual(fns.filter((f) => f.signature.startsWith('cal_private.drop_reserve(')), [
+    { signature: 'cal_private.drop_reserve(text,text,text,text,integer,integer,integer,boolean,text,jsonb)', anon: false, authenticated: false, service_role: false },
+    { signature: 'cal_private.drop_reserve(text,text,text,text,integer,integer,integer,boolean,text,jsonb,text)', anon: false, authenticated: false, service_role: false }
+  ]);
   assert.deepEqual(await h.sql(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'drop%'`), [],
     'nothing is exposed through the Data API');
 
@@ -554,6 +737,10 @@ test('no API role can run any of the functions, read a row, or reach the bucket'
     await assert.rejects(() => h.select(who, 'select cal_private.drop_code_ok($1, $2)', ['review', REVIEW]), /permission denied/);
     await assert.rejects(() => h.select(who, 'select cal_private.drop_review_list($1)', [REVIEW]), /permission denied/);
     await assert.rejects(() => h.select(who, 'select cal_private.drop_screen_list($1)', [SCREEN]), /permission denied/);
+    await assert.rejects(() => h.select(who, `select cal_private.drop_reserve($1, 'Ada Lovelace', 'ada@example.com', null, 2560, 1707, 1500000, true, '', null, $2)`,
+      [UPLOAD, print('a')]), /permission denied/);
+    await assert.rejects(() => h.select(who, `select cal_private.drop_reserve($1, 'Ada Lovelace', 'ada@example.com', null, 2560, 1707, 1500000, true, '', null)`,
+      [UPLOAD]), /permission denied/);
     await assert.rejects(() => h.select(who, 'select cal_private.drop_set_code($1, $2)', ['review', 'a new review code of mine']), /permission denied/);
     await assert.rejects(() => h.select(who, 'select cal_private.drop_stale()'), /permission denied/);
     await assert.rejects(() => h.select(who, 'select * from public.drop_photos'), /permission denied/);

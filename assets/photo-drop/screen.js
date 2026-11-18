@@ -33,6 +33,7 @@ const TILT = 1.4; // degrees, for a framed print
 const PRINT_ROOM = 0.84; // a print takes no more than this share of the screen it could fill
 const SECONDS = [5, 8, 12, 20];
 const PAST = 200; // how far back Previous can go
+const PAUSE_MAX = 180000; // a pause ends by itself after this: nobody is at this computer all night
 const TEST_PICTURES = [
   { w: 2560, h: 1440, hue: 42, caption: 'Test picture 1 of 6. Wide, 2560 by 1440' },
   { w: 1707, h: 2560, hue: 350, caption: 'Test picture 2 of 6. Tall, 1707 by 2560' },
@@ -103,6 +104,7 @@ const S = {
   paused: false,
   retryAt: 0, // after a photo failed to load: don't start another before this
   misses: 0, // failed loads in a row
+  pausedAt: 0,
   prints: 0, // framed prints so far, so their tilt alternates
   asked: 0,
   answered: 0,
@@ -282,6 +284,11 @@ async function check() {
   if (!S.on || run !== S.run || asked < S.answered) return; // the show stopped, or a newer answer got here first
   S.answered = asked;
   if (!answer || !Array.isArray(answer.photos)) return;
+  // The server answered, so the connection is back: try the photos that haven't been shown.
+  if (S.misses) {
+    S.misses = 0;
+    S.retryAt = 0;
+  }
   take(answer.photos);
   tick();
 }
@@ -379,14 +386,22 @@ function tick() {
     else if (coming.main && (coming.hasBack !== null || t - coming.mainAt >= BACK_WAIT) && !build(coming)) miss(t);
   }
 
+  // A stray press of Space (a hand on the keyboard, a clicker) must not hold one photo all night.
+  if (S.paused && t - S.pausedAt >= PAUSE_MAX) pause(false);
+
   // Time to change photos. The first photo shows as soon as it is ready.
   if (S.next && S.next.ready && (S.skip || !S.now || (!S.paused && t >= S.dueAt))) change(t);
 
   // Start getting the one after ready.
   if (!S.next && t >= S.retryAt) {
-    const id = (S.misses >= 2 && seenId()) || nextId();
-    if (id) prepare(id, false, t);
-    else S.skip = false; // there is nothing else to change to
+    const cached = S.misses >= 2 ? seenId() : null;
+    const id = cached || nextId();
+    if (id) {
+      prepare(id, false, t);
+      S.next.cached = !!cached;
+    } else {
+      S.skip = false; // there is nothing else to change to
+    }
   }
 
   if (S.awake && t >= S.awakeUntil) sleep();
@@ -550,7 +565,9 @@ function change(t) {
   S.dueAt = t + S.seconds * 1000;
   S.left = S.seconds * 1000;
   S.skip = false;
-  S.misses = 0;
+  // A photo out of the browser's cache says nothing about the connection. Counting it as a good
+  // load would send the show back to waiting on photos that can't arrive, after every one.
+  if (!slide.cached) S.misses = 0;
 }
 
 // No approved photos are left: the one on screen fades away to the title card.
@@ -596,6 +613,7 @@ function pause(on) {
   if (on) S.left = Math.max(0, S.dueAt - t);
   else S.dueAt = t + Math.max(S.left, FADE);
   S.paused = on;
+  S.pausedAt = t;
   stage.classList.toggle('is-paused', on); // holds the zoom too
   labels();
 }
@@ -815,6 +833,10 @@ function listen() {
   for (const name of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(name, labels);
   document.addEventListener('visibilitychange', () => {
     if (S.on && document.visibilityState === 'visible') keepAwake();
+  });  // The computer says its connection is back: ask for the photos now rather than at the next
+  // minute. A good answer sends the show back to the photos it hasn't shown yet.
+  window.addEventListener('online', () => {
+    if (S.on) check();
   });
 }
 

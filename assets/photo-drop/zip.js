@@ -7,7 +7,7 @@
 //
 // This writes the plain ZIP format, with its limits: under 4 GB for the whole ZIP and at most
 // 65,535 files. The page starts a new ZIP every 250 MB, far inside both. Nothing here touches the
-// page, so it runs in Node too, which is how the tests read back what it wrote.
+// page, so it runs in Node too.
 
 const LOCAL_HEADER = 30; // bytes before each file, not counting its name
 const DIRECTORY_ENTRY = 46; // bytes for each file in the directory, not counting its name
