@@ -81,11 +81,38 @@ const playing = {
   }
 };
 
+// Remembers which photos have been on screen, the latest last, each with the end of the link it
+// came from. The browser's cache still holds them after a reload, or after the browser has been
+// started again, so the show can open with them and go round them while the connection is slow.
+const seen = {
+  get() {
+    try {
+      const kept = JSON.parse(localStorage.getItem('gil.drop.screen.seen'));
+      return Array.isArray(kept) ? kept.filter((mark) => typeof mark === 'string') : [];
+    } catch { return []; }
+  },
+  set(marks) { try { localStorage.setItem('gil.drop.screen.seen', JSON.stringify(marks)); } catch { /* nothing to keep */ } }
+};
+const markOf = (photo) => `${photo.id} ${photo.url.slice(-24)}`;
+
 function withTimeout(promise, ms) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('timeout')), ms);
     promise.then((value) => { clearTimeout(timer); resolve(value); }, (e) => { clearTimeout(timer); reject(e); });
   });
+}
+
+// Asks the server for the approved photos. A request that has had no answer in time is let go
+// of, not just given up on: left open on a connection that has stopped, they pile up, one a
+// minute, and can end up holding back the photos themselves.
+function ask() {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), CHECK_TIMEOUT);
+  const done = () => clearTimeout(timer);
+  // Letting go ends the wait by itself. The second clock is for a browser where it doesn't.
+  const answer = withTimeout(screen(S.code, stop.signal), CHECK_TIMEOUT + 2000);
+  answer.then(done, done);
+  return answer;
 }
 
 function shuffled(list) {
@@ -111,7 +138,7 @@ const S = {
   ids: [], // their ids in the server's order, oldest approved first
   queue: [], // the ids still to come in this pass
   past: [], // the ids shown before the one on screen, for Previous
-  shown: new Set(), // every id that has been on screen since Start: the browser has these photos already
+  shown: new Set(), // every id that has been on screen, the latest last: the browser has these photos already
   ready: new Set(), // ids that arrived behind the scenes and wait for their first turn: it has these too
   old: null, // the slide fading out
   now: null, // the slide on screen
@@ -127,6 +154,7 @@ const S = {
   tryAt: 0, // don't start another try before this
   fails: 0, // tries that failed in a row
   tried: new Set(), // ids tried and not got on this round of tries
+  kept: new Set(), // ids that were set aside as too slow and given their place in the line back
   down: false, // the last check got no answer from the server at all
   pausedAt: 0,
   prints: 0, // framed prints so far, so their tilt alternates
@@ -219,7 +247,7 @@ async function begin({ resumed = false } = {}) {
   let list = [];
   let failed = null;
   try {
-    list = DEMO ? await testPictures() : (await withTimeout(screen(S.code), CHECK_TIMEOUT)).photos;
+    list = DEMO ? await testPictures() : (await ask()).photos;
   } catch (e) {
     failed = e || new Error('failed');
   }
@@ -250,9 +278,17 @@ function play(list) {
   S.shown = new Set();
   S.ready = new Set();
   S.tried = new Set();
+  S.kept = new Set();
   S.old = S.now = S.next = S.trying = null;
   $('#sc-slides').textContent = '';
   take(list);
+  // The photos this browser showed before, if they are still in the show under the same link.
+  if (!DEMO) {
+    for (const mark of seen.get()) {
+      const photo = S.photos.get(mark.split(' ')[0]);
+      if (photo && markOf(photo) === mark) S.shown.add(photo.id);
+    }
+  }
 
   document.documentElement.classList.add('sc-playing');
   $('#sc-wrap').hidden = true;
@@ -307,7 +343,7 @@ async function check() {
   const asked = ++S.asked;
   let answer;
   try {
-    answer = await withTimeout(screen(S.code), CHECK_TIMEOUT);
+    answer = await ask();
   } catch (e) {
     // No answer at all, which is not the same as the server saying no.
     if (S.on && run === S.run && !(e && e.status)) S.down = true;
@@ -353,7 +389,7 @@ function take(list) {
   S.ids = ids;
   S.queue = S.queue.filter(here);
   S.past = S.past.filter(here);
-  for (const set of [S.shown, S.ready, S.tried]) {
+  for (const set of [S.shown, S.ready, S.tried, S.kept]) {
     for (const id of [...set]) if (!here(id)) set.delete(id);
   }
   if (underWay) S.queue.unshift(...fresh);
@@ -365,21 +401,30 @@ function take(list) {
     cancel(S.trying);
     S.trying = null;
   }
-  if (S.now && !ids.length) clear();
-  else if (S.now && !here(S.now.id)) S.skip = true;
+  // A photo taken out of the show leaves the screen now: for the next one if it is ready or the
+  // browser has one to put up (see `gone` in tick), for the title card if not.
+  if (S.now && !here(S.now.id)) {
+    if ((S.next && S.next.ready) || spare()) S.skip = true;
+    else clear();
+  }
   // A caption an organizer has just fixed shows without waiting for the photo's next turn.
   for (const slide of [S.now, S.next]) {
     if (slide && slide.ready && here(slide.id)) say(slide, photos.get(slide.id).caption);
   }
 }
 
-// The next photo to get ready, or null when the one on screen is the only one there is.
-// Shuffle is a shuffled pass through every photo, then a new shuffle. Never the same photo
-// twice in a row. On a slow connection the pass skips the photos the browser doesn't have, as
-// long as it has one to go to: they stay in the line and are tried behind the scenes.
+// The next photo to get ready, as { id, fill }, or null when the one on screen is the only one
+// there is. Shuffle is a shuffled pass through every photo, then a new shuffle. Never the same
+// photo twice in a row. On a slow connection the pass skips the photos the browser doesn't have,
+// as long as it has one to go to: they stay in the line and are tried behind the scenes. When
+// they are all that is left of the pass, it keeps its place, and a photo that has been on
+// screen before fills in (`fill`) until one of them arrives.
 function nextId() {
   const on = S.now ? S.now.id : '';
   const trying = S.trying ? S.trying.id : '';
+  // Nothing on screen, and the browser has photos (the page was reloaded, or the photo that was
+  // on screen has been taken out of the show): the one it showed last is the surest to be there.
+  if (!on && !S.ready.size && S.shown.size) return { id: [...S.shown].pop(), fill: true };
   const held = S.slow && spare();
   const fits = (id) => id !== on && id !== trying && (!held || has(id));
   for (let tries = 0; tries < 2; tries++) {
@@ -392,11 +437,26 @@ function nextId() {
       }
       S.queue = pass;
     }
-    const at = S.queue.findIndex(fits);
-    if (at >= 0) return S.queue.splice(at, 1)[0];
+    // One that has just been tried and didn't come waits behind the others, if there are any.
+    let at = S.queue.findIndex((id) => fits(id) && !S.tried.has(id));
+    if (at < 0) at = S.queue.findIndex(fits);
+    if (at >= 0) return { id: S.queue.splice(at, 1)[0], fill: false };
+    if (held && S.queue.some((id) => id !== on && id !== trying)) {
+      const id = filler(on);
+      if (id) return { id, fill: true };
+    }
     S.queue = []; // nothing in this pass can follow the photo on screen: start the next one
   }
   return null;
+}
+
+// The photo to fill in while the pass waits on the network: of the ones the browser has, the one
+// the room saw longest ago. (S.shown keeps them in the order they were last on screen.)
+function filler(on) {
+  for (const set of [S.ready, S.shown]) {
+    for (const id of set) if (id !== on) return id;
+  }
+  return '';
 }
 
 // ---------------------------------------------------------------- the slow connection
@@ -416,6 +476,15 @@ function forget(id) {
   S.ready.delete(id);
 }
 
+// The browser didn't have a photo the show thought it had. With nothing on screen, that was the
+// photo it showed last, the surest of them, so it stops counting on the rest as well. And a
+// photo that has been taken out of the show doesn't stay up for a second guess.
+function mistaken(id) {
+  forget(id);
+  if (!S.now) S.shown.clear();
+  else if (!S.photos.has(S.now.id)) clear();
+}
+
 // Is there a photo the browser has, other than the one on screen, for the show to go to?
 function spare() {
   const on = S.now ? S.now.id : '';
@@ -429,13 +498,20 @@ function spare() {
 const took = (slide) => (slide.loadedAt || slide.mainAt) - slide.startedAt;
 
 // The photo being got ready is too slow to wait for. It carries on loading behind the scenes,
-// if nothing else is being tried there, and the show moves on.
+// if nothing else is being tried there, and the show moves on. It was taken out of the line
+// for a turn it hasn't had, so it gets its place at the front back: once (S.kept), so that a
+// photo that never comes can't hold the line up every time round.
 function aside() {
   const slide = S.next;
   S.next = null;
   S.slow = true;
-  // Previous couldn't get its photo: stay on this one rather than jump ahead.
-  if (slide.back) S.skip = !!S.now && !S.photos.has(S.now.id);
+  if (slide.back) {
+    // Previous couldn't get its photo: stay on this one rather than jump ahead.
+    S.skip = !!S.now && !S.photos.has(S.now.id);
+  } else if (!slide.fill && !S.kept.has(slide.id)) {
+    S.kept.add(slide.id);
+    S.queue = [slide.id, ...S.queue.filter((id) => id !== slide.id)];
+  }
   if (S.trying) cancel(slide);
   else S.trying = slide;
 }
@@ -456,7 +532,7 @@ function nextTry() {
 
 // A photo tried behind the scenes has arrived: the browser has it now, so getting it ready for
 // the screen is quick. It goes to the front of the line, ahead of a photo that was waiting there
-// for another turn.
+// for another turn. One that was only filling in gives way and isn't owed a turn.
 function join(slide, t) {
   S.trying = null;
   cancel(slide);
@@ -464,7 +540,7 @@ function join(slide, t) {
   S.fails = 0;
   S.tryAt = t;
   const waiting = S.next && !S.next.back && S.shown.has(S.next.id) ? S.next : null;
-  const first = waiting ? [slide.id, waiting.id] : [slide.id];
+  const first = waiting && !waiting.fill ? [slide.id, waiting.id] : [slide.id];
   S.queue = [...first, ...S.queue.filter((id) => !first.includes(id))];
   if (waiting) {
     cancel(waiting);
@@ -535,13 +611,15 @@ function tick() {
     } else if (coming.main === null && !coming.loadedAt) {
       const age = t - coming.startedAt;
       if (coming.cached && age >= CACHED_WAIT) {
-        forget(coming.id); // the browser didn't have it after all
+        mistaken(coming.id);
         coming.cached = false;
       }
       // A photo that has to come down the wire holds the screen only so long: until the one
       // showing is a little past its time, when there is another to show instead, and never
-      // past LOAD_TIMEOUT.
-      const late = !!S.now && !S.paused && t >= S.dueAt + PATIENCE;
+      // past LOAD_TIMEOUT. It isn't waited for at all when the one showing has been taken out
+      // of the show.
+      const gone = !!S.now && !S.photos.has(S.now.id);
+      const late = gone || (!!S.now && !S.paused && t >= S.dueAt + PATIENCE);
       if (!coming.cached && (age >= LOAD_TIMEOUT || ((S.slow || late) && spare()))) aside();
     }
   }
@@ -553,10 +631,14 @@ function tick() {
   if (S.next && S.next.ready && (S.skip || !S.now || (!S.paused && t >= S.dueAt))) change(t);
 
   // Start getting the one after ready. The pause after a failed load is for the network's
-  // sake: a photo the browser has needs none.
-  if (!S.next && (t >= S.retryAt || (S.slow && spare()))) {
-    const id = nextId();
-    if (id) prepare(id, false, t);
+  // sake: a photo the browser has needs none. On a slow connection with no photo in hand to go
+  // to, the one being tried behind the scenes is the one to wait for: a second download would
+  // only share the line with it, and neither would finish. (One that isn't moving at all is
+  // given up after STUCK, so the wait is never for nothing for long.)
+  const alone = S.slow && !!S.trying && !spare();
+  if (!S.next && !alone && (t >= S.retryAt || (S.slow && spare()))) {
+    const pick = nextId();
+    if (pick) prepare(pick.id, false, t).fill = pick.fill;
     else S.skip = false; // there is nothing else to change to
   }
 
@@ -589,7 +671,7 @@ function arrived(img) {
 // Starts loading a photo and its blurred background, out of the page, and answers the slide.
 function load(id, back, t) {
   const photo = S.photos.get(id);
-  const slide = { id, back, cached: has(id), ready: false, main: null, mainAt: 0, loadedAt: 0, hasBack: null, startedAt: t, img: new Image(), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
+  const slide = { id, back, fill: false, cached: has(id), ready: false, main: null, mainAt: 0, loadedAt: 0, hasBack: null, startedAt: t, img: new Image(), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
   const wanted = () => S.next === slide || S.trying === slide;
   slide.img.alt = '';
   slide.img.decoding = 'async';
@@ -619,6 +701,7 @@ function load(id, back, t) {
 // Starts getting a photo ready for the screen. tick() puts it in the page once it has arrived.
 function prepare(id, back, t) {
   S.next = load(id, back, t);
+  return S.next;
 }
 
 // How a load is getting on: 'in' when the photo can be drawn and its background has had its
@@ -656,7 +739,7 @@ function miss(t) {
   cancel(slide);
   S.next = null;
   S.misses += 1;
-  if (slide.cached) forget(slide.id); // the browser didn't have it after all
+  if (slide.cached) mistaken(slide.id);
   else S.retryAt = t + RETRY[Math.min(S.misses, RETRY.length) - 1];
   if (S.misses >= 2) S.slow = true;
   // Previous couldn't get its photo: stay on this one rather than jump ahead.
@@ -748,8 +831,11 @@ function change(t) {
     }
   }
   S.now = slide;
+  S.shown.delete(slide.id); // so the set stays in the order the photos were last on screen
   S.shown.add(slide.id);
   S.ready.delete(slide.id);
+  S.kept.delete(slide.id);
+  if (!DEMO) seen.set([...S.shown].map((id) => S.photos.get(id)).filter(Boolean).map(markOf));
   void slide.el.offsetWidth; // so the fade starts from clear, even for a photo that only just arrived
   slide.el.classList.add('is-on');
   stage.classList.add('has-photo');
@@ -785,12 +871,13 @@ function previous() {
   // The photo that was waiting, and the one on screen, go back to the front of the line, so
   // Next after Previous retraces the same steps.
   const waiting = S.next;
+  const first = waiting && waiting.back ? [] : [S.now.id];
   if (waiting) {
-    S.queue.unshift(waiting.id);
+    first.push(waiting.id);
     cancel(waiting);
     S.next = null;
   }
-  if (!(waiting && waiting.back)) S.queue.unshift(S.now.id);
+  S.queue = [...first, ...S.queue.filter((queued) => !first.includes(queued))];
   prepare(id, true, clock());
   S.skip = true;
   tick();

@@ -59,8 +59,9 @@ export const send = (form, signal) => post('send', form, signal);
 // The review page: action is list, set, caption, settings, delete or empty.
 export const review = (code, action, more = {}) => post('review', { ...more, code, action });
 
-// The slideshow: the approved photos.
-export const screen = (code) => post('screen', { code });
+// The slideshow: the approved photos. `signal` (optional) lets go of a request that has had no
+// answer in time.
+export const screen = (code, signal) => post('screen', { code }, signal);
 
 // A code from the page's address: ?k=CODE or #k=CODE (or c= for the review and screen pages).
 export function codeFromAddress(names = ['k', 'c']) {
