@@ -22,6 +22,7 @@ const ZIP_BYTES = 250 * 1000 * 1000; // a new ZIP file starts past this
 const IDS_AT_ONCE = 200; // the most photos the server changes in one go
 const CAPTION_MAX = 80;
 const SETTLE = 400; // after photos move, taps wait this long: a double tap must not hit the next one
+const MOVED = 900; // and this long when the list changed on its own, which nobody saw coming
 const MONTHS = ['Jan.', 'Feb.', 'March', 'April', 'May', 'June', 'July', 'Aug.', 'Sept.', 'Oct.', 'Nov.', 'Dec.'];
 const VIEWS = ['loading', 'signin', 'trouble', 'app'];
 const TABS = ['waiting', 'approved', 'rejected'];
@@ -297,8 +298,13 @@ function again() {
 }
 
 function take(data) {
+  const line = () => shown().map((p) => p.id).join();
+  const before = line();
   if (data.settings) S.settings = data.settings;
   S.photos = Array.isArray(data.photos) ? data.photos : [];
+  // Another organizer approved, rejected or deleted something, so the cards are about to move
+  // up under this one's thumb. A tap in that moment was meant for the photo that was there.
+  if (line() !== before) S.settleAt = Math.max(S.settleAt, Date.now() + MOVED);
   S.loadedAt = Date.now();
   S.loadError = '';
   for (const id of [...S.editing.keys()]) if (!byId(id)) S.editing.delete(id);
@@ -427,8 +433,10 @@ function paintGrid() {
   const n = shown().length;
   $('#rv-empty').textContent = NOTHING[S.tab];
   $('#rv-empty').hidden = list.length > 0;
-  $('#rv-shown').textContent = n ? `${plural(n, 'photo')} ${LABEL[S.tab].toLowerCase()}, oldest first` : '';
-  $('#rv-approve-all').hidden = S.tab !== 'waiting' || n < 2;
+  $('#rv-shown').textContent = n
+    ? `${plural(n, 'photo')} ${LABEL[S.tab].toLowerCase()}, oldest first${S.tab === 'waiting' ? '. Open a photo to approve it.' : ''}`
+    : '';
+  $('#rv-review-all').hidden = S.tab !== 'waiting' || n < 1;
 }
 
 function newCard(p) {
@@ -497,8 +505,10 @@ function bodyHTML(p, editing) {
       <button type="button" class="pd-btn small" data-act="edit" aria-label="${p.caption ? 'Edit' : 'Add'} the caption for the photo from ${name}">${p.caption ? 'Edit' : 'Add'}</button>
     </div>`;
   const about = `<span class="pd-sr"> the photo from ${name}</span>`;
+  // A waiting photo is approved from the full view only. The small picture on a card is one the
+  // sender's phone made, and the full view shows the file that will play on the big screens.
   const actions = p.status === 'waiting'
-    ? `<button type="button" class="pd-btn primary" data-act="approve">Approve${about}</button>
+    ? `<button type="button" class="pd-btn primary" data-act="view">Review${about}</button>
        <button type="button" class="pd-btn" data-act="reject">Reject${about}</button>`
     : `<button type="button" class="pd-btn" data-act="waiting">Back to waiting<span class="pd-sr"> with the photo from ${name}</span></button>
        ${p.status === 'rejected' ? `<button type="button" class="pd-btn danger" data-act="delete">Delete${about}</button>` : ''}`;
@@ -573,17 +583,11 @@ function focusCardAt(at) {
   target.focus({ preventScroll: true });
 }
 
-function askApproveAll() {
-  // Exactly the photos on screen now. One that arrives while the box is open is not among them.
-  const ids = shown().map((p) => p.id);
-  if (S.tab !== 'waiting' || !ids.length) return;
-  confirmWith({
-    title: `Approve all ${ids.length} photos shown?`,
-    text: 'They will play on the big screens. You can send any of them back to waiting afterwards.',
-    yes: `Approve ${plural(ids.length, 'photo')}`,
-    run: () => setStatus(ids, 'approved'),
-    after: () => $(`#rv-tab-${S.tab}`).focus({ preventScroll: true })
-  });
+// Starts at the head of the line in the full view, where each photo is approved or rejected and
+// the next one follows.
+function reviewInOrder() {
+  const first = shown()[0];
+  if (S.tab === 'waiting' && first) openViewer(first.id);
 }
 
 // ---------------------------------------------------------------- captions
@@ -822,6 +826,10 @@ function moveFromViewer(status) {
   // Not until the photo is on screen, and not on the second tap of a double tap: nobody should
   // approve a photo they haven't seen.
   if (!p || Date.now() < S.settleAt || $('#rv-view-stage').classList.contains('is-loading')) return;
+  // Approving takes the photo itself on screen: this photo, loaded, and not a broken picture.
+  const img = $('#rv-view-img');
+  const seen = img.dataset.id === p.id && img.complete && img.naturalWidth > 0 && !$('#rv-view-stage').classList.contains('is-broken');
+  if (status === 'approved' && !seen) return toast("This photo hasn't loaded, so it can't be approved yet. Close it, tap Refresh, and open it again.");
   const list = shown();
   const at = list.findIndex((x) => x.id === p.id);
   // A photo that already left this tab stays in view. Otherwise the next in line takes its place.
@@ -1081,7 +1089,7 @@ function listen() {
     openTab(next);
     $(`#rv-tab-${next}`).focus();
   });
-  $('#rv-approve-all').addEventListener('click', askApproveAll);
+  $('#rv-review-all').addEventListener('click', reviewInOrder);
 
   // The cards
   const grid = $('#rv-grid');
@@ -1100,7 +1108,7 @@ function listen() {
     // The grid just moved under the finger. A tap this soon was meant for the photo before.
     if (Date.now() < S.settleAt) return;
     if (act === 'delete') return askDelete(p);
-    const status = { approve: 'approved', reject: 'rejected', waiting: 'waiting' }[act];
+    const status = { reject: 'rejected', waiting: 'waiting' }[act];
     if (status) moveFromCard(p, status);
   });
   grid.addEventListener('submit', (e) => {
