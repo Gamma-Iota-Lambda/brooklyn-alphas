@@ -34,9 +34,14 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── gil-crest.png               # Chapter crest — used in nav and as headshot placeholder
 ├── zelle-qr.png                # Zelle QR code (Impact $20 page)
 ├── chapter-photo1.png          # Chapter group photo
+├── school-daze/                # School Daze photo drop (no site nav, not in the sitemap)
+│   ├── photos.html             # Ticket buyers send photos from their college days
+│   ├── review.html             # The organizers approve photos for the big screens
+│   └── screen.html             # The slideshow for the venue's computer
 ├── assets/calendar/            # The calendar's script, styles, demo data, and Supabase client
-├── supabase/                   # The calendar's database (migrations, seed, setup, go-live steps) and its Edge Function
-├── tests/calendar/             # The calendar's database and browser tests
+├── assets/photo-drop/          # The photo drop's scripts, styles, and the event flyer
+├── supabase/                   # The calendar's and the photo drop's database (migrations, seed, setup, go-live steps) and their Edge Functions
+├── tests/calendar/             # The calendar's database and browser tests, and the photo drop's database and Edge Function tests
 └── headshots/                 # Current board first, then photos of past officers
     ├── robert-brissett.jpeg
     ├── lucien-allen.jpg
@@ -232,6 +237,47 @@ Each year, update `scholarship.html`:
 
 ---
 
+## School Daze Photo Drop
+
+The three pages in `school-daze/` collect photos for School Daze, the chapter's party on Saturday, Nov. 21, 2026, 8 PM to 2 AM at The Ivory on Park. Ticket buyers send photos from their college days, the organizers approve them, and the approved photos play on the venue's big screens. Each page has its own code:
+
+| Page | Who uses it | Code |
+|---|---|---|
+| `school-daze/photos.html` | Ticket buyers, mostly on phones | The upload code, carried in the emailed link as `?k=CODE` |
+| `school-daze/review.html` | The organizers, on a phone or a laptop | The review code, typed once with their name |
+| `school-daze/screen.html` | The venue's computer | The screen code, in the link as `#c=CODE` or typed once |
+
+- **Addresses:** www.gil1906.org/school-daze/photos.html, /school-daze/review.html, and /school-daze/screen.html. The short address www.gil1906.org/school-daze goes to the upload page, and /school-daze/review and /school-daze/screen find their pages. The pages have no site nav and no analytics, stay out of the sitemap, and ask search engines not to index them. They send no referrer, so a code in a link isn't passed to another site.
+- **What guests see:** the link in the ticket email opens the upload page, with the flyer and the ask. A guest enters a name and the email the ticket was bought with, chooses up to 5 photos, adds a caption to any of them (optional, 80 characters), checks one box saying the photos are theirs to share, and sends. Tips on the page ask for the original file and warn against screenshots and copies saved from Instagram, Facebook, or a text message. With no code in the link, the page asks for the code from the email. After the deadline, or once the drop is full, it says so and shows the party details.
+- **Photo quality:** the page labels each chosen photo by the long side of the file the guest picked: Sharp on the big screen (1600 pixels or more), Good (1000 or more), Small (500 or more; it is taken, with a note that it will look soft), or Too small (under 500; refused). Before sending, the page redraws each photo as a JPEG no longer than 2560 pixels on its long side and 6 MB at most. It never makes a photo larger than it came. Redrawing also drops what a camera writes into the file, such as where the photo was taken. A file the browser can't open, such as an iPhone HEIC photo outside Safari, gets a message saying to open the page on the iPhone or send a JPEG or PNG copy.
+- **Sending:** photos go one at a time, with a line such as "Sending 2 of 3". One that fails gets a Try again and doesn't hold up the rest. A photo sent twice from the same email is kept once and counts once, so Try again is safe after a lost connection. The page remembers the guest's name and email on that device for next time. The thank-you offers Send more while the guest has photos left.
+- **Review:** on `review.html`, an organizer signs in with the review code and a name. Both stay on that device until Sign out. Photos sit under three tabs, Waiting, Approved, and Rejected, oldest first. Each card shows the photo, the sender's name and email, when it came in, the same size label the guest saw, and the caption, which the organizer can edit. A waiting photo is approved from the full view only, with the real file loaded on screen: the small picture on a card is one the sender's phone made. So Waiting cards get Review, which opens the full view, and Reject. The full view has Approve, Reject, and arrows to the previous and next. Review them in order opens the oldest waiting photo, and each one approved or rejected brings up the next. The other tabs get Back to waiting. Rejected photos also get Delete, which is permanent and asks first. The organizer's name is saved with each approval or rejection, so the team sees who did what. The page checks for new photos every minute. Only approved photos reach the slideshow, with their captions and nothing about who sent them.
+- **Uploads and tools:** on the same page, the Uploads panel has the open or closed switch and the deadline, shown in the organizer's own time zone. Tools has Open the slideshow, Download approved photos (it saves them to that device as ZIP files), and Delete everything, for after the party, which asks the organizer to type DELETE.
+- **The slideshow:** `screen.html` runs on the venue's computer for the whole party with nobody watching over it.
+  - **Setup:** open the link with the screen code (`screen.html#c=CODE`), or type the code. The slideshow takes the screen code only. Never type the review code on the venue's computer, which remembers what it is given. Choose the seconds per photo (5, 8, 12, or 20; it starts at 8), the order (shuffle, or oldest first), captions on or off, and the "School Daze" mark in the corner on or off. The computer remembers the code and the choices. Start the slideshow checks the code, goes full screen, and keeps the screen awake where the browser allows.
+  - **On screen:** each photo shows whole over a blurred, darkened copy of itself, with a slow cross-fade and a gentle zoom. A photo is never stretched past one and a half times its own pixels. A small one shows as a framed print instead. Captions sit at the bottom left, two lines at most.
+  - **Staying current:** the page asks for the approved photos every minute. A newly approved photo joins at the front of the line, and one that is no longer approved leaves. If the connection drops, a photo won't load, or the code stops working, the show plays on with what it has and keeps trying. With no approved photos, the screens show a School Daze title card. Reloading the page goes straight back to the show.
+  - **Controls and keys:** the controls and the cursor stay hidden. Moving the mouse or tapping shows Pause, Previous, Next, Captions, Full screen, and Setup for 3 seconds. Space pauses. The arrow keys go back and forward, and so do Page Up and Page Down, which a presenter's clicker sends. C turns captions on or off. F is full screen. Esc leaves full screen.
+  - **Testing the screens:** `screen.html?demo=1` plays six test pictures made in the browser, with no code and no call to the server, so the venue can check its screens before any photo is approved. One of the six is small, to show the framed print. The setup card links to it.
+- **Limits:** 5 photos per email. 600 photos and 750 MB in all. Uploads close at noon New York time on Saturday, Nov. 21. A photo is 6 MB at most after the page shrinks it, and at least 500 pixels on its long side. A caption is 80 characters at most. A limit on photos from one internet connection exists and starts turned off. The organizers change the deadline on the review page. The rest are settings in the database; see Photo drop in [`supabase/README.md`](supabase/README.md).
+
+**Setup.** The pages talk only to the `photo-drop` Edge Function in the calendar's Supabase project, and the function checks each page's code. The photos sit in a private storage bucket, and the pages see them through signed links. The pages find the project through `assets/calendar/config.js`; while that file is empty, each page says "This page isn't set up yet." Setting the codes, the links to hand out, and what to do after the party are under Photo drop in [`supabase/README.md`](supabase/README.md).
+
+**Files:**
+- `school-daze/photos.html`, `review.html`, and `screen.html` are the three pages. They load the shared files below and not the site's `style.css`.
+- `assets/photo-drop/api.js` is the pages' link to the Edge Function. `drop.css` is the look the three share: black and gold with block lettering, after the event flyer. Every class in it starts with `pd-`.
+- `assets/photo-drop/photos.js` and `photos.css` run the upload page. `image.js` gets each photo ready in the browser: the size label, the redrawn JPEG, and a small copy for the review page and the slideshow's blurred background.
+- `assets/photo-drop/review.js` and `review.css` run the review page. `zip.js` writes the ZIP files for Download approved photos.
+- `assets/photo-drop/screen.js` and `screen.css` run the slideshow.
+- `assets/photo-drop/school-daze-flyer.jpg` is the event flyer, used on the slideshow's title card and in link previews. `school-daze-flyer-small.jpg` is a smaller copy for the upload page and the slideshow's setup card.
+- `supabase/functions/photo-drop/` is the Edge Function: `drop.js` holds everything it does, and `index.ts` connects it to the database on Supabase.
+- `supabase/migrations/20261118000100_photo_drop.sql` adds the table, the bucket, the settings, and the database functions. `20261118000200_photo_drop_repeats.sql` keeps one copy of a photo sent twice, makes the slideshow take the screen code only, and turns the per-connection limit off. `20261118000300_photo_drop_review_order.sql` makes Approve and Reject apply to waiting photos only, so two organizers reviewing at once can't overturn each other, and Delete take only rejected ones. `supabase/setup/4-photo-drop.sql` sets the three codes.
+- `vercel.json` holds the two redirects for the short addresses.
+
+**Tests:** `tests/calendar/photo-drop.test.mjs` covers the database and `tests/calendar/photo-drop-function.test.mjs` covers the Edge Function, with Storage simulated by `tests/calendar/storage-sim.mjs`. They run with the calendar's tests; see the Tests section of [`supabase/README.md`](supabase/README.md). The three pages have no browser test in the repository, so open them after any change to them. `screen.html?demo=1` plays the slideshow without the server.
+
+---
+
 ## SEO Notes
 
 Every page has:
@@ -241,7 +287,7 @@ Every page has:
 - Twitter Card tags
 - JSON-LD structured data appropriate to the page type
 
-`calendar.html` is the exception: it's a working page for brothers, so it carries `noindex` and stays out of the sitemap.
+`calendar.html` is the exception: it's a working page for brothers, so it carries `noindex` and stays out of the sitemap. The three School Daze pages in `school-daze/` do the same.
 
 The canonical domain is `https://www.gil1906.org` (www, HTTPS). Every canonical tag, `og:url`, and sitemap entry uses it. Vercel is set up to:
 - Serve every page over HTTPS (automatic)
@@ -256,7 +302,7 @@ The site is hosted on **Vercel**, connected to this repository. There is no buil
 
 - **Production:** every merge to `main` deploys to www.gil1906.org within a minute or two.
 - **Previews:** every pull request gets its own preview address from Vercel, posted on the pull request. Check your change there before merging.
-- **Settings:** `vercel.json` holds the redirect for extensionless addresses. Domains are set in the Vercel project under Settings, then Domains.
+- **Settings:** `vercel.json` holds the redirect for extensionless addresses and the short addresses for the School Daze pages. Domains are set in the Vercel project under Settings, then Domains.
 - **DNS:** the domain is registered at Namecheap, and its DNS records live there (Domain List, then Manage, then Advanced DNS). The apex `gil1906.org` has an A record and `www` has a CNAME record, both with the values Vercel shows on its Domains page. Leave the email records (MX and TXT) alone when editing DNS.
 - **404 page:** Vercel serves `404.html` for any address that doesn't exist.
 - **Usage limit:** on Vercel's free Hobby plan, the account gets 100 GB of data transfer a month. If it goes over, Vercel pauses every project on the account, and visitors see an error page instead of the site. The Events and Alpha Academy pages load many full-size photos and videos, so a busy month after an event can get there. Vercel emails a warning as usage nears the limit; you can also watch it under Usage in the Vercel dashboard. On the Pro plan, going over is billed instead of paused.

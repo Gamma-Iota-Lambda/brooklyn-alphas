@@ -1,0 +1,205 @@
+/* Photo drop: the look the three School Daze pages share (school-daze/photos.html, review.html,
+   screen.html). Black and gold with block lettering, after the event flyer. Each page adds its own
+   file beside this one. Every class starts with pd- so nothing here meets the site's style.css,
+   which these pages don't load. */
+
+:root {
+  --pd-ink: #0a0a0a;
+  --pd-panel: #151411;
+  --pd-raised: #1e1c17;
+  --pd-line: #34301f;
+  --pd-line-strong: #5b522c;
+  --pd-gold: #d4a017;
+  --pd-gold-hi: #f6d776;
+  --pd-gold-deep: #8a6508;
+  --pd-on-gold: #14110a;
+  --pd-text: #f5f1e6;
+  --pd-muted: #b5ad97;
+  --pd-faint: #857e6a;
+  --pd-danger: #f08a72;
+  --pd-danger-wash: rgba(240, 138, 114, 0.12);
+  --pd-ok: #7ed3a0;
+  --pd-ok-wash: rgba(126, 211, 160, 0.12);
+  --pd-warn-wash: rgba(212, 160, 23, 0.14);
+  --pd-font-block: "Graduate", "Rockwell", "Roboto Slab", "Courier New", Georgia, serif;
+  --pd-font-label: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --pd-font-body: "Barlow", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --pd-r: 14px;
+  --pd-r-sm: 9px;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body.pd {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--pd-ink);
+  color: var(--pd-text);
+  font-family: var(--pd-font-body);
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.pd [hidden] { display: none !important; }
+
+.pd-wrap {
+  width: 100%;
+  max-width: 680px;
+  margin-inline: auto;
+  padding: 20px max(16px, env(safe-area-inset-left)) 56px max(16px, env(safe-area-inset-right));
+}
+.pd-wrap.wide { max-width: 1180px; }
+
+/* The flyer's lettering: gold block capitals with a bright top edge. */
+.pd-title {
+  margin: 0;
+  font-family: var(--pd-font-block);
+  font-size: clamp(2.3rem, 11vw, 4.2rem);
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+  background: linear-gradient(180deg, #fff3bf 0%, var(--pd-gold-hi) 28%, var(--pd-gold) 62%, var(--pd-gold-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.pd-eyebrow {
+  margin: 0 0 8px;
+  font-family: var(--pd-font-label);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+}
+.pd-h2 {
+  margin: 0 0 6px;
+  font-family: var(--pd-font-label);
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--pd-text);
+}
+.pd-lede { margin: 10px 0 0; font-size: 1.08rem; color: var(--pd-text); }
+.pd-muted { color: var(--pd-muted); }
+.pd-small { font-size: 0.9rem; }
+
+.pd a { color: var(--pd-gold-hi); text-underline-offset: 3px; }
+
+.pd-card {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--pd-line);
+  border-radius: var(--pd-r);
+  background: var(--pd-panel);
+}
+
+/* Fields */
+.pd-field { display: block; margin-top: 14px; }
+.pd-field > label, .pd-label {
+  display: block;
+  margin-bottom: 5px;
+  font-family: var(--pd-font-label);
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-muted);
+}
+.pd-field input[type="text"], .pd-field input[type="email"], .pd-field input[type="password"],
+.pd-field input[type="datetime-local"], .pd-field select, .pd-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 13px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: var(--pd-r-sm);
+  background: var(--pd-ink);
+  color: var(--pd-text);
+  font: inherit;
+  font-size: 16px; /* 16px keeps iPhones from zooming in on focus */
+}
+.pd-field input::placeholder { color: var(--pd-faint); }
+.pd-hint { margin: 5px 0 0; font-size: 0.9rem; color: var(--pd-muted); }
+
+/* Buttons */
+.pd-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 20px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pd-text);
+  font-family: var(--pd-font-label);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pd-btn.primary { border-color: var(--pd-gold); background: linear-gradient(180deg, var(--pd-gold-hi), var(--pd-gold)); color: var(--pd-on-gold); }
+.pd-btn.quiet { border-color: transparent; color: var(--pd-muted); }
+.pd-btn.danger { border-color: var(--pd-danger); color: var(--pd-danger); }
+.pd-btn.small { min-height: 38px; padding: 6px 14px; font-size: 0.92rem; }
+.pd-btn.block { display: flex; width: 100%; }
+.pd-btn:disabled, .pd-btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+.pd-btnrow { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+
+/* Notices */
+.pd-note {
+  margin: 14px 0 0;
+  padding: 11px 14px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: var(--pd-r-sm);
+  background: var(--pd-warn-wash);
+  color: var(--pd-text);
+}
+.pd-note.bad { border-color: var(--pd-danger); background: var(--pd-danger-wash); }
+.pd-note.ok { border-color: var(--pd-ok); background: var(--pd-ok-wash); }
+.pd-pill {
+  display: inline-block;
+  padding: 2px 10px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 999px;
+  font-family: var(--pd-font-label);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-muted);
+  white-space: nowrap;
+}
+.pd-pill.ok { border-color: var(--pd-ok); color: var(--pd-ok); }
+.pd-pill.warn { border-color: var(--pd-gold); color: var(--pd-gold-hi); }
+.pd-pill.bad { border-color: var(--pd-danger); color: var(--pd-danger); }
+
+/* Seen by screen readers only. */
+.pd-sr {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+/* A field people never see. Programs that fill in every field give themselves away with it. */
+.pd-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.pd :focus-visible { outline: 3px solid var(--pd-gold-hi); outline-offset: 2px; }
+
+.pd-foot { margin-top: 34px; font-size: 0.88rem; color: var(--pd-faint); text-align: center; }
+.pd-foot a { color: var(--pd-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pd *, .pd *::before, .pd *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

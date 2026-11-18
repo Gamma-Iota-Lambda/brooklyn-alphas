@@ -4,9 +4,11 @@
 //   * Auth: anonymous and email/password sessions
 //   * Storage: uploads, signed links, downloads, and removal, with the storage policies enforced
 //   * Edge Functions: the real calendar-social function, talking to a simulated Instagram and Threads
-//     (meta-sim.mjs) instead of Meta's servers
+//     (meta-sim.mjs) instead of Meta's servers, and the real photo-drop function, keeping its photos
+//     in a simulated Storage bucket (storage-sim.mjs) whose signed links this server answers
 //   * Static hosting for the site, with assets/calendar/config.js pointed at this server
-// Adapted from the Alpha Academy Trading Floor's stand-in. live-smoke.mjs drives it.
+// Adapted from the Alpha Academy Trading Floor's stand-in. live-smoke.mjs and photo-drop-smoke.mjs
+// drive it.
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, dirname } from 'node:path';
@@ -14,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createDb } from './harness.mjs';
 import { Meta } from './meta-sim.mjs';
+import { Storage } from './storage-sim.mjs';
 import { createHandler, makeDb } from '../../supabase/functions/calendar-social/social.js';
+import { createHandler as createDrop, makeDb as makeDropDb, BUCKET as DROP_BUCKET } from '../../supabase/functions/photo-drop/drop.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPES = {
@@ -24,6 +28,11 @@ const TYPES = {
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const TABLES = new Set(['cal_posts', 'cal_requests', 'cal_members', 'cal_staff', 'dir_brothers', 'dir_messages', 'cal_social_accounts', 'cal_social_posts',
   'cal_social_post_days', 'cal_social_account_days']);
+// The School Daze photo drop's three codes, as the test database has them.
+export const DROP_UPLOAD_CODE = 'daze-2026-bk';
+export const DROP_REVIEW_CODE = 'organizers only review phrase';
+export const DROP_SCREEN_CODE = 'venue screen phrase 21';
+const DROP_KEY = 'sb_secret_Zm9yLXRlc3RzLW9ubHk'; // the secret key the function sends to Storage
 const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
 const fail = (status, code, message) => Object.assign(new Error(message), { status, code });
 
@@ -54,6 +63,26 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
     waitUntil: (p) => background.push(p),
     log: { error: () => {}, warn: () => {} }
   });
+
+  // The photo-drop Edge Function, on the same connection, with Storage simulated under the
+  // bucket's own rules. Its log lines are kept in dropLog for a test to read.
+  const dropLog = [];
+  let storage = null;
+  let drop = null;
+  if (!demo) {
+    for (const [kind, code] of [['upload', DROP_UPLOAD_CODE], ['review', DROP_REVIEW_CODE], ['screen', DROP_SCREEN_CODE]]) {
+      await h.sql('select cal_private.drop_set_code($1, $2)', [kind, code]);
+    }
+    const [bucket] = await h.sql('select file_size_limit, allowed_mime_types from storage.buckets where id = $1', [DROP_BUCKET]);
+    storage = new Storage({ url: origin, key: DROP_KEY, bucket: DROP_BUCKET, maxBytes: Number(bucket.file_size_limit), types: bucket.allowed_mime_types });
+    const note = (level) => (line) => dropLog.push(`${level}: ${line}`);
+    drop = createDrop({
+      env: { SUPABASE_URL: origin, SUPABASE_SECRET_KEYS: JSON.stringify({ default: DROP_KEY }) },
+      db: makeDropDb((text, params) => serial(() => h.sql(text, params))),
+      fetch: storage.fetch,
+      log: { error: note('error'), warn: note('warn') }
+    });
+  }
 
   const users = new Map(); // id -> {id, email, password, is_anonymous, confirmed}
   const files = new Map(); // 'bucket/name' -> {bytes, type}
@@ -289,6 +318,16 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
         });
         return send(res, 200, nameParts.length ? { signedURL: out[0].signedURL } : out);
       }
+      // The photo drop's signed links, which its function hands to the pages. Storage sends a
+      // signed file with Expires at the link's end and lets any page read it.
+      if (path.startsWith(`/storage/v1/object/sign/${DROP_BUCKET}/`) && req.method === 'GET') {
+        const open = { 'Access-Control-Allow-Origin': '*' };
+        const grant = storage.signed.get(url.searchParams.get('token') || '');
+        const bytes = storage.fileFor(origin + req.url);
+        if (!grant || !bytes) return send(res, 400, { statusCode: '400', error: 'InvalidSignature', message: 'The signature is not valid' }, open);
+        res.writeHead(200, { ...open, 'Content-Type': storage.files.get(grant.path).type, 'Content-Length': bytes.length, Expires: new Date(grant.until).toUTCString() });
+        return res.end(bytes);
+      }
       if (path.startsWith('/storage/v1/object/sign/') && req.method === 'GET') {
         const key = decodeURIComponent(path.slice('/storage/v1/object/sign/'.length));
         const grant = signed.get(url.searchParams.get('token'));
@@ -338,14 +377,17 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
       }
 
       // Edge Functions
-      if (path.startsWith('/functions/v1/calendar-social')) {
-        if (!fn) return send(res, 404, { message: 'demo mode has no backend' });
+      const forDrop = /^\/functions\/v1\/photo-drop(\/|$)/.test(path);
+      if (forDrop || path.startsWith('/functions/v1/calendar-social')) {
+        const edge = forDrop ? drop : fn;
+        if (!edge) return send(res, 404, { message: 'demo mode has no backend' });
         const chunks = [];
         for await (const c of req) chunks.push(c);
         const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !['host', 'connection', 'content-length'].includes(k)));
-        const out = await fn(new Request(origin + req.url, {
-          method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks)
-        }));
+        const sent = req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(chunks);
+        // photo-drop reads how large a request says it is, as the platform passes it on.
+        if (forDrop && sent) headers['content-length'] = String(sent.length);
+        const out = await edge(new Request(origin + req.url, { method: req.method, headers, body: sent }));
         res.writeHead(out.status, Object.fromEntries(out.headers));
         return res.end(Buffer.from(await out.arrayBuffer()));
       }
@@ -376,6 +418,9 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
     users,
     files,
     meta,
+    // The photo drop's bucket (a storage-sim Storage) and what its function logged.
+    storage,
+    dropLog,
     // Waits for the Edge Function's background syncs.
     settle: async () => { while (background.length) await background.shift(); },
     sql: (q, params) => serial(() => h.sql(q, params)),

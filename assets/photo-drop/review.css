@@ -1,0 +1,419 @@
+/* Photo drop: the review page (school-daze/review.html). The look the three School Daze pages
+   share is in drop.css; this file adds what only this page has. Every class here starts with rv-.
+   Organizers use it on a phone as often as a laptop, so it is sized for a phone first. */
+
+/* A warm glow at the top, like the stadium lights on the flyer. */
+body.pd {
+  background-image: radial-gradient(130% 320px at 50% -90px, rgba(212, 160, 23, 0.18), rgba(212, 160, 23, 0) 70%);
+  background-repeat: no-repeat;
+}
+/* While a box is open, the page behind it stays still. */
+html:has(dialog[open]) { overflow: hidden; }
+
+/* Headings take the focus when a section appears, for screen readers. They aren't controls, so
+   they don't need the ring. */
+#rv-main [data-heading]:focus { outline: none; }
+
+.rv-plain { margin: 8px 0 0; }
+.pd-card > .rv-plain:first-child { margin-top: 0; }
+.rv-notready { margin: 22vh 0; font-size: 1.1rem; text-align: center; }
+.rv-narrow { max-width: 460px; margin-inline: auto; }
+.pd .pd-btn.small { min-height: 44px; }
+/* Taps act at once: no waiting to see whether a second tap makes it a zoom. */
+.pd button, .pd a, .pd summary, .pd label { touch-action: manipulation; }
+
+/* ---------------------------------------------------------------- the top of the page */
+.rv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding-top: 4px;
+}
+.rv-head-text { flex: none; }
+.rv-head .pd-eyebrow { margin-bottom: 4px; }
+/* One line at any width, so the name and Sign out keep their place beside it. */
+.rv-title { font-size: clamp(1.35rem, 6.2vw, 2.6rem); white-space: nowrap; }
+/* On a phone the organizer's name sits above Sign out; with more room, beside it. */
+.rv-me { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
+.rv-me-name {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--pd-font-label);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--pd-muted);
+}
+.rv-me .pd-btn { flex: none; }
+
+/* Signing in */
+#rv-signin, #rv-loading, #rv-trouble { margin-top: 26px; }
+/* A plain line with a checkbox, not one of drop.css's field labels. */
+.pd-field > label.rv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 6px 0 0;
+  font-family: var(--pd-font-body);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--pd-muted);
+  cursor: pointer;
+}
+.rv-check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--pd-gold); }
+#rv-signin-err { margin: 14px 0 0; }
+
+/* How full the drop is, when the page last checked, and Refresh. */
+.rv-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin-top: 16px;
+}
+.rv-bar p { margin: 0; }
+.rv-usage { font-weight: 500; }
+.rv-stamp { flex: 1 1 150px; font-size: 0.9rem; color: var(--pd-muted); }
+.rv-stamp.bad { color: var(--pd-danger); }
+
+/* ---------------------------------------------------------------- uploads and tools: two panels that fold away */
+.rv-folds { display: grid; gap: 10px; margin-top: 12px; align-items: start; }
+.rv-fold { margin-top: 0; padding: 0; }
+.rv-fold summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 52px;
+  padding: 8px 44px 8px 16px;
+  position: relative;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--pd-r);
+}
+.rv-fold summary::-webkit-details-marker { display: none; }
+.rv-fold summary::after {
+  content: "";
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--pd-gold-hi);
+  border-bottom: 2px solid var(--pd-gold-hi);
+  transform: rotate(45deg);
+}
+.rv-fold[open] summary::after { top: 25px; transform: rotate(-135deg); }
+.rv-fold-name {
+  font-family: var(--pd-font-label);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+}
+.rv-fold-line { font-size: 0.95rem; color: var(--pd-muted); }
+.rv-fold-body { padding: 4px 16px 18px; border-top: 1px solid var(--pd-line); }
+.rv-state { margin: 12px 0 0; font-size: 1.05rem; font-weight: 500; }
+.rv-field-err { margin: 0 0 6px; padding: 8px 12px; }
+
+/* The Open or Closed switch: a checkbox drawn as a sliding switch. */
+.rv-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin-top: 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rv-switch input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; }
+.rv-switch-track {
+  flex: none;
+  position: relative;
+  width: 58px;
+  height: 32px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 999px;
+  background: var(--pd-ink);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.rv-switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--pd-faint);
+  transition: transform 0.15s, background-color 0.15s;
+}
+.rv-switch input:checked + .rv-switch-track { border-color: var(--pd-gold); background: var(--pd-gold); }
+.rv-switch input:checked + .rv-switch-track::after { background: var(--pd-on-gold); transform: translateX(26px); }
+.rv-switch input:focus-visible + .rv-switch-track { outline: 3px solid var(--pd-gold-hi); outline-offset: 2px; }
+
+.rv-tool { margin-top: 16px; }
+.rv-tool .pd-hint { margin-top: 7px; }
+.rv-progress {
+  margin: 8px 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--pd-gold-hi);
+}
+.rv-progress:empty { margin: 0; }
+.rv-zips { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.rv-zips a { display: inline-flex; align-items: center; min-height: 44px; overflow-wrap: anywhere; }
+#rv-download-missed { overflow-wrap: anywhere; }
+
+/* ---------------------------------------------------------------- the three tabs, with their counts */
+.rv-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+  padding: 10px 0;
+  background: var(--pd-ink);
+}
+.rv-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 62px;
+  padding: 6px 4px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: var(--pd-r-sm);
+  background: var(--pd-panel);
+  color: var(--pd-muted);
+  font-family: var(--pd-font-label);
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rv-count { font-family: var(--pd-font-block); font-size: 1.5rem; line-height: 1; letter-spacing: 0; color: var(--pd-text); }
+.rv-tab[aria-selected="true"] {
+  border-color: var(--pd-gold);
+  background: linear-gradient(180deg, var(--pd-gold-hi), var(--pd-gold));
+  color: var(--pd-on-gold);
+}
+.rv-tab[aria-selected="true"] .rv-count { color: var(--pd-on-gold); }
+
+.rv-panel-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-height: 44px;
+}
+.rv-shown { margin: 0; font-size: 0.95rem; color: var(--pd-muted); }
+.rv-empty {
+  margin: 8px 0 0;
+  padding: 40px 18px;
+  border: 1px dashed var(--pd-line-strong);
+  border-radius: var(--pd-r);
+  color: var(--pd-muted);
+  text-align: center;
+}
+
+/* ---------------------------------------------------------------- one photo's card */
+.rv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  gap: 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--pd-line);
+  border-radius: var(--pd-r);
+  background: var(--pd-panel);
+  overflow: hidden;
+}
+/* The whole photo, uncropped: what an organizer approves is what they saw. */
+.rv-thumb {
+  display: block;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--pd-line);
+  background: #000;
+  color: var(--pd-muted);
+  font: inherit;
+  cursor: zoom-in;
+}
+.rv-thumb img { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.rv-thumb:focus-visible { outline-offset: -3px; }
+.rv-thumb-miss { display: none; }
+.rv-thumb.is-broken img { display: none; }
+.rv-thumb.is-broken .rv-thumb-miss { display: grid; position: absolute; inset: 0; place-items: center; padding: 16px; font-size: 0.95rem; }
+
+.rv-body { display: flex; flex: 1; flex-direction: column; gap: 3px; padding: 12px 14px 14px; }
+.rv-body p { margin: 0; }
+.rv-name { font-size: 1.1rem; font-weight: 600; overflow-wrap: anywhere; }
+.rv-email, .rv-when { font-size: 0.9rem; color: var(--pd-muted); overflow-wrap: anywhere; }
+.rv-size { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 6px !important; }
+.rv-dims { font-size: 0.88rem; color: var(--pd-faint); white-space: nowrap; }
+.rv-cap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--pd-line);
+}
+.rv-cap-text { flex: 1; min-width: 0; color: var(--pd-gold-hi); overflow-wrap: anywhere; }
+.rv-cap-text.none { color: var(--pd-faint); }
+.rv-cap-form { margin-top: 10px; padding-top: 2px; border-top: 1px solid var(--pd-line); }
+.rv-cap-form .pd-field { margin-top: 8px; }
+.rv-cap-btns { display: flex; gap: 8px; margin-top: 10px; }
+.rv-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: auto; padding-top: 12px; }
+.rv-actions .pd-btn { padding-inline: 8px; }
+
+/* ---------------------------------------------------------------- one photo, full size */
+.rv-view {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #000;
+  color: var(--pd-text);
+}
+.rv-view[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.rv-view::backdrop { background: #000; }
+.rv-view-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 8px max(12px, env(safe-area-inset-left));
+}
+.rv-view-pos {
+  margin: 0;
+  font-family: var(--pd-font-label);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-gold-hi);
+}
+.rv-view-stage { position: relative; min-height: 0; overflow: hidden; }
+/* scale-down: fitted to the screen, but never drawn larger than the photo is. */
+.rv-view-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: scale-down; }
+.rv-view-wait { display: none; position: absolute; inset: 0; place-items: center; margin: 0; padding: 20px; color: var(--pd-muted); text-align: center; }
+.rv-view-stage.is-loading .rv-view-wait, .rv-view-stage.is-broken .rv-view-wait { display: grid; }
+.rv-view-stage.is-loading img, .rv-view-stage.is-broken img { visibility: hidden; }
+.rv-view-foot {
+  padding: 10px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  border-top: 1px solid var(--pd-line);
+  background: var(--pd-panel);
+}
+.rv-view-who p { margin: 0; }
+.rv-view-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-weight: 600; overflow-wrap: anywhere; }
+.rv-view-size { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 400; }
+.rv-view-cap { margin-top: 2px !important; color: var(--pd-gold-hi); overflow-wrap: anywhere; }
+.rv-view-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; gap: 8px; align-items: center; max-width: 620px; margin: 10px auto 0; }
+.rv-view-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
+.rv-view-actions .pd-btn { padding-inline: 8px; }
+.rv-view-stage.is-loading ~ .rv-view-foot .rv-view-actions .pd-btn { opacity: 0.5; }
+.rv-step {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pd-gold-hi);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rv-step:disabled { opacity: 0.3; cursor: default; }
+
+/* ---------------------------------------------------------------- "Are you sure?" */
+.rv-ask {
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 20px 18px 18px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: var(--pd-r);
+  background: var(--pd-panel);
+  color: var(--pd-text);
+  overflow: auto;
+}
+.rv-ask::backdrop { background: rgba(0, 0, 0, 0.78); }
+.rv-ask .pd-btnrow { justify-content: flex-end; }
+.rv-ask .pd-btn.danger { border-color: var(--pd-danger); background: var(--pd-danger); color: var(--pd-on-gold); }
+
+/* ---------------------------------------------------------------- the message along the bottom */
+.rv-toast {
+  position: fixed;
+  right: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 620px;
+  margin-inline: auto;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid var(--pd-danger);
+  border-radius: var(--pd-r-sm);
+  background: #2a1512;
+  color: var(--pd-text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+}
+.rv-toast.ok { border-color: var(--pd-ok); background: #10231a; }
+/* Over an open photo the message sits under the top bar, clear of Approve and Reject. */
+.rv-view .rv-toast { top: calc(max(8px, env(safe-area-inset-top)) + 60px); bottom: auto; }
+.rv-toast p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.rv-toast .pd-btn { flex: none; }
+
+@media (min-width: 600px) {
+  .rv-me { flex-direction: row; align-items: center; gap: 10px; }
+}
+
+@media (min-width: 900px) {
+  .rv-folds { grid-template-columns: 1fr 1fr; }
+  .rv-tabs { max-width: 620px; }
+  .rv-view-foot { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 620px) minmax(0, 1fr); align-items: center; gap: 16px; }
+  .rv-view-row { grid-column: 2; width: 100%; margin-top: 0; }
+}
+
+@media (max-width: 359px) {
+  .rv-tab { font-size: 0.86rem; letter-spacing: 0.06em; }
+  .rv-fold summary { padding-left: 12px; }
+  .rv-fold-body { padding-inline: 12px; }
+}
