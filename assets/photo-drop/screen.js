@@ -30,9 +30,11 @@ const LOAD_TIMEOUT = 25000; // a photo that hasn't loaded by now is waited for n
 const PATIENCE = 3000; // how far past its time the photo on screen may run for a slow next one, when there is another to show
 const CACHED_WAIT = 4000; // a photo the browser already has loads at once: one that hasn't by now is one it doesn't have
 const TRY_TIMEOUT = 90000; // how long one try behind the scenes may take
+const STUCK = 30000; // a try whose small copy of the photo hasn't come by now is not slow, it is stuck
 const TRY_PAUSE = [2000, 4000, 8000, 15000]; // the pause after one, two, three and more of those tries failed in a row
 const QUICK = 4000; // a photo that comes down within this says photos are arriving quickly again
 const AHEAD = 2; // the tries hold off while this many photos have arrived and not yet had their first turn
+const REST = 1000; // after a download is let go of, how long before the network is asked for a photo again
 const DECODE_WAIT = 3000; // a photo that has loaded but never says it is ready to draw is shown anyway after this
 const BACK_WAIT = 1500; // how long a loaded photo waits for its blurred background
 const RETRY = [1000, 2000, 4000, 8000]; // the pause after one, two, three and more failed loads in a row, before the network is asked again
@@ -44,6 +46,11 @@ const PRINT_ROOM = 0.84; // a print takes no more than this share of the screen 
 const SECONDS = [5, 8, 12, 20];
 const PAST = 200; // how far back Previous can go
 const PAUSE_MAX = 180000; // a pause ends by itself after this: nobody is at this computer all night
+// A picture with nothing in it. An Image that is let go of is given this in place of its photo:
+// that stops the download, if it is still under way, and answers anything waiting on it. Just
+// taking the photo's address away does not: Chrome then keeps the Image, and the slide it was
+// for, in memory for good.
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
 const TEST_PICTURES = [
   { w: 2560, h: 1440, hue: 42, caption: 'Test picture 1 of 6. Wide, 2560 by 1440' },
   { w: 1707, h: 2560, hue: 350, caption: 'Test picture 2 of 6. Tall, 1707 by 2560' },
@@ -468,20 +475,20 @@ function join(slide, t) {
 
 // A photo came down quickly: the show goes back to getting each next photo ready itself.
 function caughtUp() {
-  cancel(S.trying);
-  S.trying = null;
   S.slow = false;
   S.misses = S.fails = S.retryAt = S.tryAt = 0;
   S.tried.clear();
+  cancel(S.trying); // it has had longer than that already: it is probably stuck
+  S.trying = null;
 }
 
 // The connection looks to be back: the computer says so, or the server answers after not being
 // reached. A try that began before then is probably stuck, so the next one starts now.
 function again() {
   if (!S.slow) return;
+  S.tryAt = S.fails = S.retryAt = 0;
   cancel(S.trying);
   S.trying = null;
-  S.tryAt = S.fails = S.retryAt = 0;
 }
 
 // ---------------------------------------------------------------- the clock
@@ -501,9 +508,13 @@ function tick() {
   const tryout = S.trying;
   if (tryout) {
     const at = landed(tryout, t);
+    const age = t - tryout.startedAt;
+    // The small copy is a fiftieth of the photo's size. While even that hasn't come, nothing
+    // is moving, and the wait is better spent on a fresh try.
+    const stuck = tryout.hasBack === null && age >= STUCK;
     if (at === 'in' && tryout.img.naturalWidth > 0 && tryout.img.naturalHeight > 0) {
       join(tryout, t);
-    } else if (at || t - tryout.startedAt >= TRY_TIMEOUT) {
+    } else if (at || stuck || age >= TRY_TIMEOUT) {
       cancel(tryout);
       S.trying = null;
       S.tried.add(tryout.id);
@@ -625,8 +636,15 @@ function landed(slide, t) {
 function cancel(slide) {
   if (!slide) return;
   if (slide.el) slide.el.remove();
-  slide.img.removeAttribute('src');
-  if (slide.backImg) slide.backImg.removeAttribute('src');
+  if (slide.main === null) {
+    // Chrome takes a moment to drop a download. Asked for the same photo before it has, it
+    // hands back the old download, stuck or not. So the network is left alone for that moment.
+    const rested = clock() + REST;
+    S.retryAt = Math.max(S.retryAt, rested);
+    S.tryAt = Math.max(S.tryAt, rested);
+  }
+  slide.img.src = BLANK;
+  if (slide.backImg) slide.backImg.src = BLANK;
 }
 
 // The photo being got ready didn't load. It is skipped for this pass and tried again on the next.
@@ -664,7 +682,7 @@ function build(slide) {
     slide.backImg.className = 'sc-back';
     el.append(slide.backImg);
   } else if (slide.backImg) {
-    slide.backImg.removeAttribute('src'); // too slow or broken: the ground stays black
+    slide.backImg.src = BLANK; // too slow or broken: the ground stays black
     slide.backImg = null;
   }
   slide.frame = document.createElement('div');
