@@ -357,17 +357,19 @@ test('a repeat of a photo still on its way in is asked to wait for 2 minutes, an
   // fingerprint all stay, and hold their places for 15 minutes as before.
   const another = await reserve(h, { sha: print('b') });
   const bare = await reserve(h, { sha: null });
+  const his = await reserve(h, { sha: print('c'), name: 'Charles Babbage', email: 'charles@example.com' });
   const cut = await reserve(h, { sha: print('c') });
   assert.equal(cut.left, 1);
-  await h.setNow(minutes(61));
-  const his = await reserve(h, { sha: print('c'), name: 'Charles Babbage', email: 'charles@example.com' });
   await h.setNow(minutes(62));
   const again = await reserve(h, { sha: print('c') });
   assert.deepEqual(again, { ok: true, id: again.id, path: `photos/${again.id}.jpg`, thumb_path: `thumbs/${again.id}.jpg`, left: 1 },
     'the copy that was cut off gave its place back, and her other two unfinished photos kept theirs');
   assert.notEqual(again.id, cut.id);
   assert.deepEqual((await statuses()).map(([id]) => id).sort(), [second.id, another.id, bare.id, his.id, again.id].sort());
-  assert.deepEqual(await reserve(h, { sha: print('c'), email: 'charles@example.com' }), busy, 'his copy is a minute old, and still on its way');
+  // His own unfinished copy goes when he is the one who sends the photo again.
+  const hisAgain = await reserve(h, { sha: print('c'), name: 'Charles Babbage', email: 'charles@example.com' });
+  assert.deepEqual([hisAgain.ok, hisAgain.left, hisAgain.id === his.id], [true, 4, false]);
+  assert.deepEqual((await statuses()).map(([id]) => id).sort(), [second.id, another.id, bare.id, again.id, hisAgain.id].sort());
 
   // A send that Storage failed is forgotten at once, so its photo can be tried again straight away.
   const failed = await reserve(h, { sha: print('d'), email: 'grace@example.com' });
