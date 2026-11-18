@@ -92,6 +92,7 @@ const S = {
   ids: [], // their ids in the server's order, oldest approved first
   queue: [], // the ids still to come in this pass
   past: [], // the ids shown before the one on screen, for Previous
+  shown: new Set(), // every id that has been on screen since Start: the browser has these photos already
   old: null, // the slide fading out
   now: null, // the slide on screen
   next: null, // the slide being got ready, or ready and waiting
@@ -216,6 +217,7 @@ function play(list) {
   S.ids = [];
   S.queue = [];
   S.past = [];
+  S.shown = new Set();
   S.old = S.now = S.next = null;
   $('#sc-slides').textContent = '';
   take(list);
@@ -307,6 +309,7 @@ function take(list) {
   S.ids = ids;
   S.queue = S.queue.filter(here);
   S.past = S.past.filter(here);
+  for (const id of [...S.shown]) if (!here(id)) S.shown.delete(id);
   if (underWay) S.queue.unshift(...fresh);
   if (S.next && !here(S.next.id)) {
     cancel(S.next);
@@ -342,6 +345,15 @@ function nextId() {
   return null;
 }
 
+// After two failed loads in a row the connection is probably down. The photos that have already
+// been on screen are still in the browser's cache, so the show goes round those, and tries the
+// line again after each one, until photos load again. Null when there is none to fall back on.
+function seenId() {
+  const on = S.now ? S.now.id : '';
+  const seen = [...S.shown].filter((id) => id !== on);
+  return seen.length ? seen[Math.floor(Math.random() * seen.length)] : null;
+}
+
 // ---------------------------------------------------------------- the clock
 // Looks at the show and makes the next move. Runs every quarter second while the show plays, and
 // straight away when something happens (a key, a photo arriving, a fresh list).
@@ -367,7 +379,7 @@ function tick() {
 
   // Start getting the one after ready.
   if (!S.next && t >= S.retryAt) {
-    const id = nextId();
+    const id = (S.misses >= 2 && seenId()) || nextId();
     if (id) prepare(id, false, t);
     else S.skip = false; // there is nothing else to change to
   }
@@ -524,6 +536,7 @@ function change(t) {
     }
   }
   S.now = slide;
+  S.shown.add(slide.id);
   void slide.el.offsetWidth; // so the fade starts from clear, even for a photo that only just arrived
   slide.el.classList.add('is-on');
   stage.classList.add('has-photo');

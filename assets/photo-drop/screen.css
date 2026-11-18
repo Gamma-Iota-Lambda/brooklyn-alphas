@@ -267,6 +267,10 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   text-shadow: 0 0.2vmin 1vmin rgba(0, 0, 0, 0.9);
 }
 .sc-stage.no-captions .sc-caption { display: none; }
+@media (orientation: portrait) {
+  /* A narrow screen: the caption takes the full width, a little smaller, so 80 characters still fit on two lines. */
+  .sc-caption span { max-width: none; font-size: clamp(16px, 2.4vmin, 84px); }
+}
 
 /* The mark in the corner. Not over the title card, which says it already. */
 .sc-mark {

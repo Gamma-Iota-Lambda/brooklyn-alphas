@@ -100,7 +100,8 @@ function fieldTime(iso) {
 // "38 MB", or "0.4 MB" when it is small.
 function megabytes(bytes) {
   const mb = Math.max(0, Number(bytes) || 0) / 1e6;
-  return `${mb > 0 && mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  const shown = mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10;
+  return `${mb > 0 && shown === 0 ? 0.1 : shown} MB`;
 }
 
 // ---------------------------------------------------------------- state
@@ -117,6 +118,7 @@ const S = {
   viewAt: 0, // where that photo is, or last was, among the photos shown
   viewNext: '',
   viewPrev: '',
+  viewWho: '', // what is written under the open photo, to redraw it only when it changes
   loading: false,
   loadedAt: 0,
   loadError: '',
@@ -328,6 +330,8 @@ async function change(action, more) {
 function refused(e, what) {
   if (e instanceof DropError && e.reason === 'code') return lockedOut();
   toast(`${what} ${whyOf(e)}`);
+  // A change that got no answer may have reached the server all the same. Look again soon.
+  if (e instanceof DropError && e.reason === 'network') again();
 }
 
 // ---------------------------------------------------------------- drawing
@@ -793,7 +797,10 @@ function paintViewer() {
   const pos = at >= 0 ? `${at + 1} of ${list.length} ${LABEL[S.tab].toLowerCase()}` : `Now ${LABEL[p.status].toLowerCase()}`;
   if ($('#rv-view-pos').textContent !== pos) $('#rv-view-pos').textContent = pos;
   const who = `<p class="rv-view-name">${esc(p.name)} <span class="rv-view-size">${sizeHTML(p)}</span></p>${p.caption ? `<p class="rv-view-cap">${esc(p.caption)}</p>` : ''}`;
-  if ($('#rv-view-who').innerHTML !== who) $('#rv-view-who').innerHTML = who;
+  if (S.viewWho !== who) {
+    S.viewWho = who;
+    $('#rv-view-who').innerHTML = who;
+  }
   const actions = $('#rv-view-actions');
   if (actions.dataset.status !== p.status) {
     actions.dataset.status = p.status;
@@ -832,6 +839,7 @@ function moveFromViewer(status) {
 function viewerClosed() {
   const last = S.viewing;
   S.viewing = '';
+  S.viewWho = '';
   const img = $('#rv-view-img');
   img.removeAttribute('src');
   delete img.dataset.id;

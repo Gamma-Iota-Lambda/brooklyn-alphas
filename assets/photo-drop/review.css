@@ -19,19 +19,26 @@ html:has(dialog[open]) { overflow: hidden; }
 .rv-notready { margin: 22vh 0; font-size: 1.1rem; text-align: center; }
 .rv-narrow { max-width: 460px; margin-inline: auto; }
 .pd .pd-btn.small { min-height: 44px; }
+/* Taps act at once: no waiting to see whether a second tap makes it a zoom. */
+.pd button, .pd a, .pd summary, .pd label { touch-action: manipulation; }
 
 /* ---------------------------------------------------------------- the top of the page */
 .rv-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
   padding-top: 4px;
 }
+.rv-head-text { flex: none; }
 .rv-head .pd-eyebrow { margin-bottom: 4px; }
-.rv-title { font-size: clamp(1.7rem, 7.6vw, 2.6rem); }
-.rv-me { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* One line at any width, so the name and Sign out keep their place beside it. */
+.rv-title { font-size: clamp(1.35rem, 6.2vw, 2.6rem); white-space: nowrap; }
+/* On a phone the organizer's name sits above Sign out; with more room, beside it. */
+.rv-me { display: flex; flex: 0 1 auto; flex-direction: column; align-items: flex-end; gap: 4px; min-width: 0; }
 .rv-me-name {
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   font-family: var(--pd-font-label);
@@ -47,8 +54,22 @@ html:has(dialog[open]) { overflow: hidden; }
 
 /* Signing in */
 #rv-signin, #rv-loading, #rv-trouble { margin-top: 26px; }
-.rv-check { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 2px; color: var(--pd-muted); cursor: pointer; }
-.rv-check input { width: 22px; height: 22px; margin: 0; accent-color: var(--pd-gold); }
+/* A plain line with a checkbox, not one of drop.css's field labels. */
+.pd-field > label.rv-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 6px 0 0;
+  font-family: var(--pd-font-body);
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--pd-muted);
+  cursor: pointer;
+}
+.rv-check input { flex: none; width: 22px; height: 22px; margin: 0; accent-color: var(--pd-gold); }
 #rv-signin-err { margin: 14px 0 0; }
 
 /* How full the drop is, when the page last checked, and Refresh. */
@@ -375,8 +396,14 @@ html:has(dialog[open]) { overflow: hidden; }
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
 }
 .rv-toast.ok { border-color: var(--pd-ok); background: #10231a; }
+/* Over an open photo the message sits under the top bar, clear of Approve and Reject. */
+.rv-view .rv-toast { top: calc(max(8px, env(safe-area-inset-top)) + 60px); bottom: auto; }
 .rv-toast p { flex: 1; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .rv-toast .pd-btn { flex: none; }
+
+@media (min-width: 600px) {
+  .rv-me { flex-direction: row; align-items: center; gap: 10px; }
+}
 
 @media (min-width: 900px) {
   .rv-folds { grid-template-columns: 1fr 1fr; }
