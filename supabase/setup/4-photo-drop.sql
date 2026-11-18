@@ -1,5 +1,6 @@
 -- School Daze photo drop: the three codes, and the switches.
--- Run in the Supabase SQL Editor after migrations/20261118000100_photo_drop.sql.
+-- Run in the Supabase SQL Editor after migrations/20261118000100_photo_drop.sql and
+-- migrations/20261118000200_photo_drop_repeats.sql.
 
 -- 1. The codes. Replace all three phrases, then run these three lines once. Case and extra spaces
 --    don't matter when a code is typed. Each of the three must be different.
@@ -11,8 +12,12 @@
 --   photo with its sender's name and email, approve, and delete. Keep it to the organizers.
 --   At least 12 characters.
 -- Screen code: for the venue's computer, on school-daze/screen.html. It shows approved photos and
---   nothing else. At least 12 characters. If it will go in the link (screen.html#c=...), use
+--   nothing else, and it is the only code the slideshow takes: never type the review code on the
+--   venue's computer. At least 12 characters. If it will go in the link (screen.html#c=...), use
 --   letters, numbers, and dashes only.
+--
+-- Make the review and screen codes random, not a phrase someone could guess from the event's
+-- name: nothing counts wrong guesses.
 --
 -- Run a line again any time to change that code. The old code stops working at once, so a new
 -- upload code means a new link for ticket buyers.
@@ -47,15 +52,17 @@ from public.drop_photos group by status order by status;
 --    drop_max_photos: photos the chapter will take in all (600).
 --    drop_max_bytes:  storage the photos may use, in bytes (750000000, which is 750 MB; the free
 --                     Supabase plan holds 1 GB across the whole project).
---    drop_per_ip_day: photos one internet connection may send in a day (60). People on the same
---                     Wi-Fi share a connection. 0 turns this limit off: do that if guests see
---                     "Too many photos have come from this connection today."
+--    drop_per_ip_day: photos one internet connection may send in a day. It starts at 0, which
+--                     is off. Check step 7 before turning it on, and turn it off again if guests
+--                     see "Too many photos have come from this connection today."
 -- update cal_private.config set value = '8' where key = 'drop_per_person';
--- update cal_private.config set value = '0' where key = 'drop_per_ip_day';
+-- update cal_private.config set value = '60' where key = 'drop_per_ip_day';
 
--- 7. How many different connections the photos of the last day came from. One connection with
---    nearly all of them, while people are sending from home, means the per-connection limit is
---    counting everyone together: turn it off as in step 6.
+-- 7. How many different connections the photos of the last day came from. The per-connection
+--    limit is only safe to turn on when photos sent from different places show different
+--    connections here (send one from a phone on mobile data and one from a computer on Wi-Fi).
+--    One connection with nearly all of them, while people are sending from home, means the
+--    platform reports a shared address and the limit would count everyone together: leave it off.
 -- select ip_hash, count(*) as photos, count(distinct email) as people from public.drop_photos
 -- where created_at > now() - interval '1 day' group by ip_hash order by photos desc limit 10;
 

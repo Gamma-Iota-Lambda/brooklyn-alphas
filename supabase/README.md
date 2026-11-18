@@ -20,11 +20,14 @@ This folder holds everything the live mode needs:
 | `migrations/20261030000300_directory_email_design.sql` | Greeting emails with the chapter crest and a heading |
 | `migrations/20261031000100_directory_visiting_brothers.sql` | The Visiting standing and the public visiting-brother form |
 | `migrations/20261114000100_social_sync_health.sql` | Results: an email to the media team when the numbers stop updating, and what Instagram or Threads sent with each error |
+| `migrations/20261118000100_photo_drop.sql` | The School Daze photo drop (school-daze/): the photos table, its private storage bucket, the three codes, the limits, and the functions its Edge Function calls |
 | `seed.sql` | The 128 planned posts for October 2026 to August 2027 |
 | `setup/1-codes.sql` | Sets the chapter code and the media code |
 | `setup/2-request-emails.sql` | Saves the Resend API key that request emails and directory greetings use |
 | `setup/3-directory-greetings.sql` | Checks the directory's greetings setup and runs today's by hand |
+| `setup/4-photo-drop.sql` | Sets the photo drop's three codes, and shows how to check on it and change its deadline and limits |
 | `functions/calendar-social/` | The Edge Function that connects Instagram and Threads and brings in their numbers each night |
+| `functions/photo-drop/` | The Edge Function behind the three School Daze pages: it takes in the photos, serves the organizers' review page, and feeds the slideshow |
 
 ## Who can do what
 
@@ -44,7 +47,7 @@ Chairs attach files in the request form: up to 10 per request, 50 MB each, as ph
 - Files go to the private `calendar-files` bucket, which the second migration creates. Each chair's files sit in his own folder, `requests/<his member id>/`.
 - Only the chair who sent a file and the media team can open it. The page opens files through links that last an hour.
 - When a chair removes a file from his request and saves, the file is deleted.
-- The Free plan includes 1 GB of file storage, enough for a few hundred photos or a few dozen short videos. To make room, open Storage in the Supabase dashboard, then `calendar-files`, and delete files from posts that have already gone out. The dashboard shows when each file was added. A request whose files are gone lists them as no longer available.
+- The Free plan includes 1 GB of file storage, enough for a few hundred photos or a few dozen short videos. To make room, open Storage in the Supabase dashboard, then `calendar-files`, and delete files from posts that have already gone out. The dashboard shows when each file was added. A request whose files are gone lists them as no longer available. The School Daze photos count toward the same 1 GB until they are deleted; see Photo drop below.
 
 ## Request emails
 
@@ -138,6 +141,63 @@ Day to day:
 - **See what went out:** the Sent panel under Messages, or `select * from public.dir_messages order by sent_at desc limit 20;`. Resend's answers for the last few hours are in `select status_code, content from net._http_response order by created desc limit 5;`.
 - **Remove a brother's data:** Remove on his record deletes it, his message log included.
 
+## Photo drop
+
+The three pages in `school-daze/` collect photos for School Daze, the chapter's party on Saturday, Nov. 21, 2026. Ticket buyers send photos from their college days on `photos.html`, the organizers approve them on `review.html`, and `screen.html` plays the approved ones on the venue's big screens. The pages share the calendar's Supabase project but not its sign-in: each page has a code of its own. The tenth migration adds it. What each page does is under School Daze Photo Drop in the main [README](../README.md).
+
+- **What it stores.** One row for each photo in `public.drop_photos`: the sender's name and email, the caption, the photo's size, what the page said about the file the person picked, where its files are, whether it is waiting, approved, or rejected, and who reviewed it and when. The sender's internet address is kept only as a hash.
+- **Where the files go.** The private `photo-drop` bucket, which the migration creates: JPEG only, 8 MB a file. Each photo is at `photos/<id>.jpg`, with a small copy at `thumbs/<id>.jpg` for the review page and the slideshow's blurred background.
+- **Settings.** Rows in `cal_private.config`, all starting `drop_`: the three codes, kept as bcrypt hashes (`drop_upload_code_hash`, `drop_review_code_hash`, `drop_screen_code_hash`); the open switch (`drop_open`); the deadline (`drop_closes_at`); the limits (`drop_per_person`, `drop_max_photos`, `drop_max_bytes`, `drop_per_ip_day`); and `drop_ip_salt`, a random value mixed into each address before it is hashed.
+- **Who reaches it.** The pages talk only to the `photo-drop` Edge Function. The function connects as the database owner, the way `calendar-social` does, and the database checks the page's code on every request. The table has row level security and no policies, the bucket has no storage policies, and no API role can run the `cal_private.drop_` functions. The pages see photos through signed links that last 14 days. Opening the review page renews any that run out within 3 days. The slideshow gets approved photos and their captions, with no names or emails.
+- **How a photo arrives.** The function reads the JPEG's real size from the file. The database checks the code, whether uploads are open, what was typed, and every limit, and saves the row as `sending`. The function puts the files in the bucket, and the row becomes `waiting`. If Storage fails partway, the function takes the files back out and forgets the row, so the sender can try again. A send that never finished stops counting toward the limits after 15 minutes, and is removed the next time an organizer opens the review page.
+
+Setup, once:
+
+1. **Run the SQL.** In SQL Editor, run `migrations/20261118000100_photo_drop.sql`. It runs after the nine migrations before it. It creates the table, the bucket, and the settings, with uploads open until noon New York time on Saturday, Nov. 21.
+2. **Set the three codes.** In `setup/4-photo-drop.sql`, replace the three placeholder phrases and run the three `drop_set_code` lines. Each code must be different, and 72 characters at most. Case and extra spaces don't matter when a code is typed.
+   - **Upload code:** at least 8 characters. Letters, numbers, and dashes only, because it travels inside a link. Everyone with a ticket has it.
+   - **Review code:** at least 12 characters. It shows every photo with its sender's name and email, and it deletes. Keep it to the organizers.
+   - **Screen code:** at least 12 characters. Letters, numbers, and dashes only if it will go in the link. It shows approved photos and nothing else.
+3. **Deploy the Edge Function** `functions/photo-drop` with JWT verification off: `supabase functions deploy photo-drop --no-verify-jwt`. The three pages have no Supabase session. Each sends its own code, and the database checks it on every request.
+4. **No secrets to add.** The function reads `SUPABASE_URL`, `SUPABASE_DB_URL`, and the project's secret key for Storage (`SUPABASE_SECRET_KEYS`, or `SUPABASE_SERVICE_ROLE_KEY` on an older project). Every project already has them.
+5. **Check it.** Run `select cal_private.drop_state();`. Its `state` should be `open`. Open the upload link below with your code, send a test photo, approve it on the review page, and watch it come up on the slideshow. To remove the test photo, choose Back to waiting, then Reject, then Delete on the Rejected tab.
+
+The pages find the project through `assets/calendar/config.js`, which the calendar's go-live filled in. While that file is empty, each page says "This page isn't set up yet."
+
+The links to hand out, with `CODE` replaced by the code:
+
+| Link | Who gets it |
+|---|---|
+| `https://www.gil1906.org/school-daze/photos.html?k=CODE` | Ticket buyers, in the ticket email. `CODE` is the upload code. |
+| `https://www.gil1906.org/school-daze/review.html` | The organizers. Tell them the review code privately. Each types it once, with their name, on each phone or laptop. |
+| `https://www.gil1906.org/school-daze/screen.html#c=CODE` | The venue's computer. `CODE` is the screen code. The computer keeps it after the first time. |
+
+Before the party, open `https://www.gil1906.org/school-daze/screen.html?demo=1` on the venue's computer. It plays six test pictures with no code, so the screens can be checked before any photo is approved.
+
+Day to day:
+
+- **Close or reopen uploads:** the switch under Uploads on the review page. In SQL Editor, `update cal_private.config set value = 'false' where key = 'drop_open';` closes them, and `'true'` opens them again.
+- **Change the deadline:** under Uploads on the review page, choose a date and time and Save, or choose No deadline. The field is in the organizer's own time zone, which the page names. In SQL Editor, step 5 of `setup/4-photo-drop.sql` sets a new time. Keep the `-05:00` on the end: it says the time is New York's. `delete from cal_private.config where key = 'drop_closes_at';` removes the deadline, and the switch still works.
+- **Change the per-person limit:** `update cal_private.config set value = '8' where key = 'drop_per_person';`. It starts at 5. Every photo an email has sent counts, whatever became of it, until the photo is deleted.
+- **Change the totals:** the same line with `drop_max_photos` (600 to start) or `drop_max_bytes` (750000000 to start, which is 750 MB). Read Storage, below, first.
+- **Many guests on one Wi-Fi:** `drop_per_ip_day` lets one internet connection send 60 photos a day, and people on the same Wi-Fi share a connection. If guests see "Too many photos have come from this connection today.", set it to `0`, which turns that limit off. Step 7 of `setup/4-photo-drop.sql` shows how many connections the last day's photos came from.
+- **Whole numbers only:** a limit set to anything else counts as its starting value.
+- **A new code:** run its `drop_set_code` line in `setup/4-photo-drop.sql` again. The old code stops working at once, so a new upload code means a new link for ticket buyers.
+- **Storage:** the Free plan includes 1 GB of file storage for the whole project, and the calendar's request files in `calendar-files` count toward the same 1 GB. The 750 MB limit keeps the photos and their small copies from filling it. It leaves about 250 MB for request files and keeps the project inside its plan. Supabase can restrict a project that stays over its plan, and that would reach the calendar and the directory too. The 600-photo limit caps the count however small the files are, which also caps how much there is to review. Whichever limit comes first, the upload page says "We have all the photos we can take" and the review page shows Full. Rejected photos count until they are deleted, so Delete on the Rejected tab makes room. Before raising `drop_max_bytes`, check under Storage in the Supabase dashboard how much `calendar-files` holds.
+- **Check on it:** `select cal_private.drop_state();` shows whether uploads are open, closed (switched off, or past the deadline), or full, with the deadline, the limits, and the photos and bytes so far. `select status, count(*) as photos, count(distinct email) as people, pg_size_pretty(sum(bytes)) as size from public.drop_photos group by status order by status;` shows how many photos are waiting, approved, and rejected, and how many people sent them. The top line of the review page shows the same totals. The function's logs are under Edge Functions, then photo-drop, then Logs. Each line starts `photo-drop:` and names a photo by its id, never by a code, a name, an email, a caption, or a signed link.
+- **A photo that is too large is refused slowly, on purpose:** the function reads every upload to its end before it answers, even one too large to use. On Supabase, an answer sent while an upload is still arriving can hang or be lost on the sender's side. It showed up with anything past about 100 KB. So an upload over 7.5 MB is read through and then refused, and the upload page sends a smaller copy once by itself. Past 40 MB the function stops reading. Keep this when changing `drop.js`: `readBody` does it, and a test covers it.
+
+### After the party
+
+Once the party is over, delete everything. Guests sent these photos, with their names and emails, for one night, and they should not sit in the chapter's storage after it. Deleting also gives the storage back to the calendar's request files.
+
+1. **Check that uploads are closed.** They close by themselves at the deadline. If the deadline was removed, turn the switch off under Uploads, so nothing new arrives afterwards.
+2. **Keep the approved photos, if the chapter wants them.** On the review page, open Tools and choose Download approved photos. It saves them to that device as ZIP files, a new one past 250 MB, with each photo named by its number and its sender's name. Guests agreed to their photos being shown on screen at School Daze, so ask before using one anywhere else.
+3. **Delete everything.** In Tools, choose Delete everything and type DELETE. It removes every photo's files from the bucket, then the rows, with the names, emails, and captions in them. The slideshow goes back to its title card. It can't be undone. If it stops partway, run it again: a row goes only after its files have.
+4. **Check.** `select cal_private.drop_state();` should show `photos` at 0, and Storage, then `photo-drop`, in the Supabase dashboard should hold no files.
+
+Don't delete the rows in SQL Editor instead: that leaves the files behind in Storage. To retire the links as well, set three new codes with `setup/4-photo-drop.sql`.
+
 ## Go live
 
 Plan on about 30 minutes.
@@ -153,7 +213,7 @@ Plan on about 30 minutes.
    7. `seed.sql`
    8. `setup/1-codes.sql`, after replacing both placeholder phrases with your own. The chapter code is for every brother, so make it easy to say out loud. The media code is for the media team only, so make it a long phrase.
 
-   A project that already ran some of these runs only the migrations it hasn't, in order. Posts, requests, brothers, and codes all stay. After the second migration, brothers start as viewers, so mark the chairs in Manage access. Request emails also need `setup/2-request-emails.sql`; see Request emails above. Results also need the Edge Function and its secrets; see Instagram and Threads results above.
+   A project that already ran some of these runs only the migrations it hasn't, in order. Posts, requests, brothers, and codes all stay. After the second migration, brothers start as viewers, so mark the chairs in Manage access. Request emails also need `setup/2-request-emails.sql`; see Request emails above. Results also need the Edge Function and its secrets; see Instagram and Threads results above. The School Daze photo drop has its own migration, setup file, and Edge Function; see Photo drop above.
 3. **Turn on brother sign-in.** Under Authentication, open Sign In / Providers and turn on **Allow anonymous sign-ins**. Brothers don't create accounts; the chapter code and their PIN are their sign-in. Supabase allows 30 of these sign-ins per hour from one internet connection. Before a chapter meeting where many brothers sign in on the same Wi-Fi, raise that under Authentication, then Rate Limits.
 4. **Make media team logins simple.** In the same Sign In / Providers section, open Email and turn off **Confirm email**. The media code already decides who joins the media team. (If you keep confirmation on, set the Site URL under Authentication, then URL Configuration, to `https://www.gil1906.org/calendar.html`, so the confirmation link brings people back to the calendar.)
 5. **Connect the page.** Open the Connect button at the top of the project, or Project Settings, then API Keys. Copy the **Project URL** and the **publishable key** (it starts with `sb_publishable_`; the legacy `anon` key also works) into `assets/calendar/config.js`. Both are meant to be public. Never put a secret or `service_role` key in the page. Commit the change on a branch, open a pull request, and merge it; Vercel deploys in a minute or two.
@@ -187,9 +247,11 @@ From the repository root:
 ```bash
 npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 npx playwright install chromium        # once
-node --test "tests/calendar/*.test.mjs"  # 56 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Function, the Results account states, the directory, and the site's menus
+node --test "tests/calendar/*.test.mjs"  # 86 tests: access rules, sign-in, chairs, requests, files, review, upgrading, emails, results, the Edge Functions, the Results account states, the directory, the photo drop, and the site's menus
 node tests/calendar/demo-smoke.mjs     # the demo in a real browser, at desktop and phone widths
 node tests/calendar/live-smoke.mjs     # live mode against a local stand-in for Supabase
 ```
 
 The database tests run the real migrations and seed in PGlite, Postgres compiled to WebAssembly, with a small stand-in for Supabase's sign-in, storage, Vault, pg_net, and pg_cron. The pg_net stand-in records each request instead of sending it. The Edge Function tests run `functions/calendar-social/social.js` in Node against the same database, with Instagram and Threads simulated by `tests/calendar/meta-sim.mjs`: sign-in, token renewal, the nightly sync, expired and rate-limited tokens, Meta refusing every request, and what the media team sees when something goes wrong. The live browser test runs the same database behind a local imitation of Supabase's Data API, sign-in, and file storage. It walks through a visitor, the media team, a brother who becomes a chair and sends files, and a brother on two devices. Then the media team connects Instagram and Threads through the real Edge Function, matches a post by hand, refreshes, sees Not updating while Meta refuses requests and Connected again once it stops, and disconnects. Add `SCREENSHOTS=some-folder` to either browser test to save screenshots.
+
+The photo drop's tests work the same way. `photo-drop.test.mjs` runs its migration in PGlite: the three codes, every reason a photo is refused and the order they come in, the limits, closing by the switch and by the clock, review, the slideshow's list, and that no API role gets near any of it. `photo-drop-function.test.mjs` runs `functions/photo-drop/drop.js` in Node against the same database, with Storage simulated by `tests/calendar/storage-sim.mjs`: a full send, each refusal, a Storage failure partway, the review actions, deleting, the slideshow's list, reading every upload to its end, and what never reaches the log. The three School Daze pages have no browser test here.
