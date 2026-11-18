@@ -1,0 +1,260 @@
+/* Photo drop: the upload page (school-daze/photos.html). The look the three School Daze pages
+   share is in drop.css; this file adds what only this page has. Every class here starts with ph-.
+   Sized for a phone first: most people open the link from their ticket email. */
+
+/* A warm glow at the top, like the stadium lights on the flyer. */
+body.pd {
+  background-image: radial-gradient(130% 420px at 50% -80px, rgba(212, 160, 23, 0.2), rgba(212, 160, 23, 0) 70%);
+  background-repeat: no-repeat;
+}
+
+/* Headings take the focus when a section appears, for screen readers. They aren't controls, so
+   they don't need the ring. */
+#ph-main [data-heading]:focus { outline: none; }
+
+.ph-plain { margin: 8px 0 0; }
+.pd-card > .ph-plain:first-child { margin-top: 0; }
+.ph-notready { margin: 22vh 0; font-size: 1.1rem; text-align: center; }
+
+/* ---------------------------------------------------------------- the top of the page */
+.ph-hero {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 4.5vw, 28px);
+  padding-top: 8px;
+}
+.ph-flyer {
+  flex: none;
+  width: clamp(92px, 28vw, 170px);
+  height: auto;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: 6px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.75);
+  transform: rotate(-3deg);
+}
+.ph-hero-text { min-width: 0; }
+.ph-hero .pd-title { font-size: clamp(2rem, 10vw, 4rem); }
+.ph-when {
+  margin: 10px 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+#ph-ask { margin-top: 20px; }
+#ph-ask .pd-lede { margin-top: 0; }
+/* The gold bar the flyer puts its date in. */
+.ph-deadline {
+  display: inline-block;
+  margin: 12px 0 0;
+  padding: 4px 12px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, var(--pd-gold-hi), var(--pd-gold));
+  color: var(--pd-on-gold);
+  font-family: var(--pd-font-label);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ---------------------------------------------------------------- the form */
+.ph-step { display: flex; align-items: center; gap: 10px; margin-bottom: 0; }
+.ph-num {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--pd-gold);
+  color: var(--pd-on-gold);
+  font-family: var(--pd-font-block);
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+.ph-field-err { margin: 0 0 6px; padding: 8px 12px; }
+#ph-photos-err { margin-top: 14px; }
+.pd-field input[aria-invalid="true"] { border-color: var(--pd-danger); }
+
+.ph-tips {
+  margin-top: 14px;
+  padding: 14px 14px 4px;
+  border: 1px solid var(--pd-line);
+  border-radius: var(--pd-r-sm);
+  background: var(--pd-raised);
+}
+.ph-tips-title {
+  margin: 0 0 10px;
+  font-family: var(--pd-font-label);
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+}
+.ph-tips ul { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.ph-tips li { position: relative; padding-left: 22px; }
+.ph-tips li::before {
+  content: "";
+  position: absolute;
+  top: 0.5em;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  background: var(--pd-gold);
+  transform: rotate(45deg);
+}
+.ph-tips strong { font-weight: 600; color: var(--pd-gold-hi); }
+.ph-tips details { margin-top: 10px; border-top: 1px solid var(--pd-line); }
+.ph-tips summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  color: var(--pd-gold-hi);
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+.ph-tips summary::-webkit-details-marker { display: none; }
+.ph-tips summary::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 4px 3px 3px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.ph-tips details[open] summary::before { margin-bottom: -5px; transform: rotate(-135deg); }
+.ph-tips details ul { padding: 2px 0 12px; }
+
+/* The real file input is hidden and its label is the button, which every phone handles well.
+   The ring shows on the label when the keyboard reaches the input. */
+.ph-choose { min-height: 56px; margin-top: 16px; font-size: 1.2rem; }
+.ph-file:focus-visible + .ph-choose { outline: 3px solid var(--pd-gold-hi); outline-offset: 2px; }
+.ph-room { text-align: center; }
+#ph-pick-note { font-size: 0.95rem; }
+
+/* ---------------------------------------------------------------- one chosen photo */
+.ph-cards { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.ph-cards:not(:empty) { margin-top: 16px; }
+.ph-photo {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--pd-line);
+  border-radius: var(--pd-r-sm);
+  background: var(--pd-raised);
+}
+.ph-photo.is-sent { border-color: var(--pd-ok); }
+.ph-photo.is-failed, .ph-photo.is-bad { border-color: var(--pd-danger); }
+.ph-pic {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border-radius: 7px;
+  background: #000;
+  object-fit: cover;
+}
+.ph-nopic {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--pd-line-strong);
+  background: var(--pd-ink);
+  color: var(--pd-faint);
+}
+.ph-info { display: grid; gap: 8px; justify-items: start; align-content: start; min-width: 0; }
+.ph-info p { margin: 0; }
+/* "Sharp on the big screen" is longer than a narrow phone's column, so it may wrap. */
+.ph-photo .pd-pill { padding: 3px 10px; border-radius: 12px; letter-spacing: 0.06em; white-space: normal; }
+.ph-file-name { font-size: 0.88rem; color: var(--pd-muted); overflow-wrap: anywhere; }
+.ph-note { font-size: 0.93rem; line-height: 1.4; color: var(--pd-muted); }
+.ph-problem { line-height: 1.4; color: var(--pd-danger); overflow-wrap: anywhere; }
+.ph-state {
+  font-family: var(--pd-font-label);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-gold-hi);
+}
+.ph-photo.is-checking .ph-pic { animation: ph-pulse 1.1s ease-in-out infinite alternate; }
+.ph-bar { width: 100%; height: 6px; border-radius: 3px; background: var(--pd-line); overflow: hidden; }
+.ph-bar span {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--pd-gold);
+  animation: ph-slide 1.1s ease-in-out infinite alternate;
+}
+.ph-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ph-photo .pd-btn.small { min-height: 44px; }
+.ph-caption { grid-column: 1 / -1; margin-top: 0; }
+.ph-caption input:disabled { border-color: var(--pd-line); color: var(--pd-muted); opacity: 1; }
+
+@keyframes ph-slide { from { transform: translateX(-10%); } to { transform: translateX(160%); } }
+@keyframes ph-pulse { from { opacity: 0.45; } to { opacity: 1; } }
+
+/* ---------------------------------------------------------------- sending */
+.ph-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid var(--pd-line-strong);
+  border-radius: var(--pd-r-sm);
+  background: var(--pd-ink);
+  cursor: pointer;
+}
+.ph-consent input { flex: none; width: 26px; height: 26px; margin: 0; accent-color: var(--pd-gold); }
+.ph-consent input[aria-invalid="true"] { outline: 2px solid var(--pd-danger); outline-offset: 2px; }
+.ph-send { min-height: 58px; margin-top: 16px; font-size: 1.25rem; }
+.ph-status {
+  margin: 12px 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: center;
+  color: var(--pd-gold-hi);
+}
+.ph-status:empty { margin: 0; }
+
+/* ---------------------------------------------------------------- thank you, closed, full */
+.ph-done { padding: 30px 18px 24px; border-color: var(--pd-gold-deep); text-align: center; }
+.ph-done-title { font-size: clamp(1.7rem, 8.4vw, 2.9rem); line-height: 1.08; }
+/* Each sentence keeps to its own line when the two don't fit on one. */
+.ph-done-title span, .ph-party-when span { display: inline-block; }
+.ph-done .pd-lede { margin-top: 14px; }
+.ph-done .pd-note { text-align: left; }
+.ph-party-when {
+  margin: 0;
+  font-family: var(--pd-font-label);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--pd-gold-hi);
+}
+
+@media (max-width: 359px) {
+  .ph-photo { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+  .ph-pic { width: 76px; height: 76px; }
+}
+
+/* drop.css shortens every animation for people who ask for less motion. These two repeat, which
+   would turn that into a flicker, so they stop instead. */
+@media (prefers-reduced-motion: reduce) {
+  .ph-bar span { width: 100%; opacity: 0.7; animation: none !important; }
+  .ph-photo.is-checking .ph-pic { opacity: 0.7; animation: none !important; }
+}

@@ -1,0 +1,663 @@
+// photo-drop: takes in the School Daze photos, lets the organizers review them, and feeds the
+// slideshow on the venue's screens. index.ts runs this on Supabase Edge Functions (Deno). The tests
+// run the same file in Node against the real migration, with Storage simulated
+// (tests/calendar/photo-drop-function.test.mjs).
+//
+// Routes, all POST, under https://<project>.supabase.co/functions/v1/photo-drop:
+//   /open    The upload page: is this link good, and are photos still being taken?
+//   /send    The upload page: one photo, as a form.
+//   /review  The review page: list, set, caption, settings, delete, empty.
+//   /screen  The slideshow: the approved photos.
+//
+// Each page sends its own code and the database checks it (the cal_private.drop_ functions in
+// migration 20261118000100_photo_drop.sql). Photos live in a private Storage bucket that only this
+// function's secret key reaches. The pages see them through signed links.
+
+const DAY = 86400000;
+export const BUCKET = 'photo-drop';
+export const MAX_REQUEST_BYTES = 7500000; // one /send, form and all
+export const MAX_PHOTO_BYTES = 6291456; // 6 MB, the same number drop_open gives the page
+export const MAX_THUMB_BYTES = 307200;
+export const MIN_EDGE = 500; // a long side under this looks like mush on a big screen
+// The page never sends a long side over 2,560. These stop a file made to exhaust whatever opens
+// it: the review page on a phone, or the venue's computer.
+export const MAX_SIDE = 12000;
+export const MAX_PIXELS = 50000000;
+export const MAX_THUMB_SIDE = 2000;
+export const MAX_TEXT = 2000; // anything longer isn't a name, an email, or a caption
+export const MAX_JSON_BYTES = 65536;
+export const SIGN_DAYS = 14; // how long a signed link lasts; the review list renews them
+export const REMOVE_BATCH = 100;
+export const SIGN_BATCH = 200;
+// What a filled honeypot is told, as if the photo had been taken.
+const PRETEND_LEFT = 4;
+
+const HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'content-type, apikey, authorization, x-client-info',
+  'Access-Control-Max-Age': '86400',
+  'Cache-Control': 'no-store',
+  'Content-Type': 'application/json'
+};
+const ROUTES = new Set(['open', 'send', 'review', 'screen']);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const NOT_A_PHOTO = "That file isn't a photo we can use. Send a JPEG.";
+const TOO_LARGE = 'That photo is too large to send. Try a smaller copy.';
+const UNREADABLE = "That request didn't read right. Reload the page and try again.";
+
+// Something the caller can fix. It becomes { error, reason } with the status.
+class Refusal extends Error {
+  constructor(status, reason, message) {
+    super(message);
+    this.status = status;
+    this.reason = reason;
+  }
+}
+
+// Storage didn't do what was asked. The message is safe to log: what was tried and the status,
+// never a key or a link.
+class StorageError extends Error {}
+
+// The database side: the cal_private.drop_ functions. query(sql, params) returns rows. index.ts
+// passes postgres.js, and the tests pass PGlite.
+export function makeDb(query) {
+  const value = async (call, params) => (await query(`select ${call} as r`, params))[0]?.r ?? null;
+  // JSON and lists of ids go over as text: postgres.js would encode a string sent as jsonb a
+  // second time, and the two drivers write arrays differently. Ids are checked before they get here.
+  const idList = (ids) => (ids ? `{${ids.join(',')}}` : null);
+  return {
+    open: (code) => value('cal_private.drop_open($1::text)', [code]),
+    reserve: (p) =>
+      value(`cal_private.drop_reserve($1::text, $2::text, $3::text, $4::text, $5::integer, $6::integer, $7::integer,
+        ($8::text)::boolean, $9::text, ($10::text)::jsonb)`,
+        [p.code, p.name, p.email, p.caption, p.width, p.height, p.bytes, p.hasThumb ? 'true' : 'false', p.ip,
+          p.original ? JSON.stringify(p.original) : null]),
+    stored: async (id, url, thumbUrl, until) =>
+      (await value('cal_private.drop_stored($1::uuid, $2::text, $3::text, ($4::text)::timestamptz)', [id, url, thumbUrl, until])) === true,
+    abandon: (id) => query('select cal_private.drop_abandon($1::uuid)', [id]),
+    stale: async () => (await value('cal_private.drop_stale()', [])) || [],
+    reviewList: (code) => value('cal_private.drop_review_list($1::text)', [code]),
+    reviewSet: (code, ids, status, by) =>
+      value('cal_private.drop_review_set($1::text, ($2::text)::uuid[], $3::text, $4::text)', [code, idList(ids), status, by]),
+    reviewCaption: (code, id, caption) => value('cal_private.drop_review_caption($1::text, $2::uuid, $3::text)', [code, id, caption]),
+    reviewSettings: (code, changes) =>
+      value('cal_private.drop_review_settings($1::text, ($2::text)::jsonb)', [code, JSON.stringify(changes)]),
+    reviewPaths: (code, ids) => value('cal_private.drop_review_paths($1::text, ($2::text)::uuid[])', [code, idList(ids)]),
+    reviewDelete: (code, ids) => value('cal_private.drop_review_delete($1::text, ($2::text)::uuid[])', [code, idList(ids)]),
+    screenList: (code) => value('cal_private.drop_screen_list($1::text)', [code]),
+    resignDue: async () => (await value('cal_private.drop_resign_due()', [])) || [],
+    resignSave: (rows) => value('cal_private.drop_resign_save(($1::text)::jsonb)', [JSON.stringify(rows)])
+  };
+}
+
+// The pixel size of a JPEG, read from its frame header, or null when the bytes aren't a JPEG a
+// browser can show. Nothing is decoded: this walks the segments at the front of the file, and
+// anything out of place counts as not a photo.
+export function jpegSize(bytes) {
+  const end = bytes.length;
+  if (end < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) return null;
+  let at = 2;
+  while (at < end) {
+    // Every segment starts with FF, and any number of extra FF bytes may pad the gap before it.
+    if (bytes[at] !== 0xff) return null;
+    while (at < end && bytes[at] === 0xff) at += 1;
+    if (at >= end) return null;
+    const marker = bytes[at];
+    at += 1;
+    // Markers that stand alone, with no length after them: TEM, the restart markers, and SOI.
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) continue;
+    // FF 00 only belongs inside picture data. The end of the file or the start of the picture
+    // data before any frame header means there is no size to read.
+    if (marker === 0x00 || marker === 0xd9 || marker === 0xda) return null;
+    if (at + 2 > end) return null;
+    const length = (bytes[at] << 8) | bytes[at + 1];
+    if (length < 2 || at + length > end) return null;
+    // Baseline, extended, and progressive frames: the kinds browsers show.
+    if (marker === 0xc0 || marker === 0xc1 || marker === 0xc2) {
+      if (length < 8) return null;
+      const precision = bytes[at + 2];
+      const height = (bytes[at + 3] << 8) | bytes[at + 4];
+      const width = (bytes[at + 5] << 8) | bytes[at + 6];
+      const parts = bytes[at + 7];
+      // 8 bits a sample, in grey, colour, or four inks, with the header exactly as long as that needs.
+      if (precision !== 8 || ![1, 3, 4].includes(parts) || length !== 8 + 3 * parts) return null;
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    // The other frame kinds (lossless, arithmetic-coded, and so on) are JPEGs no browser shows.
+    // C4, C8, and CC are tables and an extension, not frames, and are skipped like the rest.
+    if (marker >= 0xc3 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) return null;
+    at += length;
+  }
+  return null;
+}
+
+// The caller's address, for the limit on photos from one connection: the last entry of
+// x-forwarded-for, which the platform adds (anything before it can be typed in by the sender).
+// An address inside a private network is one of the platform's own machines, not anyone's
+// connection, so it counts as none rather than as everyone.
+const PRIVATE_ADDRESS = /^(10\.|127\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|169\.254\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|::1$|f[cd][0-9a-f]{2}:|fe[89ab][0-9a-f]:)/;
+export function callerIp(req) {
+  const last = (req.headers.get('x-forwarded-for') || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean).pop() || '';
+  if (last.length > 45 || !/^[0-9a-f:.]+$/.test(last)) return '';
+  return PRIVATE_ADDRESS.test(last) ? '' : last;
+}
+
+// Text for a log line: one line, no control characters, cut on whole characters.
+function short(text, max = 160) {
+  const s = Array.from(String(text || '').replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim());
+  return s.length > max ? `${s.slice(0, max - 1).join('')}…` : s.join('');
+}
+
+// An error for the log. Postgres quotes the offending value in some messages, and a value can be
+// something a person typed, so anything in quotes is left out. The constraint's name says enough.
+function errorText(e) {
+  if (e instanceof StorageError) return e.message;
+  const message = short(String((e && e.message) || e).replace(/"[^"]*"/g, '(…)'));
+  const more = [
+    e && e.code ? `code ${short(e.code, 20)}` : '',
+    short((e && (e.constraint_name || e.constraint)) || '', 80)
+  ].filter(Boolean);
+  return more.length ? `${message} (${more.join(', ')})` : message;
+}
+
+// Text made safe to store: no control characters (Postgres can't hold a NUL), no half of a split
+// emoji (JSON for Postgres can't hold one), and no space around it.
+const tidy = (text) => text.replace(/[\u0000-\u001f\u007f-\u009f]+/g, ' ').replace(/\p{Cs}/gu, '').trim();
+
+// Text a person typed, ready for the database. Real limits are the database's; this only stops
+// the absurd.
+function typed(value) {
+  if (value === null || value === undefined) return '';
+  if (typeof value !== 'string') throw new Refusal(400, 'input', UNREADABLE);
+  const text = tidy(value);
+  if (text.length > MAX_TEXT) throw new Refusal(400, 'input', "That's too much text. Shorten it and try again.");
+  return text;
+}
+
+// A whole number the page sent as text, or null.
+function whole(value) {
+  const n = typeof value === 'string' && /^[0-9]{1,9}$/.test(value.trim()) ? Number(value.trim()) : null;
+  return n !== null && n > 0 ? n : null;
+}
+
+// What the page says about the file the person picked, before it shrank the photo. Kept for the
+// review page's size pill. Only the five fields, each a sane size, or nothing at all.
+function originalOf(text) {
+  let o;
+  try {
+    o = JSON.parse(typeof text === 'string' ? text : '');
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const words = (v, max) => (typeof v === 'string' ? Array.from(tidy(v)).slice(0, max).join('') : null);
+  const count = (v) => (Number.isSafeInteger(v) && v >= 0 ? v : null);
+  const kept = { name: words(o.name, 120), width: count(o.width), height: count(o.height), bytes: count(o.bytes), type: words(o.type, 60) };
+  return Object.values(kept).some((v) => v !== null) ? kept : null;
+}
+
+const isFile = (v) => !!v && typeof v === 'object' && typeof v.arrayBuffer === 'function' && typeof v.size === 'number';
+const iso = (time) => (time ? new Date(time).toISOString() : null);
+
+export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(), log = console }) {
+  const get = (name) => (typeof env === 'function' ? env(name) : env[name]) || '';
+  const base = () => get('SUPABASE_URL').replace(/\/+$/, '');
+
+  function json(status, body) {
+    return new Response(JSON.stringify(body), { status, headers: HEADERS });
+  }
+
+  // A refusal from the database ({ ok: false, status, reason, error }) is the answer as it stands.
+  function refused(r) {
+    const status = Number.isInteger(r && r.status) && r.status >= 400 && r.status <= 499 ? r.status : 400;
+    return json(status, { error: (r && r.error) || 'Something went wrong. Try again.', reason: (r && r.reason) || 'input' });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Storage
+  // ---------------------------------------------------------------------------
+
+  // The project's secret key, which every Edge Function is given. Newer projects have it in
+  // SUPABASE_SECRET_KEYS (JSON, under "default"), and older ones in SUPABASE_SERVICE_ROLE_KEY.
+  let saidNoKey = false;
+  function storageKey() {
+    let key = '';
+    try {
+      const keys = JSON.parse(get('SUPABASE_SECRET_KEYS') || 'null');
+      if (keys && typeof keys.default === 'string') key = keys.default;
+    } catch {
+      key = '';
+    }
+    key = key || get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!key && !saidNoKey) {
+      saidNoKey = true;
+      log.error('photo-drop: no Storage key. The function needs SUPABASE_SECRET_KEYS or SUPABASE_SERVICE_ROLE_KEY to save photos.');
+    }
+    return key;
+  }
+
+  // One request to Storage. what names it for the log.
+  async function storage(what, method, path, { headers = {}, body = undefined, timeout = 15000 } = {}) {
+    const key = storageKey();
+    if (!key) throw new StorageError(`${what}: no Storage key`);
+    let res;
+    try {
+      res = await fetchImpl(`${base()}/storage/v1${path}`, {
+        method,
+        headers: { apikey: key, Authorization: `Bearer ${key}`, ...headers },
+        body,
+        signal: AbortSignal.timeout(timeout)
+      });
+    } catch {
+      throw new StorageError(`${what}: Storage didn't answer`);
+    }
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    if (!res.ok) {
+      const said = data && typeof data === 'object' ? [data.error, data.message].filter((x) => typeof x === 'string').join(': ') : '';
+      throw new StorageError(`${what}: HTTP ${res.status}${said ? ` ${short(said, 120)}` : ''}`);
+    }
+    return data;
+  }
+
+  const putFile = (path, bytes) =>
+    storage('put', 'POST', `/object/${BUCKET}/${path}`, {
+      headers: { 'Content-Type': 'image/jpeg', 'cache-control': 'max-age=31536000', 'x-upsert': 'true' },
+      body: bytes,
+      timeout: 30000
+    });
+
+  // Signed links for these paths, as a Map of path to full link. A path with no file is left out.
+  async function signLinks(paths) {
+    const links = new Map();
+    for (let i = 0; i < paths.length; i += SIGN_BATCH) {
+      const answer = await storage('sign', 'POST', `/object/sign/${BUCKET}`, {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expiresIn: SIGN_DAYS * 86400, paths: paths.slice(i, i + SIGN_BATCH) })
+      });
+      if (!Array.isArray(answer)) throw new StorageError('sign: an answer that made no sense');
+      for (const item of answer) {
+        if (item && typeof item.path === 'string' && typeof item.signedURL === 'string' && item.signedURL) {
+          links.set(item.path, `${base()}/storage/v1${item.signedURL.startsWith('/') ? '' : '/'}${item.signedURL}`);
+        }
+      }
+    }
+    return links;
+  }
+  const signedUntil = () => new Date(now() + SIGN_DAYS * DAY).toISOString();
+
+  // Takes files out of the bucket. A path with no file is not an error.
+  async function removeFiles(paths) {
+    for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+      await storage('remove', 'DELETE', `/object/${BUCKET}`, {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefixes: paths.slice(i, i + REMOVE_BATCH) })
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reading requests
+  // ---------------------------------------------------------------------------
+
+  // The pages send JSON as plain text, so the browser asks no permission first. Whatever the
+  // content type says, the body is JSON.
+  async function readJson(req) {
+    const tooLarge = () => new Refusal(413, 'size', 'That request is too large.');
+    if (Number(req.headers.get('content-length') || 0) > MAX_JSON_BYTES) throw tooLarge();
+    let body = null;
+    let text = '';
+    try {
+      text = await req.text();
+    } catch {
+      throw new Refusal(400, 'input', UNREADABLE);
+    }
+    if (text.length > MAX_JSON_BYTES) throw tooLarge();
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Refusal(400, 'input', UNREADABLE);
+    return body;
+  }
+
+  // Reads a form no larger than the limit, however its bytes arrive: a request doesn't have to
+  // say how long it is. The platform's own parser then takes the form apart.
+  async function readForm(req) {
+    const tooLarge = () => new Refusal(413, 'size', TOO_LARGE);
+    const broken = () => new Refusal(400, 'input', "That upload didn't arrive whole. Try again.");
+    if (Number(req.headers.get('content-length') || 0) > MAX_REQUEST_BYTES) throw tooLarge();
+    const type = req.headers.get('content-type') || '';
+    if (!/^multipart\/form-data\b/i.test(type) || !req.body) throw broken();
+    const chunks = [];
+    let size = 0;
+    const reader = req.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > MAX_REQUEST_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw tooLarge();
+        }
+        chunks.push(value);
+      }
+    } catch (e) {
+      throw e instanceof Refusal ? e : broken();
+    }
+    const all = new Uint8Array(size);
+    let at = 0;
+    for (const chunk of chunks) {
+      all.set(chunk, at);
+      at += chunk.byteLength;
+    }
+    try {
+      return await new Response(all, { headers: { 'content-type': type } }).formData();
+    } catch {
+      throw broken();
+    }
+  }
+
+  // A list of 1 to 200 photo ids from the review page.
+  function idsFrom(value) {
+    if (!Array.isArray(value) || value.length < 1 || value.length > 200 || !value.every((x) => typeof x === 'string' && UUID.test(x))) {
+      throw new Refusal(400, 'input', 'Choose between 1 and 200 photos at a time.');
+    }
+    return [...new Set(value.map((x) => x.toLowerCase()))];
+  }
+
+  // ---------------------------------------------------------------------------
+  // The upload page
+  // ---------------------------------------------------------------------------
+
+  async function open(req) {
+    const body = await readJson(req);
+    const r = await db.open(typed(body.code));
+    if (!r || !r.ok) return refused(r);
+    return json(200, {
+      ok: true,
+      open: r.open === true,
+      reason: r.reason || null,
+      closesAt: iso(r.closes_at),
+      perPerson: r.per_person,
+      limits: { minEdge: r.limits.min_edge, maxEdge: r.limits.max_edge, maxBytes: r.limits.max_bytes }
+    });
+  }
+
+  // The photo's bytes and real size, or a refusal. The size comes from the file itself. When the
+  // page's numbers are the same two the other way round, the phone was held sideways and the
+  // browser turned the picture upright, so the page's order is how it will show.
+  async function readPhoto(file, pageWidth, pageHeight) {
+    if (!isFile(file) || file.size < 4) throw new Refusal(400, 'photo', NOT_A_PHOTO);
+    if (file.size > MAX_PHOTO_BYTES) throw new Refusal(413, 'size', TOO_LARGE);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const size = jpegSize(bytes);
+    if (!size) throw new Refusal(400, 'photo', NOT_A_PHOTO);
+    if (Math.max(size.width, size.height) < MIN_EDGE) {
+      throw new Refusal(400, 'photo', 'That photo is too small to show on a big screen. Send a larger copy.');
+    }
+    if (Math.max(size.width, size.height) > MAX_SIDE || size.width * size.height > MAX_PIXELS) {
+      throw new Refusal(400, 'photo', 'That photo has too many pixels to show. Send a smaller copy.');
+    }
+    const turned = pageWidth === size.height && pageHeight === size.width;
+    return { bytes, width: turned ? pageWidth : size.width, height: turned ? pageHeight : size.height };
+  }
+
+  // The thumbnail's bytes, or null. A thumbnail that is too big or isn't a small JPEG is left
+  // out, and the photo is sent without one.
+  async function readThumb(file) {
+    if (!isFile(file) || file.size < 4 || file.size > MAX_THUMB_BYTES) return null;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const size = jpegSize(bytes);
+    return size && Math.max(size.width, size.height) <= MAX_THUMB_SIDE ? bytes : null;
+  }
+
+  // One photo. The form's text fields: code, name, email, caption (optional), width and height
+  // (the sent photo's pixels as the page measured them), original (JSON: the name, width, height,
+  // bytes, and type of the file the person picked), and website (the honeypot). Its files: photo
+  // (a JPEG) and thumb (optional, a small JPEG). Answers { ok, id, left }, where left is how many
+  // more this email may send.
+  async function send(req) {
+    const form = await readForm(req);
+    // A hidden field people never see. Something filled it in, so say thanks and keep nothing.
+    const website = form.get('website');
+    if (typeof website === 'string' ? website.trim() !== '' : website !== null) {
+      return json(200, { ok: true, id: null, left: PRETEND_LEFT });
+    }
+    const text = (name) => {
+      const v = form.get(name);
+      return typed(typeof v === 'string' || v === null ? v : '');
+    };
+    const fields = { code: text('code'), name: text('name'), email: text('email'), caption: text('caption') };
+    const photo = await readPhoto(form.get('photo'), whole(form.get('width')), whole(form.get('height')));
+    const thumb = await readThumb(form.get('thumb'));
+
+    if (!storageKey()) return json(502, { error: "We couldn't save that photo. Try again.", reason: 'storage' });
+
+    // The database checks the code, what was typed, and every limit, and holds a place.
+    const held = await db.reserve({
+      ...fields,
+      width: photo.width,
+      height: photo.height,
+      bytes: photo.bytes.length + (thumb ? thumb.length : 0),
+      hasThumb: !!thumb,
+      ip: callerIp(req),
+      original: originalOf(form.get('original'))
+    });
+    if (!held || !held.ok) return refused(held);
+
+    const paths = [held.path, held.thumb_path].filter(Boolean);
+    try {
+      await putFile(held.path, photo.bytes);
+      if (thumb && held.thumb_path) await putFile(held.thumb_path, thumb);
+      const links = await signLinks(paths);
+      if (!links.get(held.path)) throw new StorageError('sign: no link for the photo');
+      const saved = await db.stored(held.id, links.get(held.path), held.thumb_path ? links.get(held.thumb_path) || null : null, signedUntil());
+      if (!saved) throw new Error('its row was gone before the files were in');
+    } catch (e) {
+      const cleared = await giveUp(held.id, paths);
+      log.error(`photo-drop: photo ${held.id} was not saved: ${errorText(e)}${cleared ? '' : '. Its files may still be in the bucket'}`);
+      return json(502, { error: "We couldn't save that photo. Try again.", reason: 'storage' });
+    }
+    return json(200, { ok: true, id: held.id, left: held.left });
+  }
+
+  // A send that failed partway: take out whatever went in, including a file whose put timed out
+  // but landed, and give the sender their place back. False when the files couldn't be removed.
+  async function giveUp(id, paths) {
+    let cleared = true;
+    try {
+      await removeFiles(paths);
+    } catch {
+      cleared = false;
+    }
+    try {
+      await db.abandon(id);
+    } catch {
+      // The row stays 'sending', and the review page's tidy-up removes it with its files.
+    }
+    return cleared;
+  }
+
+  // ---------------------------------------------------------------------------
+  // The review page
+  // ---------------------------------------------------------------------------
+
+  const settingsOut = (s) => ({
+    open: s.open === true,
+    closesAt: iso(s.closes_at),
+    state: s.state,
+    perPerson: s.per_person,
+    maxPhotos: s.max_photos,
+    maxBytes: s.max_bytes,
+    photos: s.photos,
+    bytes: s.bytes
+  });
+
+  const photoOut = (p) => ({
+    id: p.id,
+    status: p.status,
+    name: p.name,
+    email: p.email,
+    caption: p.caption ?? null,
+    width: p.width,
+    height: p.height,
+    bytes: p.bytes,
+    original: p.original ?? null,
+    createdAt: iso(p.created_at),
+    reviewedAt: iso(p.reviewed_at),
+    reviewedBy: p.reviewed_by ?? null,
+    url: p.url,
+    thumbUrl: p.thumb_url || p.url
+  });
+
+  // Removes sends that never finished, with their files. Nothing here can fail the list.
+  async function clearStale() {
+    let paths = [];
+    try {
+      paths = await db.stale();
+      if (paths.length) await removeFiles(paths);
+    } catch (e) {
+      // Their rows are gone by now, so this line is the only record of files left in the bucket.
+      log.warn(`photo-drop: tidying up unfinished sends failed${paths.length ? ` with ${paths.length} files left in the bucket` : ''}: ${errorText(e)}`);
+    }
+  }
+
+  // Renews the links that run out within 3 days. True when any changed.
+  async function renewLinks() {
+    try {
+      const due = await db.resignDue();
+      if (!due.length) return false;
+      const links = await signLinks(due.flatMap((d) => [d.path, d.thumb_path]).filter(Boolean));
+      const until = signedUntil();
+      const fresh = due.filter((d) => links.get(d.path)).map((d) => ({
+        id: d.id,
+        url: links.get(d.path),
+        thumb_url: d.thumb_path ? links.get(d.thumb_path) || null : null,
+        signed_until: until
+      }));
+      if (fresh.length < due.length) log.warn(`photo-drop: ${due.length - fresh.length} photos have no file in the bucket`);
+      return fresh.length ? (await db.resignSave(fresh)) > 0 : false;
+    } catch (e) {
+      log.warn(`photo-drop: renewing the photo links failed: ${errorText(e)}`);
+      return false;
+    }
+  }
+
+  // The list checks the code. Only then does the tidy-up run, and the list is read again when the
+  // tidy-up changed a link in it.
+  async function reviewList(code) {
+    let list = await db.reviewList(code);
+    if (!list || !list.ok) return refused(list);
+    await clearStale();
+    if (await renewLinks()) {
+      list = await db.reviewList(code);
+      if (!list || !list.ok) return refused(list);
+    }
+    return json(200, { ok: true, settings: settingsOut(list.settings), counts: list.counts, photos: list.photos.map(photoOut) });
+  }
+
+  // The open switch and the deadline. Only the keys the page sent are changed.
+  async function reviewSettings(code, body) {
+    const changes = {};
+    if ('open' in body) {
+      if (typeof body.open !== 'boolean') throw new Refusal(400, 'input', 'Choose open or closed.');
+      changes.open = body.open;
+    }
+    if ('closesAt' in body) {
+      // A time must say which zone it is in (a Z or an offset on the end). Without one, noon on
+      // an organizer's laptop would be read as noon in Greenwich.
+      const zoned = typeof body.closesAt === 'string' && /(z|[+-][0-9]{2}:?[0-9]{2})$/i.test(body.closesAt.trim());
+      const time = zoned ? Date.parse(body.closesAt.trim()) : NaN;
+      if (body.closesAt !== null && !Number.isFinite(time)) {
+        throw new Refusal(400, 'input', "That date and time didn't read right. Choose them again.");
+      }
+      changes.closes_at = body.closesAt === null ? null : new Date(time).toISOString();
+    }
+    const r = await db.reviewSettings(code, changes);
+    if (!r || !r.ok) return refused(r);
+    return json(200, { ok: true, settings: settingsOut(r.settings) });
+  }
+
+  // Deletes photos for good: the files first, then the rows, so a failure partway leaves rows
+  // that can be deleted again rather than files nobody can find. ids null means everything.
+  async function deletePhotos(code, ids) {
+    const found = await db.reviewPaths(code, ids);
+    if (!found || !found.ok) return refused(found);
+    try {
+      await removeFiles(found.paths);
+    } catch (e) {
+      log.error(`photo-drop: deleting ${found.ids.length} photos stopped at their files: ${errorText(e)}`);
+      return json(502, { error: "We couldn't delete those photos. Try again.", reason: 'storage' });
+    }
+    if (!found.ids.length) return json(200, { ok: true, deleted: 0 });
+    const done = await db.reviewDelete(code, found.ids);
+    if (!done || !done.ok) return refused(done);
+    return json(200, { ok: true, deleted: done.deleted });
+  }
+
+  async function review(req) {
+    const body = await readJson(req);
+    const code = typed(body.code);
+    const action = typeof body.action === 'string' ? body.action : '';
+    if (action === 'list') return reviewList(code);
+    if (action === 'set') {
+      const r = await db.reviewSet(code, idsFrom(body.ids), typed(body.status), typed(body.by));
+      return r && r.ok ? json(200, { ok: true, changed: r.changed }) : refused(r);
+    }
+    if (action === 'caption') {
+      if (typeof body.id !== 'string' || !UUID.test(body.id)) throw new Refusal(400, 'input', UNREADABLE);
+      const r = await db.reviewCaption(code, body.id.toLowerCase(), typed(body.caption));
+      return r && r.ok ? json(200, { ok: true }) : refused(r);
+    }
+    if (action === 'settings') return reviewSettings(code, body);
+    if (action === 'delete') return deletePhotos(code, idsFrom(body.ids));
+    if (action === 'empty') {
+      if (body.confirm !== 'DELETE') throw new Refusal(400, 'input', 'Type DELETE to delete every photo.');
+      return deletePhotos(code, null);
+    }
+    throw new Refusal(400, 'input', UNREADABLE);
+  }
+
+  // ---------------------------------------------------------------------------
+  // The slideshow
+  // ---------------------------------------------------------------------------
+
+  async function screen(req) {
+    const body = await readJson(req);
+    const r = await db.screenList(typed(body.code));
+    if (!r || !r.ok) return refused(r);
+    return json(200, {
+      ok: true,
+      photos: r.photos.map((p) => ({ id: p.id, url: p.url, thumbUrl: p.thumb_url || p.url, width: p.width, height: p.height, caption: p.caption ?? null }))
+    });
+  }
+
+  return async function handle(req) {
+    // Browsers ask first before some requests. Every route gives the same answer.
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: HEADERS });
+    const route = new URL(req.url).pathname.replace(/\/+$/, '').split('/').pop();
+    try {
+      if (req.method === 'POST') {
+        if (route === 'open') return await open(req);
+        if (route === 'send') return await send(req);
+        if (route === 'review') return await review(req);
+        if (route === 'screen') return await screen(req);
+      }
+      return json(404, { error: 'Not found.' });
+    } catch (e) {
+      if (e instanceof Refusal) return json(e.status, { error: e.message, reason: e.reason });
+      // The route is named only when it is one of ours: anything else is text a stranger typed.
+      log.error(`photo-drop: ${ROUTES.has(route) ? route : 'a request'} failed: ${errorText(e)}`);
+      return json(500, { error: 'Something went wrong. Try again.' });
+    }
+  };
+}

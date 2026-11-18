@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Send your photos | School Daze | Gamma Iota Lambda</title>
+  <meta name="description" content="Send photos from your college days for the big screens at School Daze, Saturday, Nov. 21 at The Ivory on Park." />
+  <!-- For ticket buyers, who get the link by email: kept out of search results, the sitemap, and the nav. -->
+  <meta name="robots" content="noindex, nofollow" />
+  <!-- The link carries the upload code. Don't pass it along to any other site. -->
+  <meta name="referrer" content="no-referrer" />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="School Daze: send your photos" />
+  <meta property="og:description" content="Send photos from your college days and see them on the big screens at the party." />
+  <meta property="og:image" content="https://www.gil1906.org/assets/photo-drop/school-daze-flyer.jpg" />
+  <link rel="icon" type="image/png" href="../favicon.png" />
+  <meta name="theme-color" content="#0A0A0A" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Graduate&family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../assets/photo-drop/drop.css">
+  <link rel="stylesheet" href="../assets/photo-drop/photos.css">
+</head>
+<body class="pd">
+<div class="pd-wrap">
+
+  <main id="ph-main">
+
+    <header class="ph-hero">
+      <img class="ph-flyer" src="../assets/photo-drop/school-daze-flyer.jpg" width="1080" height="1440" alt="The School Daze flyer" decoding="async" />
+      <div class="ph-hero-text">
+        <p class="pd-eyebrow">Gamma Iota Lambda presents</p>
+        <h1 class="pd-title">School Daze</h1>
+        <p class="ph-when">Saturday, Nov. 21 · The Ivory on Park</p>
+      </div>
+    </header>
+
+    <div id="ph-ask">
+      <p class="pd-lede">Send photos from your college days: partying, class, graduation, stepping. See them on the big screens at the party.</p>
+      <p class="ph-deadline" id="ph-deadline" hidden></p>
+    </div>
+
+    <noscript><p class="pd-note">This page needs JavaScript to send photos. Turn it on and reload the page.</p></noscript>
+
+    <!-- One of the sections below shows at a time. assets/photo-drop/photos.js decides which. -->
+
+    <!-- Hidden until a script shows it, so a browser with scripts off sees only the line above. -->
+    <section class="pd-card" id="ph-loading" hidden>
+      <p class="ph-plain" id="ph-loading-text" role="status">Checking your link.</p>
+    </section>
+
+    <!-- No code in the address, or a code that isn't right. -->
+    <section class="pd-card" id="ph-code" hidden>
+      <h2 class="pd-h2" id="ph-code-title" tabindex="-1" data-heading>Enter the code from your email</h2>
+      <p class="ph-plain" id="ph-code-lead">The link in your School Daze email fills this in for you. No link? Type the code from the email here.</p>
+      <form id="ph-code-form" novalidate>
+        <div class="pd-field">
+          <label for="ph-code-input">Code</label>
+          <p class="pd-note bad ph-field-err" id="ph-code-err" role="alert" hidden></p>
+          <input id="ph-code-input" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="80" />
+        </div>
+        <div class="pd-btnrow">
+          <button class="pd-btn primary block" type="submit" id="ph-code-go">Continue</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- The server didn't answer. -->
+    <section class="pd-card" id="ph-trouble" hidden>
+      <h2 class="pd-h2" tabindex="-1" data-heading>This page didn't load</h2>
+      <p class="ph-plain" id="ph-trouble-text">We couldn't reach the chapter's server. Check your connection and try again.</p>
+      <div class="pd-btnrow">
+        <button class="pd-btn primary block" type="button" id="ph-retry">Try again</button>
+      </div>
+    </section>
+
+    <section class="pd-card" id="ph-closed" hidden>
+      <h2 class="pd-h2" tabindex="-1" data-heading>Photo uploads have closed</h2>
+      <p class="ph-plain">Thank you to everyone who sent photos. Look for them on the big screens at the party.</p>
+    </section>
+
+    <section class="pd-card" id="ph-full" hidden>
+      <h2 class="pd-h2" tabindex="-1" data-heading>We have all the photos we can take</h2>
+      <p class="ph-plain">Thank you to everyone who sent photos. Look for them on the big screens at the party.</p>
+    </section>
+
+    <!-- Shown with the two sections above, so the page always says where to go next. -->
+    <section class="pd-card ph-party" id="ph-party" hidden>
+      <p class="pd-eyebrow">See you at the party</p>
+      <p class="ph-party-when"><span>Saturday, Nov. 21,</span> <span>8 PM to 2 AM</span></p>
+      <p class="ph-plain">The Ivory on Park<br />12 Park St, Brooklyn</p>
+      <div class="pd-btnrow">
+        <a class="pd-btn" href="https://www.google.com/maps/search/?api=1&amp;query=The+Ivory+on+Park%2C+12+Park+St%2C+Brooklyn%2C+NY+11206" target="_blank" rel="noopener noreferrer">Get directions</a>
+      </div>
+    </section>
+
+    <form id="ph-form" novalidate hidden>
+
+      <section class="pd-card">
+        <h2 class="pd-h2 ph-step"><span class="ph-num">1</span> About you</h2>
+        <div class="pd-field">
+          <label for="ph-name">Your name</label>
+          <p class="pd-note bad ph-field-err" id="ph-name-err" role="alert" hidden></p>
+          <input id="ph-name" type="text" autocomplete="name" autocapitalize="words" maxlength="80" required />
+        </div>
+        <div class="pd-field">
+          <label for="ph-email">Email</label>
+          <p class="pd-note bad ph-field-err" id="ph-email-err" role="alert" hidden></p>
+          <input id="ph-email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="120" required aria-describedby="ph-email-hint" />
+          <p class="pd-hint" id="ph-email-hint">The email you bought your ticket with.</p>
+        </div>
+      </section>
+
+      <section class="pd-card" id="ph-step-photos">
+        <h2 class="pd-h2 ph-step"><span class="ph-num">2</span> Your photos</h2>
+
+        <div class="ph-tips">
+          <h3 class="ph-tips-title">How to send a good photo</h3>
+          <ul>
+            <li><strong>Send the original file,</strong> the biggest copy you have.</li>
+            <li><strong>Wide (landscape) photos</strong> fill the screen best.</li>
+            <li><strong>No screenshots.</strong> Avoid copies saved from Instagram, Facebook or a text message, which are shrunk.</li>
+          </ul>
+          <details>
+            <summary>More tips, and how to send a printed photo</summary>
+            <ul>
+              <li><strong>A printed photo?</strong> Lay it flat near a window, with no flash. Hold your phone straight above it and fill the frame. Or scan it at 600 dpi. Google's free PhotoScan app removes glare.</li>
+              <li>JPEG, PNG and iPhone photos all work.</li>
+              <li>This page checks each photo's size and tells you how it will look.</li>
+              <li>You can send up to <span data-per-person>5</span> photos. Large files are fine: this page shrinks each one to 6 MB or less before it sends.</li>
+              <li>Every photo is reviewed before it goes on screen, so keep it party-appropriate.</li>
+            </ul>
+          </details>
+        </div>
+
+        <p class="pd-note bad ph-field-err" id="ph-photos-err" role="alert" hidden></p>
+        <input class="pd-sr ph-file" id="ph-files" type="file" accept="image/*" multiple aria-describedby="ph-room" />
+        <label class="pd-btn primary block ph-choose" for="ph-files" id="ph-choose">Choose photos</label>
+        <p class="pd-hint ph-room" id="ph-room">Up to 5 photos.</p>
+        <p class="pd-note" id="ph-pick-note" role="status" hidden></p>
+
+        <ul class="ph-cards" id="ph-cards" aria-label="The photos you chose"></ul>
+      </section>
+
+      <section class="pd-card">
+        <h2 class="pd-h2 ph-step"><span class="ph-num">3</span> Send</h2>
+        <label class="ph-consent" for="ph-consent">
+          <input id="ph-consent" type="checkbox" required />
+          <span>These are my photos to share, and the chapter may show them on screen at School Daze.</span>
+        </label>
+
+        <!-- A box people never see and never fill in. Programs that fill in every box give themselves away with it. -->
+        <div class="pd-hp" aria-hidden="true">
+          <label for="ph-extra">Leave this box empty</label>
+          <input id="ph-extra" type="text" tabindex="-1" autocomplete="off" />
+        </div>
+
+        <p class="pd-note bad" id="ph-err" role="alert" hidden></p>
+        <button class="pd-btn primary block ph-send" type="submit" id="ph-send">Send photos</button>
+        <p class="ph-status" id="ph-status" role="status" aria-live="polite"></p>
+      </section>
+
+    </form>
+
+    <section class="pd-card ph-done" id="ph-done" hidden>
+      <h2 class="pd-title ph-done-title" id="ph-done-title" tabindex="-1" data-heading><span>Got them.</span> <span>Thank you!</span></h2>
+      <p class="pd-lede" id="ph-done-count"></p>
+      <p class="pd-note" id="ph-done-note" hidden></p>
+      <p class="ph-plain pd-muted">Every photo is reviewed before it goes on screen. See you Saturday, Nov. 21, at The Ivory on Park.</p>
+      <div class="pd-btnrow">
+        <button class="pd-btn primary block" type="button" id="ph-more">Send more</button>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="pd-foot" id="ph-foot">
+    <p><a href="https://www.gil1906.org/">Gamma Iota Lambda Chapter, Alpha Phi Alpha Fraternity, Inc.</a></p>
+    <p>Questions? Reply to your ticket email.</p>
+  </footer>
+
+</div>
+
+  <script>
+    // If the page's own script never arrives (a weak signal, a very old browser), say so
+    // instead of leaving "Checking your link." up forever.
+    document.getElementById('ph-loading').hidden = false;
+    setTimeout(function () {
+      var line = document.getElementById('ph-loading-text');
+      if (line && !window.GIL_DROP_STARTED) line.textContent = "This page didn't finish loading. Check your connection and reload it.";
+    }, 15000);
+  </script>
+  <script src="../assets/calendar/config.js"></script>
+  <script type="module" src="../assets/photo-drop/photos.js"></script>
+</body>
+</html>
