@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { createDb } from './harness.mjs';
 import { Storage } from './storage-sim.mjs';
 import {
-  createHandler, makeDb, jpegSize, callerIp, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, MAX_THUMB_BYTES, MIN_EDGE, REMOVE_BATCH, SIGN_DAYS
+  createHandler, makeDb, jpegSize, callerIp, DRAIN_MAX, MAX_PHOTO_BYTES, MAX_REQUEST_BYTES, MAX_THUMB_BYTES, MIN_EDGE, REMOVE_BATCH, SIGN_DAYS
 } from '../../supabase/functions/photo-drop/drop.js';
 
 const BASE = 'https://uqfoifrpyysqjvwtkgia.supabase.co';
@@ -909,4 +909,60 @@ test('the size of a JPEG is read from its frame header, and anything odd is not 
     const size = jpegSize(copy);
     assert.ok(size === null || (Number.isInteger(size.width) && size.width > 0 && Number.isInteger(size.height) && size.height > 0));
   }
+});
+
+test('every request is read to its end before it is answered, even one too large to use', async () => {
+  const s = await setup();
+  // A body that arrives in pieces, with a count of how much of it was taken.
+  const stream = (total, piece = 65536) => {
+    const seen = { bytes: 0, closed: false };
+    let left = total;
+    const body = new ReadableStream({
+      pull(controller) {
+        if (left <= 0) {
+          seen.closed = true;
+          return controller.close();
+        }
+        const n = Math.min(piece, left);
+        left -= n;
+        seen.bytes += n;
+        controller.enqueue(new Uint8Array(n).fill(0x41));
+      }
+    });
+    return { body, seen };
+  };
+  const ask = async (route, total, headers = {}) => {
+    const { body, seen } = stream(total);
+    const res = await s.answer(await s.handler(new Request(`${FN}/${route}`, { method: 'POST', body, headers, duplex: 'half' })));
+    return { ...res, seen };
+  };
+
+  // An address that isn't one of ours, with 300 KB behind it.
+  const stray = await ask('nothing', 300000);
+  assert.equal(stray.status, 404);
+  assert.deepEqual([stray.seen.bytes, stray.seen.closed], [300000, true]);
+
+  // JSON far past the limit: refused, and read all the same.
+  const long = await ask('open', 400000, { 'content-type': 'text/plain;charset=UTF-8' });
+  assert.equal(long.status, 413);
+  assert.deepEqual([long.seen.bytes, long.seen.closed], [400000, true]);
+
+  // A form that says it is too large, and one that doesn't say and turns out to be.
+  const type = { 'content-type': 'multipart/form-data; boundary=x' };
+  const said = await ask('send', MAX_REQUEST_BYTES + 100000, { ...type, 'content-length': String(MAX_REQUEST_BYTES + 100000) });
+  assert.deepEqual([said.status, said.body.reason, said.seen.bytes, said.seen.closed], [413, 'size', MAX_REQUEST_BYTES + 100000, true]);
+  const unsaid = await ask('send', MAX_REQUEST_BYTES + 100000, type);
+  assert.deepEqual([unsaid.status, unsaid.body.reason, unsaid.seen.bytes, unsaid.seen.closed], [413, 'size', MAX_REQUEST_BYTES + 100000, true]);
+
+  // Not a form at all: refused once the whole of it has arrived.
+  const plain = await ask('send', 200000, { 'content-type': 'application/octet-stream' });
+  assert.deepEqual([plain.status, plain.seen.bytes, plain.seen.closed], [400, 200000, true]);
+
+  // Without end is not read without end.
+  const endless = await ask('nothing', DRAIN_MAX + 5000000);
+  assert.equal(endless.status, 404);
+  assert.ok(endless.seen.bytes > DRAIN_MAX && endless.seen.bytes < DRAIN_MAX + 5000000 && !endless.seen.closed);
+
+  assert.equal((await s.rows()).length, 0);
+  assert.equal(s.storage.calls.length, 0);
 });

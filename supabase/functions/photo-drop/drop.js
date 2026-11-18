@@ -26,6 +26,8 @@ export const MAX_PIXELS = 50000000;
 export const MAX_THUMB_SIDE = 2000;
 export const MAX_TEXT = 2000; // anything longer isn't a name, an email, or a caption
 export const MAX_JSON_BYTES = 65536;
+// A body is read to its end even when it is too large to use, up to this much. See readBody.
+export const DRAIN_MAX = 40000000;
 export const SIGN_DAYS = 14; // how long a signed link lasts; the review list renews them
 export const REMOVE_BATCH = 100;
 export const SIGN_BATCH = 200;
@@ -198,6 +200,39 @@ function originalOf(text) {
   return Object.values(kept).some((v) => v !== null) ? kept : null;
 }
 
+// Reads a request's body to its end and returns up to `keep` bytes of it. `over` says there was
+// more. An answer sent while the body is still arriving can hang or be lost on the sender's side
+// (seen on this platform with anything past about 100 KB), so every answer waits for the whole
+// body, even one that is too large to use. Past DRAIN_MAX the rest is dropped unread.
+export async function readBody(req, keep) {
+  if (!req.body) return { bytes: new Uint8Array(0), over: false };
+  const reader = req.body.getReader();
+  let chunks = [];
+  let size = 0;
+  let over = false;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (!over && size > keep) {
+      over = true;
+      chunks = [];
+    }
+    if (!over) chunks.push(value);
+    if (size > DRAIN_MAX) {
+      await reader.cancel().catch(() => {});
+      break;
+    }
+  }
+  const bytes = new Uint8Array(over ? 0 : size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return { bytes, over };
+}
+
 const isFile = (v) => !!v && typeof v === 'object' && typeof v.arrayBuffer === 'function' && typeof v.size === 'number';
 const iso = (time) => (time ? new Date(time).toISOString() : null);
 
@@ -309,18 +344,16 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
   // The pages send JSON as plain text, so the browser asks no permission first. Whatever the
   // content type says, the body is JSON.
   async function readJson(req) {
-    const tooLarge = () => new Refusal(413, 'size', 'That request is too large.');
-    if (Number(req.headers.get('content-length') || 0) > MAX_JSON_BYTES) throw tooLarge();
     let body = null;
-    let text = '';
+    let read;
     try {
-      text = await req.text();
+      read = await readBody(req, MAX_JSON_BYTES);
     } catch {
       throw new Refusal(400, 'input', UNREADABLE);
     }
-    if (text.length > MAX_JSON_BYTES) throw tooLarge();
+    if (read.over) throw new Refusal(413, 'size', 'That request is too large.');
     try {
-      body = JSON.parse(text);
+      body = JSON.parse(new TextDecoder().decode(read.bytes));
     } catch {
       body = null;
     }
@@ -329,38 +362,22 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
   }
 
   // Reads a form no larger than the limit, however its bytes arrive: a request doesn't have to
-  // say how long it is. The platform's own parser then takes the form apart.
+  // say how long it is. A form that says it is too large is read to its end without being kept.
+  // The platform's own parser then takes the form apart.
   async function readForm(req) {
-    const tooLarge = () => new Refusal(413, 'size', TOO_LARGE);
     const broken = () => new Refusal(400, 'input', "That upload didn't arrive whole. Try again.");
-    if (Number(req.headers.get('content-length') || 0) > MAX_REQUEST_BYTES) throw tooLarge();
+    const declared = Number(req.headers.get('content-length') || 0);
+    let read;
+    try {
+      read = await readBody(req, declared > MAX_REQUEST_BYTES ? 0 : MAX_REQUEST_BYTES);
+    } catch {
+      throw broken();
+    }
+    if (read.over || declared > MAX_REQUEST_BYTES) throw new Refusal(413, 'size', TOO_LARGE);
     const type = req.headers.get('content-type') || '';
-    if (!/^multipart\/form-data\b/i.test(type) || !req.body) throw broken();
-    const chunks = [];
-    let size = 0;
-    const reader = req.body.getReader();
+    if (!/^multipart\/form-data\b/i.test(type) || !read.bytes.length) throw broken();
     try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        size += value.byteLength;
-        if (size > MAX_REQUEST_BYTES) {
-          await reader.cancel().catch(() => {});
-          throw tooLarge();
-        }
-        chunks.push(value);
-      }
-    } catch (e) {
-      throw e instanceof Refusal ? e : broken();
-    }
-    const all = new Uint8Array(size);
-    let at = 0;
-    for (const chunk of chunks) {
-      all.set(chunk, at);
-      at += chunk.byteLength;
-    }
-    try {
-      return await new Response(all, { headers: { 'content-type': type } }).formData();
+      return await new Response(read.bytes, { headers: { 'content-type': type } }).formData();
     } catch {
       throw broken();
     }
@@ -652,8 +669,12 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
         if (route === 'review') return await review(req);
         if (route === 'screen') return await screen(req);
       }
+      // Not one of ours, but its body is still read to the end before the answer goes out.
+      await readBody(req, 0).catch(() => {});
       return json(404, { error: 'Not found.' });
     } catch (e) {
+      // A failure before the body was read (none today) would otherwise answer too early.
+      if (!req.bodyUsed) await readBody(req, 0).catch(() => {});
       if (e instanceof Refusal) return json(e.status, { error: e.message, reason: e.reason });
       // The route is named only when it is one of ours: anything else is text a stranger typed.
       log.error(`photo-drop: ${ROUTES.has(route) ? route : 'a request'} failed: ${errorText(e)}`);
