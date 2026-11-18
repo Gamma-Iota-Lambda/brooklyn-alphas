@@ -10,7 +10,7 @@ const MAX_PATHS = 1000; // Storage's own limit on a sign or remove request
 export class Storage {
   // url: the project's address (SUPABASE_URL). key: the secret key the function must send.
   // maxBytes and types: the bucket's rules, as the migration sets them. now: the clock links
-  // run out by.
+  // run out by, and files are dated by.
   constructor({ url, key, bucket = 'photo-drop', maxBytes = 8388608, types = ['image/jpeg'], now = () => Date.now() }) {
     this.url = String(url).replace(/\/+$/, '');
     this.key = key;
@@ -19,7 +19,7 @@ export class Storage {
     this.types = types;
     this.now = now;
     this.calls = [];
-    this.files = new Map(); // path -> { bytes, type, cacheControl }
+    this.files = new Map(); // path -> { bytes, type, cacheControl, created }
     this.signed = new Map(); // token -> { path, until }
     // Storage not answering at all.
     this.down = false;
@@ -37,9 +37,10 @@ export class Storage {
     return file ? file.bytes : null;
   }
 
-  // Puts a file in place without going through the function, for setting a test up.
+  // Puts a file in place without going through the function, for setting a test up. Like a file
+  // the function puts, it is dated by the clock as it stands.
   seed(path, bytes, type = 'image/jpeg') {
-    this.files.set(path, { bytes: Buffer.from(bytes), type, cacheControl: 'no-cache' });
+    this.files.set(path, { bytes: Buffer.from(bytes), type, cacheControl: 'no-cache', created: this.now() });
   }
 
   paths() {
@@ -110,7 +111,8 @@ export class Storage {
     }
 
     // List: POST /object/list/<bucket> { prefix, limit, offset }. Answers with the files directly
-    // in that folder, by name, the way Storage does (a name, and an id that a folder would lack).
+    // in that folder, by name, the way Storage does (a name, an id that a folder would lack, and
+    // when the file was put there).
     if (method === 'POST' && rest.startsWith('list/')) {
       if (rest !== `list/${this.bucket}`) return noBucket();
       const asked = fromJson();
@@ -120,7 +122,8 @@ export class Storage {
       const names = this.paths().filter((path) => path.startsWith(folder) && !path.slice(folder.length).includes('/')).map((path) => path.slice(folder.length));
       const from = Number.isInteger(asked.offset) ? asked.offset : 0;
       const to = from + (Number.isInteger(asked.limit) ? asked.limit : 100);
-      return reply(200, names.slice(from, to).map((name) => ({ name, id: randomUUID(), metadata: { mimetype: 'image/jpeg' } })));
+      return reply(200, names.slice(from, to).map((name) => (
+        { name, id: randomUUID(), created_at: new Date(this.files.get(folder + name).created).toISOString(), metadata: { mimetype: 'image/jpeg' } })));
     }
 
     // Remove: DELETE /object/<bucket> { prefixes }. Answers with the files that were there.
@@ -146,7 +149,7 @@ export class Storage {
       }
       if (body.length > this.maxBytes) return error(413, 'Payload too large', 'The object exceeded the maximum allowed size');
       if (this.files.has(path) && headers.get('x-upsert') !== 'true') return error(409, 'Duplicate', 'The resource already exists');
-      this.files.set(path, { bytes: body, type, cacheControl: headers.get('cache-control') || 'no-cache' });
+      this.files.set(path, { bytes: body, type, cacheControl: headers.get('cache-control') || 'no-cache', created: this.now() });
       return reply(200, { Id: randomUUID(), Key: `${this.bucket}/${path}` });
     }
 

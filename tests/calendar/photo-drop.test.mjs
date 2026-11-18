@@ -274,8 +274,8 @@ test('the same photo sent again from the same email is kept once, and is answere
   assert.deepEqual(await reserve(h, { sha: print('a'), name: ' ', caption: 'x'.repeat(81), width: 400, height: 300, bytes: null }), same);
   // The link still comes first.
   assert.deepEqual(await reserve(h, { sha: print('a'), code: 'nope' }), { ok: false, status: 403, reason: 'code', error: WRONG_LINK });
-  // Whatever the organizers have made of the photo since.
-  for (const status of ['approved', 'rejected', 'waiting']) {
+  // Whatever the organizers have made of the photo since: approved, sent back, then rejected.
+  for (const status of ['approved', 'waiting', 'rejected']) {
     assert.deepEqual(await set(h, [first.id], status), { ok: true, changed: 1 });
     assert.deepEqual(await reserve(h, { sha: print('a') }), same, status);
   }
@@ -319,9 +319,10 @@ test('the same photo sent again from the same email is kept once, and is answere
   assert.notEqual(anew.id, first.id);
 });
 
-test('a repeat of a photo still on its way in is asked to wait, and after 15 minutes it goes through as new', async () => {
+test('a repeat of a photo still on its way in is asked to wait for 2 minutes, and then the unfinished copy is dropped and the photo taken as new', async () => {
   const h = await ready();
   const busy = { ok: false, status: 409, reason: 'busy', error: 'That photo is still on its way in. Give it a minute, then try again.' };
+  const statuses = async () => (await rows(h)).map((r) => [r.id, r.status]);
   const first = await reserve(h, { sha: print('a') });
   // Sent twice at once, or sent again while the first is still going into the bucket.
   assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
@@ -331,27 +332,49 @@ test('a repeat of a photo still on its way in is asked to wait, and after 15 min
   assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
   assert.deepEqual(await reserve(h, { sha: print('a'), code: 'nope' }), { ok: false, status: 403, reason: 'code', error: WRONG_LINK });
   await setting(h, 'drop_open', 'true');
-  await h.setNow(minutes(14));
+  await h.setNow('2026-11-19T15:01:59Z');
   assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
-  assert.deepEqual((await rows(h)).map((r) => [r.id, r.status]), [[first.id, 'sending']], 'being asked to wait saves nothing');
+  assert.deepEqual(await statuses(), [[first.id, 'sending']], 'being asked to wait saves nothing, and drops nothing');
 
-  // 15 minutes after the first: it never finished, so it is passed over and the photo is taken.
-  await h.setNow(minutes(15));
+  // 2 minutes after the first: a real send takes seconds, so that one was cut off partway. It
+  // is dropped, the photo is taken as new, and one row is all there is of it.
+  await h.setNow(minutes(2));
   const second = await reserve(h, { sha: print('a') });
   assert.deepEqual(second, { ok: true, id: second.id, path: `photos/${second.id}.jpg`, thumb_path: `thumbs/${second.id}.jpg`, left: 4 });
   assert.notEqual(second.id, first.id);
+  assert.deepEqual(await statuses(), [[second.id, 'sending']]);
   // Now the second is the one on its way in. Once it arrives, it is the one a repeat hears about.
   assert.deepEqual(await reserve(h, { sha: print('a') }), busy);
   assert.equal(await stored(h, second), true);
   assert.deepEqual(await reserve(h, { sha: print('a') }), { ok: true, duplicate: true, id: second.id, left: 4 });
-  assert.equal((await rows(h)).length, 2);
+  // A copy that arrived is never dropped, however long ago.
+  await h.setNow(minutes(60));
+  assert.deepEqual(await reserve(h, { sha: print('a') }), { ok: true, duplicate: true, id: second.id, left: 4 });
+  assert.deepEqual(await statuses(), [[second.id, 'waiting']]);
+
+  // Only the unfinished copy of this very photo, from this email, is dropped. Another photo of
+  // hers that never finished, someone else's unfinished copy of the same photo, and one with no
+  // fingerprint all stay, and hold their places for 15 minutes as before.
+  const another = await reserve(h, { sha: print('b') });
+  const bare = await reserve(h, { sha: null });
+  const cut = await reserve(h, { sha: print('c') });
+  assert.equal(cut.left, 1);
+  await h.setNow(minutes(61));
+  const his = await reserve(h, { sha: print('c'), name: 'Charles Babbage', email: 'charles@example.com' });
+  await h.setNow(minutes(62));
+  const again = await reserve(h, { sha: print('c') });
+  assert.deepEqual(again, { ok: true, id: again.id, path: `photos/${again.id}.jpg`, thumb_path: `thumbs/${again.id}.jpg`, left: 1 },
+    'the copy that was cut off gave its place back, and her other two unfinished photos kept theirs');
+  assert.notEqual(again.id, cut.id);
+  assert.deepEqual((await statuses()).map(([id]) => id).sort(), [second.id, another.id, bare.id, his.id, again.id].sort());
+  assert.deepEqual(await reserve(h, { sha: print('c'), email: 'charles@example.com' }), busy, 'his copy is a minute old, and still on its way');
 
   // A send that Storage failed is forgotten at once, so its photo can be tried again straight away.
-  const failed = await reserve(h, { sha: print('b') });
-  assert.deepEqual(await reserve(h, { sha: print('b') }), busy);
+  const failed = await reserve(h, { sha: print('d'), email: 'grace@example.com' });
+  assert.deepEqual(await reserve(h, { sha: print('d'), email: 'grace@example.com' }), busy);
   await run(h, 'drop_abandon($1::uuid)', [failed.id]);
-  const retried = await reserve(h, { sha: print('b') });
-  assert.deepEqual([retried.ok, retried.duplicate, retried.left], [true, undefined, 3]);
+  const retried = await reserve(h, { sha: print('d'), email: 'grace@example.com' });
+  assert.deepEqual([retried.ok, retried.duplicate, retried.left], [true, undefined, 4]);
 });
 
 test('the same photo from another email is a new photo, and with no fingerprint to go by nothing is compared', async () => {
@@ -573,11 +596,32 @@ test('the organizers list, approve, reject, send back, and caption', async () =>
     ['rejected', '2026-11-19T15:06:00+00:00', 'x'.repeat(60)],
     ['approved', '2026-11-19T15:05:00+00:00', 'Eugene Aiken']
   ]);
+
+  // A decision stands until the photo is sent back to waiting. Another organizer, whose list is a
+  // minute old and still shows all three waiting, taps the other way: nothing changes, and each
+  // photo keeps who decided and when.
+  await h.setNow(minutes(7));
+  assert.deepEqual(await set(h, [b], 'approved', 'Someone Else'), { ok: true, changed: 0 }, 'rejected stays rejected');
+  assert.deepEqual(await set(h, [a, c], 'rejected', 'Someone Else'), { ok: true, changed: 0 }, 'approved stays approved');
+  assert.deepEqual(await run(h, 'drop_review_list($1)', [REVIEW]), list);
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).photos.map((p) => p.id), [a, c], 'and the slideshow plays what it played');
+
+  // To change a decision: back to waiting, then decide again. Of a waiting photo and an approved
+  // one rejected together, only the waiting one is.
   assert.deepEqual(await set(h, [a, b], 'waiting'), { ok: true, changed: 2 });
-  assert.deepEqual(await set(h, [c], 'rejected', null), { ok: true, changed: 1 });
+  assert.deepEqual(await set(h, [a, b], 'waiting'), { ok: true, changed: 0 }, 'already waiting');
+  assert.deepEqual((await run(h, 'drop_review_list($1)', [REVIEW])).photos.map((p) => [p.status, p.reviewed_at, p.reviewed_by]), [
+    ['waiting', null, null], ['waiting', null, null], ['approved', '2026-11-19T15:05:00+00:00', 'Eugene Aiken']
+  ]);
+  await h.setNow(minutes(8));
+  assert.deepEqual(await set(h, [a, c], 'rejected', null), { ok: true, changed: 1 });
+  assert.deepEqual(await set(h, [b], 'approved', 'Eugene Aiken'), { ok: true, changed: 1 }, 'the one that was rejected is approved now');
   list = await run(h, 'drop_review_list($1)', [REVIEW]);
+  assert.deepEqual(list.counts, { waiting: 0, approved: 2, rejected: 1 });
   assert.deepEqual(list.photos.map((p) => [p.status, p.reviewed_at, p.reviewed_by]), [
-    ['waiting', null, null], ['waiting', null, null], ['rejected', '2026-11-19T15:06:00+00:00', null]
+    ['rejected', '2026-11-19T15:08:00+00:00', null],
+    ['approved', '2026-11-19T15:08:00+00:00', 'Eugene Aiken'],
+    ['approved', '2026-11-19T15:05:00+00:00', 'Eugene Aiken']
   ]);
 
   const bad = (error) => ({ ok: false, status: 400, reason: 'input', error });
@@ -597,7 +641,7 @@ test('the organizers list, approve, reject, send back, and caption', async () =>
   assert.deepEqual((await run(h, 'drop_review_list($1)', [REVIEW])).photos.map((p) => p.caption), [null, 'Spelman, class of 2001', 'x'.repeat(80)]);
 });
 
-test('deleting: the files are listed first, then exactly those rows go', async () => {
+test('deleting: the files are listed first, only for rejected photos unless everything goes, then exactly those rows go', async () => {
   const h = await ready();
   const a = await photo(h);
   await h.setNow(minutes(1));
@@ -607,8 +651,21 @@ test('deleting: the files are listed first, then exactly those rows go', async (
   const unfinished = await reserve(h, { email: 'slow@example.com' });
   const paths = (list) => run(h, 'drop_review_paths($1, ($2::text)::uuid[])', [REVIEW, ids(list)]);
   const remove = (list) => run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids(list)]);
+  const missing = '00000000-0000-4000-8000-000000000000';
 
-  const some = await paths([a, b, '00000000-0000-4000-8000-000000000000']);
+  // Chosen photos are deleted only while they are rejected. One that is waiting, approved, or
+  // still on its way in is left out, files and all, so a Delete from a list that is a minute old
+  // can't take a photo someone has since moved back or approved.
+  await set(h, [b], 'approved');
+  assert.deepEqual(await paths([a, b, c, unfinished.id, missing]), { ok: true, ids: [], paths: [] });
+  await set(h, [a], 'rejected');
+  assert.deepEqual(await paths([a, b, c, unfinished.id, missing]), { ok: true, ids: [a], paths: [`photos/${a}.jpg`, `thumbs/${a}.jpg`] });
+  await set(h, [a], 'waiting');
+  assert.deepEqual(await paths([a]), { ok: true, ids: [], paths: [] }, 'moved back since: it stays');
+  await set(h, [b], 'waiting');
+  assert.deepEqual(await set(h, [a, b], 'rejected'), { ok: true, changed: 2 });
+
+  const some = await paths([a, b, c, missing]);
   assert.deepEqual(some.ids, [a, b]);
   assert.deepEqual([...some.paths].sort(), [`photos/${a}.jpg`, `photos/${b}.jpg`, `thumbs/${a}.jpg`].sort());
   assert.equal((await rows(h)).length, 4, 'listing the files deletes nothing');
@@ -617,7 +674,8 @@ test('deleting: the files are listed first, then exactly those rows go', async (
   assert.deepEqual(await remove(some.ids), { ok: true, deleted: 2 });
   assert.deepEqual(await remove(some.ids), { ok: true, deleted: 0 });
 
-  // Everything, for after the party: a photo still on its way in is included.
+  // Everything, for after the party: every row, whatever was decided about it. A photo still
+  // waiting and one still on its way in are included.
   const all = await paths(null);
   assert.deepEqual([...all.ids].sort(), [c, unfinished.id].sort());
   assert.equal(all.paths.length, 4);

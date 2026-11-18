@@ -495,6 +495,12 @@ test('the address a photo came from: the last in the list, never a private one, 
   }
   assert.equal(ip('::1'), '');
   assert.equal(ip('fd00::1'), '');
+  // The all-zero network is nobody's connection: no address at all, this machine however it is
+  // written, or an IPv4 address in a form that isn't unwrapped.
+  for (const nobody of ['::', '::1', '0:0:0:0:0:0:0:1', '::ffff:cb00:7109', '0000:0000:0000:0000:1:2:3:4', '203.0.113.9, ::']) {
+    assert.equal(ip(nobody), '', nobody);
+  }
+  assert.equal(ip('0:0:0:1::5'), '0:0:0:1::/64', 'one network along is a connection like any other');
   for (const outside of ['172.15.0.1', '172.32.0.1', '100.63.0.1', '100.128.0.1', '11.0.0.1']) assert.equal(ip(outside), outside);
   for (const odd of ['unknown', 'ada@example.com', '<script>', `${'1'.repeat(46)}`, '203.0.113.9; drop table']) assert.equal(ip(odd), '', odd);
 });
@@ -714,6 +720,12 @@ test('the organizers approve, reject, caption, and change the settings', async (
   assert.deepEqual(list.photos.map((p) => [p.status, p.reviewedAt, p.reviewedBy]), [
     ['approved', '2026-11-19T16:00:00.000Z', 'Eugene Aiken'], ['approved', '2026-11-19T16:00:00.000Z', 'Eugene Aiken'], ['rejected', '2026-11-19T16:00:00.000Z', null]
   ]);
+  // Another organizer's list is a minute old and still shows all three waiting. Tapping the other
+  // way changes nothing: a decision stands until the photo is sent back to waiting.
+  await s.at('2026-11-19T16:01:00Z');
+  is(await s.review('set', { ids: [c], status: 'approved', by: 'Someone Else' }), 200, { ok: true, changed: 0 }, 'rejected stays rejected');
+  is(await s.review('set', { ids: [a, b], status: 'rejected', by: 'Someone Else' }), 200, { ok: true, changed: 0 }, 'approved stays approved');
+  assert.deepEqual((await s.review('list')).body.photos, list.photos);
   is(await s.review('set', { ids: [b], status: 'waiting', by: 'Eugene Aiken' }), 200, { ok: true, changed: 1 });
 
   const many = { error: 'Choose between 1 and 200 photos at a time.', reason: 'input' };
@@ -773,6 +785,15 @@ test('delete removes the files and then the rows, and Delete everything empties 
   is(await s.review('delete'), 400, { error: 'Choose between 1 and 200 photos at a time.', reason: 'input' });
   assert.equal(s.calls('remove').length, 0);
 
+  // Only a rejected photo can be deleted on its own. One that is waiting, or that someone has
+  // approved since this organizer's list was loaded, stays: no file is removed, and no row.
+  is(await s.review('set', { ids: [c], status: 'approved' }), 200, { ok: true, changed: 1 });
+  is(await s.review('delete', { ids: [a, b, c] }), 200, { ok: true, deleted: 0 });
+  assert.equal((await s.rows()).length, 3);
+  assert.equal(s.storage.paths().length, 5);
+  assert.equal(s.calls('remove').length, 0, 'Storage was not asked to remove anything');
+  is(await s.review('set', { ids: [a, b], status: 'rejected' }), 200, { ok: true, changed: 2 });
+
   // Storage fails: the rows stay, so Delete can be tried again.
   s.storage.failRemove = true;
   is(await s.review('delete', { ids: [a, b] }), 502, { error: "We couldn't delete those photos. Try again.", reason: 'storage' });
@@ -780,7 +801,9 @@ test('delete removes the files and then the rows, and Delete everything empties 
   assert.equal(s.logs[0], 'photo-drop: deleting 2 photos stopped at their files: remove: HTTP 500 Internal: Internal Server Error');
   s.storage.failRemove = false;
 
-  is(await s.review('delete', { ids: [a, b, '00000000-0000-4000-8000-000000000000'] }), 200, { ok: true, deleted: 2 });
+  // The two rejected photos go. The approved one named with them does not.
+  is(await s.review('delete', { ids: [a, b, c, '00000000-0000-4000-8000-000000000000'] }), 200, { ok: true, deleted: 2 });
+  assert.deepEqual([...s.calls('remove').at(-1).json.prefixes].sort(), [`photos/${a}.jpg`, `photos/${b}.jpg`, `thumbs/${a}.jpg`].sort());
   assert.deepEqual((await s.rows('select id from public.drop_photos')).map((r) => r.id), [c]);
   assert.deepEqual(s.storage.paths(), [`photos/${c}.jpg`, `thumbs/${c}.jpg`]);
   is(await s.review('delete', { ids: [a, b] }), 200, { ok: true, deleted: 0 }, 'already gone');
@@ -826,6 +849,7 @@ test('Delete everything also takes out files no row points to, and still answers
     }
   }) });
   const is = (res, status, body, what) => assert.deepEqual([res.status, res.body], [status, body], what);
+  const at = (minutes) => s.at(new Date(Date.parse(NOW) + minutes * 60000).toISOString());
   const a = (await s.send()).body.id;
   const b = (await s.send({ email: 'grace@example.com', thumb: undefined })).body.id;
   // What a send that failed while Storage was struggling leaves behind: files with no row.
@@ -835,17 +859,22 @@ test('Delete everything also takes out files no row points to, and still answers
   };
   leave();
 
+  // Ten minutes on, the leftovers are old enough to be told from a photo that is arriving.
   // Deleting chosen photos never looks through the bucket, and neither does a wrong code.
+  await at(10);
+  is(await s.review('set', { ids: [b], status: 'rejected' }), 200, { ok: true, changed: 1 });
   is(await s.review('delete', { ids: [b] }), 200, { ok: true, deleted: 1 });
   is(await s.review('empty', { confirm: 'DELETE' }, SCREEN), 403, { error: "That code isn't right.", reason: 'code' });
   assert.equal(s.calls('list').length, 0);
   assert.deepEqual(s.storage.paths(), [`photos/${a}.jpg`, `thumbs/${a}.jpg`, ...stray].sort());
 
   // Delete everything does. A photo that arrives while it runs keeps its row, and so its files.
+  // The clock is moved on while it runs, so that the row is all that marks them as wanted.
   let late = null;
   arriving = async () => {
     arriving = null;
     late = (await s.send({ email: 'late@example.com' })).body.id;
+    await at(21);
   };
   is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1 });
   assert.match(late, /^[0-9a-f-]{36}$/);
@@ -863,6 +892,7 @@ test('Delete everything also takes out files no row points to, and still answers
   // Storage can't list the bucket. Everything that was asked for is deleted all the same, and
   // the log says the bucket went unchecked.
   leave();
+  await at(31);
   s.storage.failList = true;
   is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 1 });
   assert.deepEqual(await s.rows(), []);
@@ -881,12 +911,89 @@ test('Delete everything also takes out files no row points to, and still answers
 
   // More leftovers than one listing holds: the folder is listed again until it is clear.
   for (let n = 0; n < LIST_BATCH + 5; n += 1) s.storage.seed(`thumbs/left-${String(n).padStart(4, '0')}.jpg`, 'x');
+  await at(41);
   const before = { list: s.calls('list').length, remove: s.calls('remove').length };
   is(await s.review('empty', { confirm: 'DELETE' }), 200, { ok: true, deleted: 0 });
   assert.deepEqual(s.storage.paths(), []);
   assert.deepEqual(s.calls('list').slice(before.list).map((c) => c.json.prefix), ['photos', 'thumbs', 'thumbs', 'thumbs']);
   assert.deepEqual(s.calls('remove').slice(before.remove).map((c) => c.json.prefixes.length), [...Array(LIST_BATCH / REMOVE_BATCH).fill(REMOVE_BATCH), 5]);
   assert.equal(s.logs.length, 2, 'one line for each time the bucket went unchecked');
+  assertQuietLogs(s);
+});
+
+test('Delete everything leaves a file under ten minutes old where it is, and removes nothing when it can not read the rows', async () => {
+  // unreadable, when a test sets it, is what the second read of every row gives in place of the
+  // rows: the first read, of what to delete, goes through.
+  let unreadable = null;
+  const s = await setup({ db: (real) => ({
+    ...real,
+    reviewPaths: async (code, ids) => {
+      if (ids === null && unreadable) {
+        if (unreadable.next) {
+          const give = unreadable.give;
+          unreadable = null;
+          return give();
+        }
+        unreadable.next = true;
+      }
+      return real.reviewPaths(code, ids);
+    }
+  }) });
+  const is = (res, status, body, what) => assert.deepEqual([res.status, res.body], [status, body], what);
+  const empty = () => s.review('empty', { confirm: 'DELETE' });
+
+  // Files with no row, in both folders. The older pair was left by a send that failed. The pair a
+  // second younger could as well be a photo arriving right now, whose row hasn't been read yet.
+  const older = ['photos/11111111-1111-4111-8111-111111111111.jpg', 'thumbs/11111111-1111-4111-8111-111111111111.jpg'];
+  const younger = ['photos/22222222-2222-4222-8222-222222222222.jpg', 'thumbs/22222222-2222-4222-8222-222222222222.jpg'];
+  for (const path of older) s.storage.seed(path, jpeg(1600, 1200));
+  await s.at('2026-11-19T15:00:01Z');
+  for (const path of younger) s.storage.seed(path, jpeg(1600, 1200));
+
+  // Nine minutes and 59 seconds after the older pair: both pairs are left where they are.
+  await s.at('2026-11-19T15:09:59Z');
+  is(await empty(), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), [...older, ...younger].sort());
+  assert.equal(s.calls('remove').length, 0);
+  assert.deepEqual(s.calls('list').map((c) => c.json.prefix), ['photos', 'thumbs'], 'it looked, and found nothing old enough');
+  // At ten minutes the older pair is taken, and the younger pair, a second short, is not.
+  await s.at('2026-11-19T15:10:00Z');
+  is(await empty(), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), [...younger].sort());
+  assert.deepEqual(s.calls('remove').map((c) => c.json.prefixes), [[older[0]], [older[1]]]);
+  // A second later, so is the younger pair.
+  await s.at('2026-11-19T15:10:01Z');
+  is(await empty(), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), []);
+  assert.deepEqual(s.logs, []);
+
+  // The rows can't be read a second time: the database refuses, gives nothing, or fails. Without
+  // them a leftover can't be told from a photo, so the bucket isn't even listed and nothing but
+  // what was asked for is removed.
+  const a = (await s.send()).body.id;
+  for (const path of older) s.storage.seed(path, jpeg(1600, 1200));
+  await s.at('2026-11-19T15:30:00Z');
+  const lists = s.calls('list').length;
+  const line = 'photo-drop: Delete everything could not check the bucket for leftover files: ';
+  unreadable = { give: async () => ({ ok: false, status: 403, reason: 'code', error: "That code isn't right." }) };
+  is(await empty(), 200, { ok: true, deleted: 1 });
+  assert.deepEqual(await s.rows(), []);
+  assert.deepEqual(s.storage.paths(), [...older].sort(), `the files of ${a} went with its row, and the leftovers stay`);
+  assert.deepEqual(s.logs, [`${line}the rows could not be read`]);
+  unreadable = { give: async () => null };
+  is(await empty(), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.logs.slice(1), [`${line}the rows could not be read`]);
+  unreadable = { give: async () => { throw new Error('connection terminated unexpectedly'); } };
+  is(await empty(), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.logs.slice(2), [`${line}connection terminated unexpectedly`]);
+  assert.deepEqual(s.storage.paths(), [...older].sort());
+  assert.equal(s.calls('list').length, lists, 'the bucket was never listed');
+  assert.equal(unreadable, null, 'each of the three got as far as the second read');
+
+  // The rows can be read again, and the leftovers go.
+  is(await empty(), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(s.storage.paths(), []);
+  assert.equal(s.logs.length, 3, 'one line for each time the rows could not be read');
   assertQuietLogs(s);
 });
 
@@ -923,9 +1030,24 @@ test('the slideshow gets approved photos only, in the order they were approved, 
     const no = await s.post('screen', { code });
     assert.deepEqual([no.status, no.body], [403, wrong], String(code));
   }
-  // A photo sent back or deleted leaves the slideshow.
-  await s.review('set', { ids: [c], status: 'waiting' });
-  await s.review('delete', { ids: [b] });
+  // A photo sent back to waiting leaves the slideshow.
+  const is = (r, status, body, what) => assert.deepEqual([r.status, r.body], [status, body], what);
+  const playing = async () => (await s.post('screen', { code: SCREEN })).body.photos.map((p) => p.id);
+  is(await s.review('set', { ids: [c], status: 'waiting' }), 200, { ok: true, changed: 1 });
+  assert.deepEqual(await playing(), [b]);
+  // An approved photo can't be rejected or deleted straight off the screens by an organizer whose
+  // list still shows it waiting. It plays on, and its file is still there.
+  is(await s.review('set', { ids: [b], status: 'rejected', by: 'Someone Else' }), 200, { ok: true, changed: 0 });
+  is(await s.review('delete', { ids: [b] }), 200, { ok: true, deleted: 0 });
+  assert.deepEqual(await playing(), [b]);
+  assert.ok(s.storage.fileFor(urls[b].url));
+  assert.equal(s.calls('remove').length, 0);
+  // Sent back, then rejected, then deleted, it is gone.
+  is(await s.review('set', { ids: [b], status: 'waiting' }), 200, { ok: true, changed: 1 });
+  assert.deepEqual(await playing(), []);
+  is(await s.review('set', { ids: [b], status: 'rejected' }), 200, { ok: true, changed: 1 });
+  is(await s.review('delete', { ids: [b] }), 200, { ok: true, deleted: 1 });
+  assert.equal(s.storage.fileFor(urls[b].url), null);
   assert.deepEqual((await s.post('screen', { code: SCREEN })).body, { ok: true, photos: [] });
   assert.deepEqual(s.logs, []);
 });
@@ -1013,12 +1135,13 @@ test('the Storage stand-in keeps the rules of the real one: the key, JPEG only, 
   assert.deepEqual(storage.paths(), []);
   assert.equal((await call('DELETE', '/object/photo-drop', { headers: json, body: JSON.stringify({ prefixes: [] }) }))[0], 400);
 
-  // List answers with the files directly in one folder, by name, each with an id.
+  // List answers with the files directly in one folder, by name.
   for (const path of ['photos/b.jpg', 'photos/a.jpg', 'photos/inside/c.jpg', 'thumbs/a.jpg']) storage.seed(path, photo);
   const list = (bucket, body) => call('POST', `/object/list/${bucket}`, { headers: json, body: JSON.stringify(body) });
   const listed = await list('photo-drop', { prefix: 'photos', limit: 1000, offset: 0 });
   assert.deepEqual([listed[0], listed[1].map((f) => f.name)], [200, ['a.jpg', 'b.jpg']]);
-  for (const f of listed[1]) assert.match(f.id, /^[0-9a-f-]{36}$/);
+  // Each file comes with an id, and with when it was put there.
+  for (const f of listed[1]) assert.deepEqual([/^[0-9a-f-]{36}$/.test(f.id), f.created_at], [true, new Date(clock.t).toISOString()]);
   assert.deepEqual((await list('photo-drop', { prefix: 'photos/', limit: 1, offset: 1 }))[1].map((f) => f.name), ['b.jpg']);
   assert.deepEqual(await list('photo-drop', { prefix: 'nowhere' }), [200, []]);
   assert.equal((await list('photo-drop', { limit: 1000 }))[0], 400);
