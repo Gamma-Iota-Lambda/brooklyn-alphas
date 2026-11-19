@@ -308,7 +308,12 @@ async function sendInPieces(link, file, type, { progress, waiting, holder }) {
     if (tries === 0) lastMove = Date.now();
     if (Date.now() - lastMove > GIVE_UP) throw stopped();
     waiting(sent, size);
-    await sleep(RETRY[Math.min(tries, RETRY.length - 1)]);
+    const wait = RETRY[Math.min(tries, RETRY.length - 1)];
+    const before = Date.now();
+    await sleep(wait);
+    // A wait that took far longer than it was meant to: the computer was asleep. The ten
+    // minutes start again from its waking, so the connection has time to come back.
+    if (Date.now() - before > wait + 60000) lastMove = Date.now();
     tries += 1;
     alive();
   };
@@ -576,7 +581,11 @@ export function sendVideo({ code, by, video }, step = () => {}) {
         if (cancelled || !notNow) throw e;
         if (!firstMiss) firstMiss = Date.now();
         if (Date.now() - firstMiss > GIVE_UP) throw e;
-        await unlessStopped(sleep(RETRY[Math.min(attempt, RETRY.length - 1)]));
+        const wait = RETRY[Math.min(attempt, RETRY.length - 1)];
+        const before = Date.now();
+        await unlessStopped(sleep(wait));
+        // The computer slept through the wait: the ten minutes start again from its waking.
+        if (Date.now() - before > wait + 60000) firstMiss = Date.now();
       }
     }
   };
