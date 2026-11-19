@@ -9,15 +9,17 @@
 // piece that fails is asked for again; the pieces already here stay.
 //
 // screen.js decides when a video plays. It calls pump() on every tick and says whether the
-// photos are using the connection: a piece is only asked for when they are not.
+// photos are using the connection: a piece is only asked for when they are not. Once a piece is
+// in, the next is asked for straight away (screen.js is asked again whether the photos are
+// quiet), so a download doesn't wait on the page's timer, which a browser slows right down in a
+// tab that is behind another.
 
 const CACHE = 'gil-drop-clips-2';
 const OLD_CACHES = ['gil-drop-clips-1']; // an earlier layout, which kept each video as one file
 const PIECE = 1048576; // each request asks for this many bytes of the file
 const BIG = 64 * 1048576; // a file larger than this comes down in larger pieces, to get on with it
 const BIG_PIECE = 4 * 1048576;
-const PIECE_TIMEOUT = 60000; // a piece that hasn't come by now is given up and asked for again
-const BIG_PIECE_TIMEOUT = 120000;
+const PIECE_TIMEOUT = 60000; // nothing of a piece has arrived for this long: it is given up and asked for again
 const PAUSE = [5000, 15000, 30000, 60000]; // the wait after one, two, three and more failed pieces in a row
 const PROBE_TIMEOUT = 30000; // a video that hasn't shown its first picture by now can't be played here
 const MEMORY_MAX = 300 * 1048576; // with no storage to keep them in, this much video at most is held in memory
@@ -25,29 +27,68 @@ const MEMORY_MAX = 300 * 1048576; // with no storage to keep them in, this much 
 const text = (value) => (typeof value === 'string' ? value : '');
 const pieceOf = (bytes) => (bytes > BIG ? BIG_PIECE : PIECE);
 
-// Can this browser play it? Resolves true once the first picture is there. Never rejects.
+const inFront = () => document.visibilityState === 'visible';
+
+// Can this browser play it? Resolves 'yes' once the first picture is there, 'no' when the browser
+// says it can't, and 'unknown' when no answer came and the page was not in front all the while:
+// a browser loads no video in a tab that is behind another, so its silence there says nothing
+// about the file. Never rejects.
 function playable(src) {
   return new Promise((resolve) => {
     const video = document.createElement('video');
     let timer = 0;
-    const done = (ok) => {
+    let behind = !inFront();
+    const seen = () => {
+      if (!inFront()) behind = true;
+    };
+    const done = (answer) => {
       clearTimeout(timer);
+      document.removeEventListener('visibilitychange', seen);
       video.removeAttribute('src');
       try { video.load(); } catch { /* nothing to let go of */ }
-      resolve(ok);
+      resolve(answer);
     };
+    document.addEventListener('visibilitychange', seen);
     video.muted = true;
     video.playsInline = true;
     video.preload = 'auto';
-    video.addEventListener('loadeddata', () => done(video.videoWidth > 0 && video.videoHeight > 0), { once: true });
-    video.addEventListener('error', () => done(false), { once: true });
-    timer = setTimeout(() => done(false), PROBE_TIMEOUT);
+    video.addEventListener('loadeddata', () => done(video.videoWidth > 0 && video.videoHeight > 0 ? 'yes' : 'no'), { once: true });
+    video.addEventListener('error', () => done('no'), { once: true });
+    timer = setTimeout(() => done(behind ? 'unknown' : 'no'), PROBE_TIMEOUT);
     video.src = src;
   });
 }
 
-// clock: the time in milliseconds. onReady(id): a video can now be played.
-export function createClips({ clock = () => performance.now(), onReady = () => {} } = {}) {
+// The bytes of an answer, read as they come. Each arrival is reported (to push the give-up time
+// back), so a slow connection that keeps delivering is never cut off. More than was asked for
+// is an error.
+async function readAll(res, want, arrived) {
+  if (!res.body || !res.body.getReader) {
+    const all = new Uint8Array(await res.arrayBuffer());
+    if (all.byteLength !== want) throw new Error('size');
+    return all;
+  }
+  const reader = res.body.getReader();
+  const bytes = new Uint8Array(want);
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (got + value.byteLength > want) {
+      reader.cancel().catch(() => {});
+      throw new Error('size');
+    }
+    bytes.set(value, got);
+    got += value.byteLength;
+    arrived();
+  }
+  if (got !== want) throw new Error('size');
+  return bytes;
+}
+
+// clock: the time in milliseconds. idle(): are the photos leaving the connection alone right now?
+// onReady(id): a video can now be played.
+export function createClips({ clock = () => performance.now(), idle = () => false, onReady = () => {} } = {}) {
   const clips = new Map(); // id -> the video, as last heard, and how far its download has got
   let order = []; // their ids in the server's order
   let busy = false; // a look in storage or a piece is under way: one thing at a time
@@ -97,6 +138,7 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
     release(clip);
     clip.src = '';
     clip.blobs = [];
+    clip.whole = null;
     forget(clip);
   }
 
@@ -116,7 +158,7 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
         continue;
       }
       if (was) drop(was);
-      clips.set(item.id, { id: item.id, bytes, ...facts, state: 'new', looked: false, blobs: [], got: 0, fails: 0, waitUntil: 0, src: '', stop: null, onDisk: false, inMemory: false, gone: false });
+      clips.set(item.id, { id: item.id, bytes, ...facts, state: 'new', looked: false, blobs: [], whole: null, got: 0, fails: 0, waitUntil: 0, src: '', stop: null, onDisk: false, inMemory: false, gone: false });
     }
     for (const clip of [...clips.values()]) {
       if (ids.includes(clip.id)) continue;
@@ -153,16 +195,24 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
     return true;
   }
 
-  // The file is here: check that this browser can play it, and hand it over.
+  // The file is here, whole: check that this browser can play it, and hand it over. The check
+  // waits for the page to be in front, where a browser will load a video: until then the video
+  // is 'held', whole and unchecked, and pump() comes back to it.
   async function adopt(clip, blob) {
+    clip.whole = blob;
+    clip.state = 'held';
+    if (!inFront()) return;
     const src = URL.createObjectURL(blob);
-    const ok = await playable(src);
-    if (clip.gone || !ok) {
+    const answer = await playable(src);
+    if (clip.gone || answer !== 'yes') {
       URL.revokeObjectURL(src);
+      if (clip.gone || answer === 'unknown') return; // gone, or still held: asked again once the page is in front
       release(clip);
-      if (!clip.gone) clip.state = 'bad'; // not tried again until the page is reloaded
+      clip.whole = null;
+      clip.state = 'bad'; // not tried again until the page is reloaded
       return;
     }
+    clip.whole = null; // the link made for it keeps the file within reach
     clip.src = src;
     clip.state = 'ready';
     onReady(clip.id);
@@ -243,9 +293,16 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
     const from = clip.got;
     const to = Math.min(clip.bytes, from + size) - 1;
     const stop = new AbortController();
-    const timer = setTimeout(() => stop.abort(), size > PIECE ? BIG_PIECE_TIMEOUT : PIECE_TIMEOUT);
+    // Given up when nothing has arrived for a while, however long the whole piece takes: a slow
+    // connection that keeps delivering gets there in the end.
+    let timer = 0;
+    const arrived = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => stop.abort(), PIECE_TIMEOUT);
+    };
     clip.stop = stop;
     clip.state = 'loading';
+    arrived();
     try {
       const res = await fetch(clip.url, { headers: { Range: `bytes=${from}-${to}` }, cache: 'no-store', signal: stop.signal });
       if (res.status !== 206 && res.status !== 200) throw new Error(`status ${res.status}`);
@@ -255,15 +312,15 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
         stop.abort();
         throw new Error('whole');
       }
-      const part = await res.arrayBuffer();
+      arrived();
+      const part = await readAll(res, res.status === 200 ? clip.bytes : to - from + 1, arrived);
+      clearTimeout(timer);
       if (clip.gone) return;
       if (res.status === 200) {
-        if (part.byteLength !== clip.bytes) throw new Error('size');
         clip.blobs = [];
         clip.got = 0;
-        for (let at = 0; at < clip.bytes && !clip.gone && clip.state === 'loading'; at += size) await keep(clip, at, part.slice(at, at + size));
+        for (let at = 0; at < clip.bytes && !clip.gone && clip.state === 'loading'; at += size) await keep(clip, at, part.subarray(at, at + size));
       } else {
-        if (part.byteLength !== to - from + 1) throw new Error('size');
         await keep(clip, from, part);
       }
       if (clip.gone || clip.state !== 'loading') return;
@@ -279,15 +336,33 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
     }
   }
 
-  // Makes the next move, if nothing is under way. `idle`: the photos are not using the
-  // connection, so a piece may be asked for. Looking in storage needs no connection.
-  function pump(idle) {
+  // Makes the next move, if nothing is under way. `quiet`: the photos are not using the
+  // connection, so a piece may be asked for. What needs no connection comes first, whichever
+  // video it is for: the check of one that is here whole (once the page is in front), then a
+  // look in storage. When the move is done the next is made at once, without waiting to be
+  // called again.
+  function pump(quiet) {
     if (busy) return;
     const t = clock();
-    const clip = order.map((id) => clips.get(id)).find((c) => c && (c.state === 'new' || c.state === 'loading') && t >= c.waitUntil && (!c.looked || idle));
+    const all = order.map((id) => clips.get(id)).filter(Boolean);
+    let clip = inFront() ? all.find((c) => c.state === 'held' && c.whole) : null;
+    let move = clip ? () => adopt(clip, clip.whole) : null;
+    if (!clip) {
+      clip = all.find((c) => c.state === 'new' && !c.looked);
+      if (clip) move = () => look(clip);
+    }
+    if (!clip && quiet) {
+      clip = all.find((c) => (c.state === 'new' || c.state === 'loading') && c.looked && t >= c.waitUntil);
+      if (clip) move = () => piece(clip);
+    }
     if (!clip) return;
     busy = true;
-    (clip.looked ? piece(clip) : look(clip)).catch(() => {}).then(() => { busy = false; });
+    move().catch(() => {}).then(() => {
+      busy = false;
+      let free = false;
+      try { free = !!idle(); } catch { free = false; }
+      pump(free);
+    });
   }
 
   // This video didn't play when its turn came: it is left out until the page is reloaded.
@@ -317,7 +392,13 @@ export function createClips({ clock = () => performance.now(), onReady = () => {
     progress: () => {
       const all = order.map((id) => clips.get(id));
       const coming = all.find((c) => c.state === 'loading');
-      return { listed: all.length, ready: all.filter((c) => c.state === 'ready').length, bad: all.filter((c) => c.state === 'bad' || c.state === 'left').length, coming: coming ? Math.floor((100 * coming.got) / coming.bytes) : null };
+      return {
+        listed: all.length,
+        ready: all.filter((c) => c.state === 'ready').length,
+        bad: all.filter((c) => c.state === 'bad').length, // this browser can't play them
+        left: all.filter((c) => c.state === 'left').length, // no room to keep them on this computer
+        coming: coming ? Math.floor((100 * coming.got) / coming.bytes) : null
+      };
     }
   };
 }

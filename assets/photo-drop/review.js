@@ -1186,6 +1186,28 @@ const askBeforeLeaving = (e) => {
   e.returnValue = '';
 };
 
+// Keeps the screen on while a video is going up, where the browser allows it: a computer that
+// goes to sleep stops the upload until it wakes. The browser lets go of this whenever the page
+// is hidden, so it is asked for again each time the page comes back in front.
+let awake = null;
+async function stayAwake(on) {
+  try {
+    if (!on) {
+      const lock = awake;
+      awake = null;
+      if (lock) await lock.release();
+      return;
+    }
+    if (awake || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    const lock = await navigator.wakeLock.request('screen');
+    if (!S.sending || awake) return void lock.release().catch(() => {});
+    awake = lock;
+    lock.addEventListener('release', () => { if (awake === lock) awake = null; });
+  } catch {
+    // The screen follows the computer's own settings.
+  }
+}
+
 function paintAddTool() {
   const on = takesVideos(S.settings);
   $('#rv-add-tool').hidden = !on;
@@ -1287,14 +1309,20 @@ async function videoChosen(file) {
 }
 
 function paintSending(at) {
-  const sent = at.step === 'checking' ? 100 : at.step === 'sending' && at.total > 0 ? Math.min(100, Math.floor((at.sent / at.total) * 100)) : 0;
+  const going = at.step === 'sending' || at.step === 'waiting';
+  const sent = at.step === 'checking' ? 100 : going && at.total > 0 ? Math.min(100, Math.floor((at.sent / at.total) * 100)) : 0;
   const bar = $('#rv-add-bar');
   bar.setAttribute('aria-valuenow', String(sent));
   $('span', bar).style.width = `${sent}%`;
-  const words = at.step === 'checking' ? 'Checking it' : at.step === 'sending' ? `Sending the video: ${sent}%` : 'Getting ready';
-  if ($('#rv-add-status').textContent === words) return;
+  // 'waiting': the connection dropped partway. What has gone is kept, and the page tries again.
+  const words = at.step === 'checking' ? 'Checking it'
+    : at.step === 'sending' ? `Sending the video: ${sent}%`
+      : at.step === 'waiting' ? `The connection dropped at ${sent}%. Trying again` : 'Getting ready';
+  const was = $('#rv-add-status').textContent;
+  if (was === words) return;
   $('#rv-add-status').textContent = words;
   if (at.step === 'checking') say('Checking the video.');
+  if (at.step === 'waiting' && !was.startsWith('The connection dropped')) say('The connection dropped. Trying again.');
 }
 
 // Add to the slideshow. Until it ends one way or the other the box stays open with one button,
@@ -1312,6 +1340,7 @@ async function addVideo() {
   const sending = { job: null, stopping: false };
   S.sending = sending;
   window.addEventListener('beforeunload', askBeforeLeaving);
+  stayAwake(true);
   addNote('');
   paintAdd();
   paintSending({ step: 'asking' });
@@ -1341,6 +1370,7 @@ async function addVideo() {
   }
   S.sending = null;
   window.removeEventListener('beforeunload', askBeforeLeaving);
+  stayAwake(false);
   if (!error || landed) {
     $('#rv-add').close();
     refreshNow();
@@ -1371,6 +1401,7 @@ function stopSending() {
   const sending = S.sending;
   S.sending = null;
   window.removeEventListener('beforeunload', askBeforeLeaving);
+  stayAwake(false);
   if (sending && sending.job) sending.job.cancel();
 }
 
@@ -1550,6 +1581,7 @@ function listen() {
 
   // Adding a video
   const add = $('#rv-add');
+  document.addEventListener('visibilitychange', () => { if (S.sending) stayAwake(true); });
   $('#rv-add-open').addEventListener('click', askVideo);
   $('#rv-add-file').addEventListener('change', (e) => videoChosen(e.target.files[0]));
   $('#rv-add-form').addEventListener('submit', (e) => {

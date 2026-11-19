@@ -606,6 +606,8 @@ function again() {
 // browser has: the photos' pass keeps its place while a video plays.
 const clips = createClips({
   clock,
+  // Asked whenever a piece of a video has come down: may the next one be asked for now?
+  idle: () => !DEMO && S.on && quiet(),
   onReady: (id) => {
     // A video that has just arrived has the next turn.
     if (!S.clipLine.includes(id)) S.clipLine.unshift(id);
@@ -636,8 +638,9 @@ function takeClips(list) {
 // May a piece of a video be asked for? Only when the photos are not using the connection: the
 // next one is ready and waiting, and nothing is being tried behind the scenes. On a slow
 // connection a photo is being tried nearly all the time, so the photos come first, and the
-// videos get the connection once the photos are ahead or all here.
-const quiet = () => !S.trying && (!S.next || S.next.ready);
+// videos get the connection once the photos are ahead or all here. A video being got ready for
+// its turn uses no connection (its file is on this computer), so it never holds a download up.
+const quiet = () => !S.trying && (!S.next || S.next.ready || !!S.next.video);
 
 // The video to get ready next, or '' when it isn't a video's turn. One plays after every
 // S.every photos (after each pass, when there are fewer photos than that), and the videos take
@@ -703,7 +706,14 @@ function clipSlide(id, t) {
 // How the video being got ready is getting on. One that can't be played here after all is left
 // out until the page is reloaded, and the photos carry on.
 function clipStep(slide, t) {
-  if (slide.main === null && t - slide.startedAt >= CLIP_WAIT) slide.main = false;
+  // A browser loads no video in a tab that is behind another, and runs this page's clock there
+  // only once in a long while. So the wait for a video's first picture is counted in time spent
+  // in front, a tick's worth at a look: however long the page was behind, and however long ago
+  // the last look was, none of that says anything about the file.
+  const since = t - (slide.lookedAt || slide.startedAt);
+  slide.lookedAt = t;
+  if (document.visibilityState === 'visible') slide.waited = (slide.waited || 0) + Math.max(0, Math.min(since, 2 * TICK));
+  if (slide.main === null && (slide.waited || 0) >= CLIP_WAIT) slide.main = false;
   const at = landed(slide, t);
   if (at === '' || (at === 'in' && build(slide))) return;
   clips.bad(slide.id);
@@ -756,6 +766,7 @@ function clipNote() {
   let words = `Videos: ${p.ready} of ${p.listed} ready`;
   if (p.coming !== null) words += `, the next one ${p.coming}% here`;
   if (p.bad) words += `, ${p.bad} can't be played on this computer`;
+  if (p.left) words += `, ${p.left} with no room to keep ${p.left === 1 ? 'it' : 'them'} on this computer`;
   if (note.textContent !== words) note.textContent = words;
 }
 
@@ -825,8 +836,10 @@ function tick() {
   // Time to change photos. The first photo shows as soon as it is ready.
   if (S.next && S.next.ready && (S.skip || !S.now || (!S.paused && t >= S.dueAt))) change(t);
 
-  // A video's turn comes round every so many photos. It needs nothing from the network.
-  if (!S.next) {
+  // A video's turn comes round every so many photos. It needs nothing from the network. Its
+  // turn waits while the page is behind another tab, where a browser may not load it at all:
+  // the photos carry on, and the video goes up once the page is in front.
+  if (!S.next && document.visibilityState === 'visible') {
     const id = dueClip(t);
     if (id) S.next = clipSlide(id, t);
   }
