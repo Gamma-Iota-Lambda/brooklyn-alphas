@@ -83,6 +83,20 @@
           </label>
         </fieldset>
 
+        <fieldset class="sc-set">
+          <legend class="pd-label">Videos from the committee</legend>
+          <p class="pd-hint">One plays after every so many photos.</p>
+          <div class="sc-choices">
+            <label class="sc-choice"><input type="radio" name="every" value="5" /><span>5 photos</span></label>
+            <label class="sc-choice"><input type="radio" name="every" value="10" checked /><span>10 photos</span></label>
+            <label class="sc-choice"><input type="radio" name="every" value="20" /><span>20 photos</span></label>
+          </div>
+          <label class="sc-check" for="sc-sound">
+            <input id="sc-sound" type="checkbox" />
+            <span>Play the videos' sound</span>
+          </label>
+        </fieldset>
+
         <p class="pd-note bad" id="sc-err" role="alert" hidden></p>
         <button class="pd-btn primary block sc-start" type="submit" id="sc-start">Start the slideshow</button>
         <p class="sc-status" id="sc-status" role="status" aria-live="polite"></p>
@@ -96,6 +110,7 @@
         <li><strong>Move the mouse</strong> to see the controls. They hide again after 3 seconds.</li>
         <li><strong>Keys:</strong> Space pauses, and the show starts again by itself after 3 minutes. The arrow keys go back and forward. C turns captions on or off. F is full screen. Esc leaves full screen.</li>
         <li>A newly approved photo joins within a minute or two.</li>
+        <li><strong>Videos</strong> the committee has added play in between the photos. Each one plays only once all of it has reached this computer, so the first showing can take a few minutes. The controls say how many are ready.</li>
         <li><strong>If the connection drops, leave this page open.</strong> The photos keep playing. Don't reload the page until the connection is back.</li>
         <li id="sc-demo-line">No photos approved yet? <a id="sc-demo-link" href="screen.html?demo=1">Try this screen with test pictures</a></li>
       </ul>
@@ -132,6 +147,7 @@
     <button class="pd-btn small" type="button" data-act="captions" aria-pressed="true">Captions</button>
     <button class="pd-btn small" type="button" data-act="full">Full screen</button>
     <button class="pd-btn small" type="button" data-act="setup">Setup</button>
+    <span class="sc-bar-note" id="sc-clips" role="status" hidden></span>
   </div>
 </div>
 

@@ -222,6 +222,9 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   transform: rotate(var(--sc-tilt, 0deg)) scale(var(--sc-from, 1));
 }
 .sc-photo { display: block; width: 100%; height: 100%; object-fit: contain; -webkit-user-drag: none; }
+/* A video from the committee. It holds still: no zoom, no print. */
+.sc-clip { background: #000; pointer-events: none; }
+.sc-slide.is-clip.is-on .sc-frame { animation: none; }
 
 /* A gentle zoom while the photo shows. */
 .sc-slide.is-on .sc-frame { animation: sc-drift var(--sc-dwell, 12s) linear both; }
@@ -320,6 +323,8 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   font-size: 1em;
 }
 .sc-bar .pd-btn[aria-pressed="true"] { border-color: var(--pd-gold); color: var(--pd-gold-hi); }
+/* How the videos are coming along: a line of its own under the buttons. */
+.sc-bar-note { flex-basis: 100%; margin: 0; padding: 0 0.8em 0.2em; text-align: center; font-size: 0.85em; color: var(--pd-muted); }
 
 @media (prefers-reduced-motion: reduce) {
   /* No zoom. The photo holds still at its full size. */

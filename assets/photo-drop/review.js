@@ -7,9 +7,13 @@
 // page says so. The list is asked for again every minute; what comes back is fitted into the page
 // around whatever the organizer is doing, so an open photo or a caption half typed stays put.
 //
+// The committee can also add a video here (video.js). It goes straight into the show, and is a
+// row in the same list from then on: wherever a row's kind is 'video', the page shows a video.
+//
 // Kept on the device: the review code and the organizer's name, until Sign out.
 import { READY, DropError, review, esc } from './api.js';
 import { VERDICTS, verdictFor } from './image.js';
+import { videoType, readVideo, sendVideo, settleVideos } from './video.js';
 import { createZips } from './zip.js';
 
 // Tells the small script in the page that this one arrived.
@@ -37,6 +41,10 @@ const NOTHING = {
 const TONE = { great: 'ok', good: 'ok', small: 'warn', tiny: 'bad' };
 const STATE_PILL = { open: ['Open', 'ok'], closed: ['Closed', 'bad'], full: ['Full', 'warn'] };
 const CODE_CHANGED = "That code isn't right anymore. Type the current one.";
+const MB = 1048576; // videos are counted in these, as the server counts them when it refuses one
+const NOT_A_VIDEO = "That file isn't a video we can use. Add an MP4 or MOV file.";
+const CANT_OPEN = "This browser can't open that video, so the slideshow may not be able to play it either. Save it as an MP4 (H.264) and add it again.";
+const VIDEOS_FULL = 'The show has all the videos it can take. Delete one to add another.';
 
 // ---------------------------------------------------------------- helpers
 const $ = (s, root = document) => root.querySelector(s);
@@ -106,14 +114,43 @@ function megabytes(bytes) {
   return `${mb > 0 && shown === 0 ? 0.1 : shown} MB`;
 }
 
+// "14 MB", or "0.4 MB" when it is small: a video's size, in the server's megabytes.
+function videoSize(bytes) {
+  const mb = Math.max(0, Number(bytes) || 0) / MB;
+  const shown = mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10;
+  return `${mb > 0 && shown === 0 ? 0.1 : shown} MB`;
+}
+// "0:23", "12:05", "1:02:03", or '' for a video that doesn't say how long it is.
+function clipLength(seconds) {
+  if (!(Number(seconds) > 0)) return '';
+  const all = Math.max(1, Math.round(Number(seconds)));
+  const two = (n) => String(n).padStart(2, '0');
+  const hours = Math.floor(all / 3600);
+  const minutes = Math.floor((all % 3600) / 60);
+  return hours ? `${hours}:${two(minutes)}:${two(all % 60)}` : `${minutes}:${two(all % 60)}`;
+}
+
+// A row is a photo a guest sent, or a video the committee added.
+const isVideo = (p) => !!p && p.kind === 'video';
+const noun = (p) => (isVideo(p) ? 'video' : 'photo');
+const fromWhom = (p) => `the ${noun(p)} from ${p.name}`;
+// "3 photos", "1 video", "3 photos and 1 video"
+function tally(rows) {
+  const videos = rows.filter(isVideo).length;
+  const photos = rows.length - videos;
+  return [photos || !videos ? plural(photos, 'photo') : '', videos ? plural(videos, 'video') : ''].filter(Boolean).join(' and ');
+}
+// False until the server says it takes videos: an older one sends no limits for them.
+const takesVideos = (s) => !!s && Number(s.maxVideos) > 0 && Number(s.videoMaxBytes) > 0;
+
 // ---------------------------------------------------------------- state
 const S = {
   view: 'loading',
   session: 0, // goes up at every sign-in and sign-out; an answer for an older one is dropped
   code: '',
   name: '',
-  settings: null, // as the server sent it: { open, closesAt, state, maxPhotos, maxBytes, photos, bytes }
-  photos: [], // every photo, oldest first, as the server sent them
+  settings: null, // as the server sent it: { open, closesAt, state, maxPhotos, maxBytes, photos, bytes }, and the videos' five
+  photos: [], // every photo and video, oldest first, as the server sent them
   tab: 'waiting',
   editing: new Map(), // photo id -> the caption to start its open editor with
   viewing: '', // the id of the photo in the full view
@@ -134,6 +171,9 @@ const S = {
   deadlineTouched: false, // the organizer is choosing a deadline: a refresh must not overwrite it
   downloading: false,
   zipLinks: [],
+  video: null, // the video chosen in "Add a video": { file, mime, reading, width, height, seconds, poster, posterUrl }
+  videoPick: 0, // goes up with each file chosen there; what was read from an earlier one is dropped
+  sending: null, // that video on its way to the server: { job, stopping }
   confirm: null // what the "Are you sure?" box is asking: { word, run, running }
 };
 const cards = new Map(); // photo id -> { el, thumb, body }: the cards in the grid right now
@@ -166,7 +206,7 @@ function toast(text, tone = 'bad') {
     box.hidden = true;
     return;
   }
-  const host = $('#rv-confirm').open ? $('#rv-confirm') : $('#rv-view').open ? $('#rv-view') : document.body;
+  const host = [$('#rv-confirm'), $('#rv-add'), $('#rv-view')].find((box) => box.open) || document.body;
   if (box.parentElement !== host) host.append(box);
   box.className = `rv-toast ${tone}`;
   $('#rv-toast-text').textContent = text;
@@ -229,7 +269,8 @@ function leave() {
   S.session += 1;
   clearInterval(S.timer);
   clearTimeout(S.againTimer);
-  for (const id of ['#rv-view', '#rv-confirm']) if ($(id).open) $(id).close();
+  stopSending();
+  for (const id of ['#rv-view', '#rv-confirm', '#rv-add']) if ($(id).open) $(id).close();
   toast('');
   dropZipLinks();
   $('#rv-download-status').textContent = '';
@@ -298,6 +339,14 @@ function again() {
   S.againTimer = setTimeout(() => load({ quiet: true }), 800);
 }
 
+// The list as it stands now, at once. A list already on its way was asked for before whatever
+// just happened, so it is dropped and asked for again.
+function refreshNow() {
+  S.changes += 1;
+  if (S.loading) S.stale = true;
+  else load({ quiet: true });
+}
+
 function take(data) {
   const line = () => shown().map((p) => p.id).join();
   const before = line();
@@ -310,8 +359,9 @@ function take(data) {
   S.loadError = '';
   for (const id of [...S.editing.keys()]) if (!byId(id)) S.editing.delete(id);
   if (S.viewing && !byId(S.viewing)) {
+    const gone = $('#rv-view-video').dataset.id === S.viewing ? 'video' : 'photo';
     $('#rv-view').close();
-    toast('That photo is no longer here. Someone else deleted it.');
+    toast(`That ${gone} is no longer here. Someone else deleted it.`);
   }
   render();
 }
@@ -346,6 +396,7 @@ function render() {
   if (S.view !== 'app') return;
   paintBar();
   paintUploads();
+  paintAddTool();
   paintTabs();
   paintGrid();
   paintViewer();
@@ -353,7 +404,14 @@ function render() {
 
 function paintBar() {
   const s = S.settings;
-  $('#rv-usage').textContent = s ? `${megabytes(s.bytes)} of ${megabytes(s.maxBytes)}, ${s.photos} of ${plural(s.maxPhotos, 'photo')}` : '';
+  let usage = s ? `${megabytes(s.bytes)} of ${megabytes(s.maxBytes)}, ${s.photos} of ${plural(s.maxPhotos, 'photo')}` : '';
+  // The videos have room of their own. The use is rounded up and the room down, as the server
+  // does in its sentence when a video doesn't fit.
+  if (takesVideos(s)) {
+    const room = Math.floor((Number(s.videoTotalBytes) || 0) / MB);
+    usage += `. Videos: ${Number(s.videos) || 0}, using ${Math.ceil((Number(s.videoBytes) || 0) / MB)}${room ? ` of ${room}` : ''} MB.`;
+  }
+  $('#rv-usage').textContent = usage;
   const at = S.loadedAt ? clockText(timeParts(new Date(S.loadedAt))) : '';
   let stamp = at ? `Checked at ${at}` : '';
   if (S.loadError) stamp = `Couldn't refresh. Showing the photos as of ${at}.`;
@@ -431,11 +489,14 @@ function paintGrid() {
     if (card.el === at) at = at.nextElementSibling;
     else grid.insertBefore(card.el, at);
   }
-  const n = shown().length;
+  const here = shown();
+  const n = here.length;
+  const videos = here.filter(isVideo).length;
+  const one = !videos ? 'a photo' : videos === n ? 'a video' : 'one';
   $('#rv-empty').textContent = NOTHING[S.tab];
   $('#rv-empty').hidden = list.length > 0;
   $('#rv-shown').textContent = n
-    ? `${plural(n, 'photo')} ${LABEL[S.tab].toLowerCase()}, oldest first${S.tab === 'waiting' ? '. Open a photo to approve it.' : ''}`
+    ? `${tally(here)} ${LABEL[S.tab].toLowerCase()}, oldest first${S.tab === 'waiting' ? `. Open ${one} to approve it.` : ''}`
     : '';
   $('#rv-review-all').hidden = S.tab !== 'waiting' || n < 1;
 }
@@ -455,16 +516,20 @@ function newCard(p) {
 }
 
 function paintCard(card, p) {
-  const thumbSig = `${p.thumbUrl}\n${p.name}`;
+  const thumbSig = `${p.thumbUrl}\n${p.name}\n${noun(p)}`;
   if (card.thumbSig !== thumbSig) {
     card.thumbSig = thumbSig;
     card.thumb.classList.remove('is-broken');
-    card.thumb.setAttribute('aria-label', `See the photo from ${p.name} full size`);
-    card.thumb.innerHTML = `<img src="${esc(p.thumbUrl)}" alt="" loading="lazy" decoding="async" /><span class="rv-thumb-miss">This picture didn't load. Tap Refresh.</span>`;
+    card.thumb.setAttribute('aria-label', `See ${fromWhom(p)} full size`);
+    // A video's small picture is its poster. One that came without a poster gets a plain tile:
+    // its file is a video, which a picture can't show.
+    card.thumb.innerHTML = isVideo(p) && !p.thumbUrl
+      ? '<span class="rv-thumb-video">Video</span>'
+      : `<img src="${esc(p.thumbUrl)}" alt="" loading="lazy" decoding="async" /><span class="rv-thumb-miss">This picture didn't load. Tap Refresh.</span>`;
   }
   const editing = S.editing.has(p.id);
   if (editing && card.body.dataset.editing) return; // someone is typing here: leave it exactly as it is
-  const bodySig = JSON.stringify([p.status, p.name, p.email, p.caption, p.width, p.height, p.original, p.createdAt, p.reviewedAt, p.reviewedBy, editing]);
+  const bodySig = JSON.stringify([p.status, p.name, p.email, p.caption, p.width, p.height, p.original, p.createdAt, p.reviewedAt, p.reviewedBy, editing, p.kind, p.seconds, p.mime, p.bytes]);
   if (card.bodySig === bodySig) return;
   card.bodySig = bodySig;
   // Redrawing would drop the keyboard's place. Note which button had it, and give it back.
@@ -478,7 +543,13 @@ function paintCard(card, p) {
 
 // The pill that says how a photo will look on the big screens, by the file the person picked
 // where that is known, and the photo's size in pixels.
+// For a video: that it is one and how long it runs, then its kind of file, its size and its pixels.
 function sizeHTML(p) {
+  if (isVideo(p)) {
+    const length = clipLength(p.seconds);
+    const about = [p.mime === 'video/quicktime' ? 'MOV' : 'MP4', videoSize(p.bytes), `${Number(p.width)} × ${Number(p.height)}`].join(' · ');
+    return `<span class="pd-pill">Video${length ? ` · ${length}` : ''}</span> <span class="rv-dims">${about}</span>`;
+  }
   const o = p.original && p.original.width > 0 && p.original.height > 0 ? p.original : p;
   const verdict = verdictFor(Math.max(o.width, o.height));
   return `<span class="pd-pill ${TONE[verdict]}">${esc(VERDICTS[verdict].label)}</span> <span class="rv-dims">${Number(o.width)} × ${Number(o.height)}</span>`;
@@ -492,9 +563,9 @@ function bodyHTML(p, editing) {
   const caption = editing ? `
     <form class="rv-cap-form" data-form="caption" novalidate>
       <div class="pd-field">
-        <label for="rv-cap-${esc(p.id)}">Caption<span class="pd-sr"> for the photo from ${name}</span></label>
+        <label for="rv-cap-${esc(p.id)}">Caption<span class="pd-sr"> for the ${noun(p)} from ${name}</span></label>
         <input id="rv-cap-${esc(p.id)}" type="text" maxlength="${CAPTION_MAX}" enterkeyhint="done" autocomplete="off" value="${esc(S.editing.get(p.id))}" aria-describedby="rv-cap-hint-${esc(p.id)}" />
-        <p class="pd-hint" id="rv-cap-hint-${esc(p.id)}">Shown with the photo on the big screens. Leave it empty for no caption.</p>
+        <p class="pd-hint" id="rv-cap-hint-${esc(p.id)}">Shown with the ${noun(p)} on the big screens. Leave it empty for no caption.</p>
       </div>
       <div class="rv-cap-btns">
         <button type="submit" class="pd-btn small primary">Save</button>
@@ -503,20 +574,25 @@ function bodyHTML(p, editing) {
     </form>` : `
     <div class="rv-cap">
       ${p.caption ? `<p class="rv-cap-text">${esc(p.caption)}</p>` : '<p class="rv-cap-text none">No caption</p>'}
-      <button type="button" class="pd-btn small" data-act="edit" aria-label="${p.caption ? 'Edit' : 'Add'} the caption for the photo from ${name}">${p.caption ? 'Edit' : 'Add'}</button>
+      <button type="button" class="pd-btn small" data-act="edit" aria-label="${p.caption ? 'Edit' : 'Add'} the caption for the ${noun(p)} from ${name}">${p.caption ? 'Edit' : 'Add'}</button>
     </div>`;
-  const about = `<span class="pd-sr"> the photo from ${name}</span>`;
+  const about = `<span class="pd-sr"> the ${noun(p)} from ${name}</span>`;
   // A waiting photo is approved from the full view only. The small picture on a card is one the
   // sender's phone made, and the full view shows the file that will play on the big screens.
   const actions = p.status === 'waiting'
     ? `<button type="button" class="pd-btn primary" data-act="view">Review${about}</button>
        <button type="button" class="pd-btn" data-act="reject">Reject${about}</button>`
-    : `<button type="button" class="pd-btn" data-act="waiting">Back to waiting<span class="pd-sr"> with the photo from ${name}</span></button>
+    : `<button type="button" class="pd-btn" data-act="waiting">Back to waiting<span class="pd-sr"> with the ${noun(p)} from ${name}</span></button>
        ${p.status === 'rejected' ? `<button type="button" class="pd-btn danger" data-act="delete">Delete${about}</button>` : ''}`;
-  return `
-    <p class="rv-name">${name}</p>
+  // A video has no sender to write to: it shows who on the committee added it, and no address.
+  const who = isVideo(p)
+    ? `<p class="rv-name">Added by ${name}</p>
+    <p class="rv-when">Added ${esc(shortWhen(p.createdAt))}</p>`
+    : `<p class="rv-name">${name}</p>
     <p class="rv-email">${esc(p.email)}</p>
-    <p class="rv-when">Sent ${esc(shortWhen(p.createdAt))}</p>
+    <p class="rv-when">Sent ${esc(shortWhen(p.createdAt))}</p>`;
+  return `
+    ${who}
     ${by}
     <p class="rv-size">${sizeHTML(p)}</p>
     ${caption}
@@ -540,7 +616,7 @@ async function setStatus(ids, status) {
   }
   S.settleAt = Date.now() + SETTLE;
   render();
-  say(`${rows.length === 1 ? 'Photo' : plural(rows.length, 'photo')} ${DONE[status]}. ${count('waiting')} waiting.`);
+  say(`${rows.length === 1 ? (isVideo(rows[0]) ? 'Video' : 'Photo') : tally(rows)} ${DONE[status]}. ${count('waiting')} waiting.`);
 
   let sent = 0;
   try {
@@ -552,7 +628,7 @@ async function setStatus(ids, status) {
     // Fewer changed than asked: someone else got to some first. Say so, and see how things stand.
     if (session === S.session && changed < rows.length) {
       toast(rows.length === 1
-        ? `Someone else had already decided the photo from ${rows[0].name}. It is shown where it stands now.`
+        ? `Someone else had already decided ${fromWhom(rows[0])}. It is shown where it stands now.`
         : `Someone else had already decided ${plural(rows.length - changed, 'photo')}. They are shown where they stand now.`);
       again();
     }
@@ -566,7 +642,7 @@ async function setStatus(ids, status) {
     S.settleAt = Date.now() + SETTLE;
     render();
     const what = undone.length === 1
-      ? `The photo from ${undone[0].name} wasn't ${DONE[status]}. It is back in ${LABEL[from]}.`
+      ? `The ${noun(undone[0])} from ${undone[0].name} wasn't ${DONE[status]}. It is back in ${LABEL[from]}.`
       : `${undone.length} photos weren't ${DONE[status]}. They are back in ${LABEL[from]}.`;
     refused(e, what);
   }
@@ -650,9 +726,9 @@ async function saveCaption(id, typed, { focus = true } = {}) {
 function askDelete(p) {
   const at = shown().findIndex((x) => x.id === p.id);
   confirmWith({
-    title: 'Delete this photo for good?',
-    text: `The photo from ${p.name} is removed from the chapter's storage. It can't be brought back.`,
-    yes: 'Delete photo',
+    title: `Delete this ${noun(p)} for good?`,
+    text: `The ${noun(p)} from ${p.name} is removed from the chapter's storage. It can't be brought back.`,
+    yes: `Delete ${noun(p)}`,
     danger: true,
     run: () => deletePhoto(p.id),
     after: () => focusCardAt(at)
@@ -665,15 +741,17 @@ async function deletePhoto(id) {
   const session = S.session;
   const [p] = S.photos.splice(at, 1);
   S.editing.delete(id);
-  const room = S.settings ? { photos: S.settings.photos, bytes: S.settings.bytes } : null;
-  if (room) Object.assign(S.settings, { photos: Math.max(0, room.photos - 1), bytes: Math.max(0, room.bytes - (Number(p.bytes) || 0)) });
+  // A video gives its room back to the videos, a photo to the photos.
+  const [n, size] = isVideo(p) ? ['videos', 'videoBytes'] : ['photos', 'bytes'];
+  const room = S.settings ? { [n]: S.settings[n], [size]: S.settings[size] } : null;
+  if (room) Object.assign(S.settings, { [n]: Math.max(0, (Number(room[n]) || 0) - 1), [size]: Math.max(0, (Number(room[size]) || 0) - (Number(p.bytes) || 0)) });
   S.settleAt = Date.now() + SETTLE;
   render();
-  say('Photo deleted.');
+  say(`${isVideo(p) ? 'Video' : 'Photo'} deleted.`);
   try {
     const answer = await change('delete', { ids: [id] });
     if (session === S.session && !answer.deleted) {
-      toast(`The photo from ${p.name} wasn't deleted: someone else had moved it out of Rejected. It is shown where it stands now.`);
+      toast(`The ${noun(p)} from ${p.name} wasn't deleted: someone else had moved it out of Rejected. It is shown where it stands now.`);
       again();
     }
   } catch (e) {
@@ -682,15 +760,16 @@ async function deletePhoto(id) {
     if (room && S.settings) Object.assign(S.settings, room);
     S.settleAt = Date.now() + SETTLE;
     render();
-    refused(e, `The photo from ${p.name} wasn't deleted. It is back in ${LABEL[p.status]}.`);
+    refused(e, `The ${noun(p)} from ${p.name} wasn't deleted. It is back in ${LABEL[p.status]}.`);
   }
 }
 
 function askDeleteEverything() {
   const total = S.photos.length;
+  const some = S.photos.some(isVideo);
   confirmWith({
     title: 'Delete everything?',
-    text: `This deletes every photo and its files for good: ${count('waiting')} waiting, ${count('approved')} approved and ${count('rejected')} rejected${total ? '' : ', plus any still arriving'}. The slideshow goes empty. It can't be undone. To keep the approved photos, download them first.`,
+    text: `This deletes every photo${some ? ' and video' : ''} and ${some ? 'their' : 'its'} files for good: ${count('waiting')} waiting, ${count('approved')} approved and ${count('rejected')} rejected${total ? '' : ', plus any still arriving'}. The slideshow goes empty. It can't be undone. To keep the approved photos, download them first.`,
     yes: 'Delete everything',
     working: 'Deleting',
     danger: true,
@@ -699,6 +778,7 @@ function askDeleteEverything() {
     // Not shown as done until the server says it is: this is the one change nobody can take back.
     run: async () => {
       const session = S.session;
+      const videos = S.photos.filter(isVideo).length;
       let answer;
       try {
         answer = await change('empty', { confirm: 'DELETE' });
@@ -712,9 +792,12 @@ function askDeleteEverything() {
       if (session !== S.session) return;
       S.photos = [];
       S.editing.clear();
-      if (S.settings) Object.assign(S.settings, { photos: 0, bytes: 0 });
+      if (S.settings) Object.assign(S.settings, { photos: 0, bytes: 0 }, takesVideos(S.settings) ? { videos: 0, videoBytes: 0 } : {});
       render();
-      const deleted = `Deleted ${plural(Number(answer.deleted) || 0, 'photo')}.`;
+      // The server counts rows. As many of them as this page knew to be videos are said as videos.
+      const all = Number(answer.deleted) || 0;
+      const gone = Math.min(all, videos);
+      const deleted = `Deleted ${plural(all - gone, 'photo')}${gone ? ` and ${plural(gone, 'video')}` : ''}.`;
       if (answer.swept === false) toast(`${deleted} Some leftover files couldn't be checked yet. Choose Delete everything again in 10 minutes to be sure nothing is left.`);
       else toast(`${deleted} The drop is empty.`, 'ok');
       again();
@@ -799,19 +882,36 @@ function paintViewer() {
 
   const img = $('#rv-view-img');
   if (img.dataset.id !== p.id) {
+    const video = $('#rv-view-video');
     img.dataset.id = p.id;
-    $('#rv-view-stage').className = 'rv-view-stage is-loading';
-    $('#rv-view-wait').textContent = 'Loading the photo';
-    img.alt = `The photo from ${p.name}`;
-    img.src = p.url;
+    dropVideo();
+    delete $('#rv-view-actions').dataset.noApprove;
+    img.hidden = isVideo(p);
+    video.hidden = !isVideo(p);
+    if (isVideo(p)) {
+      // A video shows at once, with its poster and its own controls: some phones fetch nothing
+      // of a video until Play is tapped, so there is no waiting for it first. Approve waits.
+      $('#rv-view-stage').className = 'rv-view-stage';
+      img.removeAttribute('src');
+      img.alt = '';
+      video.dataset.id = p.id;
+      video.setAttribute('aria-label', `The video from ${p.name}`);
+      if (p.thumbUrl) video.poster = p.thumbUrl;
+      video.src = p.url;
+    } else {
+      $('#rv-view-stage').className = 'rv-view-stage is-loading';
+      $('#rv-view-wait').textContent = 'Loading the photo';
+      img.alt = `The photo from ${p.name}`;
+      img.src = p.url;
+    }
     S.settleAt = Date.now() + SETTLE;
     // Have the next one ready, so going through a long line doesn't mean waiting on each.
-    if (next) new Image().src = next.url;
+    if (next && !isVideo(next)) new Image().src = next.url;
   }
 
   const pos = at >= 0 ? `${at + 1} of ${list.length} ${LABEL[S.tab].toLowerCase()}` : `Now ${LABEL[p.status].toLowerCase()}`;
   if ($('#rv-view-pos').textContent !== pos) $('#rv-view-pos').textContent = pos;
-  const who = `<p class="rv-view-name">${esc(p.name)} <span class="rv-view-size">${sizeHTML(p)}</span></p>${p.caption ? `<p class="rv-view-cap">${esc(p.caption)}</p>` : ''}`;
+  const who = `<p class="rv-view-name">${isVideo(p) ? 'Added by ' : ''}${esc(p.name)} <span class="rv-view-size">${sizeHTML(p)}</span></p>${p.caption ? `<p class="rv-view-cap">${esc(p.caption)}</p>` : ''}`;
   if (S.viewWho !== who) {
     S.viewWho = who;
     $('#rv-view-who').innerHTML = who;
@@ -823,6 +923,25 @@ function paintViewer() {
       ? '<button type="button" class="pd-btn primary" data-act="approve">Approve</button><button type="button" class="pd-btn" data-act="reject">Reject</button>'
       : '<button type="button" class="pd-btn" data-act="waiting">Back to waiting</button>';
   }
+}
+
+// Stops the video in the full view and lets go of its file, so nothing plays on behind the page.
+function dropVideo() {
+  const video = $('#rv-view-video');
+  if (!video.dataset.id) return;
+  delete video.dataset.id;
+  video.pause();
+  video.removeAttribute('src');
+  video.removeAttribute('poster');
+  video.removeAttribute('aria-label');
+  video.load();
+}
+
+// The video in the full view can't be shown: say so in its place, and take Approve away.
+function videoBroken(message) {
+  $('#rv-view-stage').className = 'rv-view-stage is-broken';
+  $('#rv-view-wait').textContent = message;
+  $('#rv-view-actions').dataset.noApprove = '1';
 }
 
 function step(id) {
@@ -838,9 +957,17 @@ function moveFromViewer(status) {
   // approve a photo they haven't seen.
   if (!p || Date.now() < S.settleAt || $('#rv-view-stage').classList.contains('is-loading')) return;
   // Approving takes the photo itself on screen: this photo, loaded, and not a broken picture.
+  // For a video: this video, far enough along that the browser has shown it can play it.
   const img = $('#rv-view-img');
-  const seen = img.dataset.id === p.id && img.complete && img.naturalWidth > 0 && !$('#rv-view-stage').classList.contains('is-broken');
-  if (status === 'approved' && !seen) return toast("This photo hasn't loaded, so it can't be approved yet. Close it, tap Refresh, and open it again.");
+  const video = $('#rv-view-video');
+  const seen = !$('#rv-view-stage').classList.contains('is-broken') && (isVideo(p)
+    ? video.dataset.id === p.id && video.readyState >= 2 && video.videoWidth > 0
+    : img.dataset.id === p.id && img.complete && img.naturalWidth > 0);
+  if (status === 'approved' && !seen) {
+    return toast(isVideo(p)
+      ? "This video hasn't loaded, so it can't be approved yet. Play it, then tap Approve."
+      : "This photo hasn't loaded, so it can't be approved yet. Close it, tap Refresh, and open it again.");
+  }
   const list = shown();
   const at = list.findIndex((x) => x.id === p.id);
   // A photo that already left this tab stays in view. Otherwise the next in line takes its place.
@@ -849,7 +976,7 @@ function moveFromViewer(status) {
   setStatus([p.id], status);
   if (!next) {
     $('#rv-view').close();
-    return toast(`That was the last photo ${LABEL[S.tab].toLowerCase()}.`, 'ok');
+    return toast(`That was the last ${noun(p)} ${LABEL[S.tab].toLowerCase()}.`, 'ok');
   }
   // The button that was tapped may have been redrawn. Keep the keyboard inside the view.
   if (!$('#rv-view').contains(document.activeElement)) $('#rv-view-actions .pd-btn').focus({ preventScroll: true });
@@ -862,7 +989,11 @@ function viewerClosed() {
   const img = $('#rv-view-img');
   img.removeAttribute('src');
   delete img.dataset.id;
+  img.hidden = false;
+  dropVideo();
+  $('#rv-view-video').hidden = true;
   delete $('#rv-view-actions').dataset.status;
+  delete $('#rv-view-actions').dataset.noApprove;
   backToPage();
   // Back in the grid, at the photo that was open or the tab it left.
   const card = cards.get(last);
@@ -992,7 +1123,8 @@ async function downloadApproved() {
   const session = S.session;
   const status = $('#rv-download-status');
   const missed = $('#rv-download-missed');
-  const list = S.photos.filter((p) => p.status === 'approved').map((p) => ({ name: p.name, url: p.url, createdAt: p.createdAt }));
+  // Photos only. A video is large, and whoever added it has the file it came from.
+  const list = S.photos.filter((p) => p.status === 'approved' && !isVideo(p)).map((p) => ({ name: p.name, url: p.url, createdAt: p.createdAt }));
   dropZipLinks();
   missed.hidden = true;
   if (!list.length) {
@@ -1041,6 +1173,205 @@ async function downloadApproved() {
   }
   missed.textContent = notes.join(' ');
   missed.hidden = !notes.length;
+}
+
+// ---------------------------------------------------------------- adding a video
+// For the committee. A video is opened in this browser before anything is sent: one this browser
+// can't open is one the slideshow may not be able to play either. Then it goes to the chapter's
+// storage (video.js) while the box shows how far along it is. The upload is nobody's "change":
+// it can take many minutes, and the list keeps refreshing behind it the whole time.
+const videosFull = () => takesVideos(S.settings) && Number(S.settings.videos) >= Number(S.settings.maxVideos);
+const askBeforeLeaving = (e) => {
+  e.preventDefault();
+  e.returnValue = '';
+};
+
+function paintAddTool() {
+  const on = takesVideos(S.settings);
+  $('#rv-add-tool').hidden = !on;
+  const hint = on ? `For the committee. Guests can't send videos. MP4 or MOV, ${Math.floor(S.settings.videoMaxBytes / MB)} MB at most each.` : '';
+  if ($('#rv-add-hint').textContent !== hint) $('#rv-add-hint').textContent = hint;
+}
+
+// A line at the top of the box: a problem, or (tone '') plain news such as a cancelled upload.
+function addNote(text, tone = 'bad') {
+  const note = $('#rv-add-err');
+  note.className = `pd-note ${tone}`.trim();
+  note.textContent = text;
+  note.hidden = !text;
+}
+
+function forgetVideo() {
+  S.videoPick += 1;
+  if (S.video && S.video.posterUrl) URL.revokeObjectURL(S.video.posterUrl);
+  S.video = null;
+}
+
+function askVideo() {
+  if (S.sending || !takesVideos(S.settings)) return;
+  forgetVideo();
+  $('#rv-add-file').value = '';
+  $('#rv-add-caption').value = '';
+  addNote(videosFull() ? VIDEOS_FULL : '');
+  paintAdd();
+  $('#rv-add').showModal();
+  $('#rv-add-file').focus();
+  // A place left held by an upload that failed, or by a reload partway through one, is handed
+  // back now, so the numbers are right before the next video is chosen.
+  const session = S.session;
+  settleVideos(S.code).then((n) => {
+    if (n && session === S.session) refreshNow();
+  });
+}
+
+// Draws the box from the video that is chosen and from whether it is on its way.
+function paintAdd() {
+  const v = S.video;
+  const going = !!S.sending;
+  const stopping = going && S.sending.stopping;
+  $('#rv-add-pick').hidden = going;
+  $('#rv-add-choose').textContent = v ? 'Choose a different video' : 'Choose a video';
+  $('#rv-add-about').hidden = !v;
+  const poster = $('#rv-add-poster');
+  const sig = !v ? '' : v.posterUrl || 'none';
+  if (poster.dataset.sig !== sig) {
+    poster.dataset.sig = sig;
+    poster.innerHTML = !v ? '' : v.posterUrl ? `<img src="${esc(v.posterUrl)}" alt="" />` : '<span class="rv-thumb-video">Video</span>';
+  }
+  $('#rv-add-name').textContent = v ? v.file.name : '';
+  $('#rv-add-facts').textContent = !v ? '' : v.reading
+    ? 'Opening the video'
+    : [clipLength(v.seconds), videoSize(v.file.size), `${v.width} × ${v.height}`].filter(Boolean).join(' · ');
+  $('#rv-add-caption').disabled = going;
+  $('#rv-add-going').hidden = !going;
+  $('#rv-add-go').hidden = going;
+  $('#rv-add-go').disabled = !!(v && v.reading);
+  $('#rv-add-no').disabled = stopping;
+  $('#rv-add-no').textContent = stopping ? 'Cancelling' : 'Cancel';
+}
+
+// A file was chosen. Each check has its own sentence, and nothing is sent until all have passed.
+async function videoChosen(file) {
+  if (!file || S.sending) return;
+  forgetVideo();
+  const pick = S.videoPick;
+  const refuse = (problem) => {
+    $('#rv-add-file').value = '';
+    paintAdd();
+    addNote(problem);
+    $('#rv-add-file').focus();
+  };
+  const mime = videoType(file);
+  const limit = Number(S.settings && S.settings.videoMaxBytes) || 0;
+  if (!mime || !file.size) return refuse(NOT_A_VIDEO);
+  if (limit && file.size > limit) {
+    return refuse(`That video is ${Math.ceil((file.size / MB) * 10) / 10} MB. One video can be ${Math.floor(limit / MB)} MB at most. Export a smaller copy, or trim it, and add it again.`);
+  }
+  S.video = { file, mime, reading: true, width: 0, height: 0, seconds: null, poster: null, posterUrl: '' };
+  addNote(videosFull() ? VIDEOS_FULL : '');
+  paintAdd();
+  let facts = null;
+  try {
+    facts = await readVideo(file);
+  } catch {
+    // This browser can't open it.
+  }
+  if (pick !== S.videoPick) return; // another file was chosen meanwhile, or the box was closed
+  if (!facts) {
+    forgetVideo();
+    return refuse(CANT_OPEN);
+  }
+  Object.assign(S.video, facts, { reading: false, posterUrl: facts.poster ? URL.createObjectURL(facts.poster) : '' });
+  paintAdd();
+  say(`Video chosen: ${$('#rv-add-facts').textContent}.`);
+}
+
+function paintSending(at) {
+  const sent = at.step === 'checking' ? 100 : at.step === 'sending' && at.total > 0 ? Math.min(100, Math.floor((at.sent / at.total) * 100)) : 0;
+  const bar = $('#rv-add-bar');
+  bar.setAttribute('aria-valuenow', String(sent));
+  $('span', bar).style.width = `${sent}%`;
+  const words = at.step === 'checking' ? 'Checking it' : at.step === 'sending' ? `Sending the video: ${sent}%` : 'Getting ready';
+  if ($('#rv-add-status').textContent === words) return;
+  $('#rv-add-status').textContent = words;
+  if (at.step === 'checking') say('Checking the video.');
+}
+
+// Add to the slideshow. Until it ends one way or the other the box stays open with one button,
+// Cancel, and leaving the page asks first.
+async function addVideo() {
+  const v = S.video;
+  if (S.sending) return;
+  if (!v) {
+    addNote('Choose a video first.');
+    return $('#rv-add-file').focus();
+  }
+  if (v.reading) return;
+  if (videosFull()) return addNote(VIDEOS_FULL);
+  const caption = $('#rv-add-caption').value.replace(/\s+/g, ' ').trim().slice(0, CAPTION_MAX);
+  const sending = { job: null, stopping: false };
+  S.sending = sending;
+  window.addEventListener('beforeunload', askBeforeLeaving);
+  addNote('');
+  paintAdd();
+  paintSending({ step: 'asking' });
+  $('#rv-add-no').focus({ preventScroll: true });
+  say('Sending the video.');
+  sending.job = sendVideo({ code: S.code, by: S.name, video: { ...v, caption } }, (at) => {
+    if (S.sending === sending && !sending.stopping) paintSending(at);
+  });
+  let error = null;
+  try {
+    await sending.job.done;
+  } catch (e) {
+    error = e;
+  }
+  if (S.sending !== sending) return; // signed out meanwhile: leave() has put everything away
+  // The server had been asked to check the video when things went wrong, so its answer may have
+  // been lost on the way back with the video in the show all the same. The list says which.
+  let landed = false;
+  if (error && error.asked && error.id) {
+    try {
+      const data = await inTime(review(S.code, 'list'));
+      landed = Array.isArray(data.photos) && data.photos.some((p) => p.id === error.id);
+    } catch {
+      // No list either. Said as not added: the next refresh shows it if it is there after all.
+    }
+    if (S.sending !== sending) return;
+  }
+  S.sending = null;
+  window.removeEventListener('beforeunload', askBeforeLeaving);
+  if (!error || landed) {
+    $('#rv-add').close();
+    refreshNow();
+    if (error && error.reason === 'cancelled') return toast('The video was already in the slideshow when you cancelled. It is under Approved.');
+    return toast('Video added. It joins the slideshow within a couple of minutes.', 'ok');
+  }
+  if (error.reason === 'code') return lockedOut();
+  // Not added, and the server has let go of it. The file is still chosen, to try again.
+  paintAdd();
+  addNote(whyOf(error), error.reason === 'cancelled' ? '' : 'bad');
+  $('#rv-add-go').focus({ preventScroll: true });
+  again();
+}
+
+// Cancel in the box: stops the upload when one is running, and closes the box when none is.
+function cancelAdd() {
+  const sending = S.sending;
+  if (!sending) return $('#rv-add').close();
+  if (sending.stopping || !sending.job) return;
+  sending.stopping = true;
+  paintAdd();
+  $('#rv-add-status').textContent = 'Cancelling';
+  sending.job.cancel();
+}
+
+// Signing out, or a code the server stopped taking: the upload ends with nothing said.
+function stopSending() {
+  const sending = S.sending;
+  S.sending = null;
+  window.removeEventListener('beforeunload', askBeforeLeaving);
+  if (sending && sending.job) sending.job.cancel();
 }
 
 // ---------------------------------------------------------------- events
@@ -1145,6 +1476,8 @@ function listen() {
   view.addEventListener('keydown', (e) => {
     // A key held down (or something resting on it) presses the button again and again. One press,
     // one photo: the repeats are dropped.
+    // Inside a video's own controls the arrows wind it and Space plays it: those keys are its.
+    if (e.target.closest('video')) return;
     if (e.repeat && (e.key === 'Enter' || e.key === ' ')) return e.preventDefault();
     if (e.key === 'ArrowLeft') step(S.viewPrev);
     if (e.key === 'ArrowRight') step(S.viewNext);
@@ -1165,6 +1498,21 @@ function listen() {
     if (!img.getAttribute('src')) return;
     $('#rv-view-stage').className = 'rv-view-stage is-broken';
     $('#rv-view-wait').textContent = "This photo didn't load. Close it, tap Refresh, and open it again.";
+  });
+
+  // A video in the full view. It is on screen from the start, so only Approve waits for it.
+  const video = $('#rv-view-video');
+  const looked = () => { S.settleAt = Math.max(S.settleAt, Date.now() + LOOK); };
+  video.addEventListener('loadedmetadata', () => {
+    // Sound with no picture, or a picture this browser can't draw: there is nothing to judge.
+    if (video.getAttribute('src') && !video.videoWidth) videoBroken("This browser can't play this video. Open the review page in Chrome or Safari on a computer to check it.");
+  });
+  video.addEventListener('loadeddata', looked);
+  video.addEventListener('error', () => {
+    if (!video.getAttribute('src')) return;
+    videoBroken(video.error && video.error.code === 2
+      ? "This video didn't load. Close it, tap Refresh, and open it again."
+      : "This browser can't play this video. Open the review page in Chrome or Safari on a computer to check it.");
   });
 
   // "Are you sure?"
@@ -1199,6 +1547,29 @@ function listen() {
     setDeadline(at.toISOString());
   });
   $('#rv-deadline-none').addEventListener('click', () => setDeadline(null));
+
+  // Adding a video
+  const add = $('#rv-add');
+  $('#rv-add-open').addEventListener('click', askVideo);
+  $('#rv-add-file').addEventListener('change', (e) => videoChosen(e.target.files[0]));
+  $('#rv-add-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    addVideo();
+  });
+  $('#rv-add-no').addEventListener('click', cancelAdd);
+  // Escape closes the box, except while a video is on its way: then only Cancel ends it.
+  add.addEventListener('cancel', (e) => { if (S.sending) e.preventDefault(); });
+  add.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.sending) e.preventDefault(); });
+  add.addEventListener('close', () => {
+    // A browser can close a box over the page's objection (Escape twice, a phone's Back button).
+    // An upload must not carry on out of sight, so the box comes straight back.
+    if (S.sending) return add.showModal();
+    forgetVideo();
+    $('#rv-add-file').value = '';
+    paintAdd();
+    addNote('');
+    backToPage();
+  });
 
   // Tools
   $('#rv-download').addEventListener('click', downloadApproved);

@@ -55,6 +55,21 @@ from public.drop_photos group by status order by status;
 --    drop_per_ip_day: photos one internet connection may send in a day. It starts at 0, which
 --                     is off. Check step 7 before turning it on, and turn it off again if guests
 --                     see "Too many photos have come from this connection today."
+--    The committee's videos have limits of their own (migration 20261118000400):
+--    drop_max_videos:        videos the show will take (40).
+--    drop_video_total_bytes: storage the videos may use together, in bytes (209715200, which the
+--                            pages show as 200 MB).
+--    drop_video_max_bytes:   the most one video may be, in bytes (52428800, shown as 50 MB, which
+--                            is also the most the free plan takes in one file). Storage goes by
+--                            the bucket's own limit too, and by the project's global file size
+--                            limit (Storage, then Settings, in the dashboard), so change them
+--                            together:
+--                            update storage.buckets set file_size_limit = 52428800 where id = 'photo-drop';
+--    For School Daze the live project is on the Pro plan, with 1000 MB a video and 10000 MB
+--    together:
+--    update storage.buckets set file_size_limit = 1048576000 where id = 'photo-drop';
+--    update cal_private.config set value = '1048576000' where key = 'drop_video_max_bytes';
+--    update cal_private.config set value = '10485760000' where key = 'drop_video_total_bytes';
 -- update cal_private.config set value = '8' where key = 'drop_per_person';
 -- update cal_private.config set value = '60' where key = 'drop_per_ip_day';
 

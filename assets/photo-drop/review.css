@@ -273,6 +273,19 @@ html:has(dialog[open]) { overflow: hidden; }
 .rv-thumb-miss { display: none; }
 .rv-thumb.is-broken img { display: none; }
 .rv-thumb.is-broken .rv-thumb-miss { display: grid; position: absolute; inset: 0; place-items: center; padding: 16px; font-size: 0.95rem; }
+/* A video that came without a poster: a plain dark tile that says what it is. */
+.rv-thumb-video {
+  display: grid;
+  position: absolute;
+  inset: 0;
+  place-items: center;
+  font-family: var(--pd-font-label);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--pd-muted);
+}
 
 .rv-body { display: flex; flex: 1; flex-direction: column; gap: 3px; padding: 12px 14px 14px; }
 .rv-body p { margin: 0; }
@@ -333,6 +346,9 @@ html:has(dialog[open]) { overflow: hidden; }
 .rv-view-wait { display: none; position: absolute; inset: 0; place-items: center; margin: 0; padding: 20px; color: var(--pd-muted); text-align: center; }
 .rv-view-stage.is-loading .rv-view-wait, .rv-view-stage.is-broken .rv-view-wait { display: grid; }
 .rv-view-stage.is-loading img, .rv-view-stage.is-broken img { visibility: hidden; }
+/* A video from the committee plays in the same place, with the browser's own controls. */
+.rv-view-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.rv-view-stage.is-broken video { visibility: hidden; }
 .rv-view-foot {
   padding: 10px max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   border-top: 1px solid var(--pd-line);
@@ -346,6 +362,8 @@ html:has(dialog[open]) { overflow: hidden; }
 .rv-view-actions { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; }
 .rv-view-actions .pd-btn { padding-inline: 8px; }
 .rv-view-stage.is-loading ~ .rv-view-foot .rv-view-actions .pd-btn { opacity: 0.5; }
+/* A video this browser can't play can't be approved from it. */
+.rv-view-actions[data-no-approve] [data-act="approve"] { display: none; }
 .rv-step {
   display: grid;
   place-items: center;
@@ -375,6 +393,32 @@ html:has(dialog[open]) { overflow: hidden; }
 .rv-ask::backdrop { background: rgba(0, 0, 0, 0.78); }
 .rv-ask .pd-btnrow { justify-content: flex-end; }
 .rv-ask .pd-btn.danger { border-color: var(--pd-danger); background: var(--pd-danger); color: var(--pd-on-gold); }
+
+/* ---------------------------------------------------------------- "Add a video" */
+/* The same box as "Are you sure?". The real file input is hidden and its label is the button;
+   the ring shows on the label when the keyboard reaches the input. */
+.rv-add-pick { margin-top: 14px; }
+.rv-add-file:focus-visible + .pd-btn { outline: 3px solid var(--pd-gold-hi); outline-offset: 2px; }
+#rv-add-err { overflow-wrap: anywhere; }
+/* The chosen video: its poster, its name, and one line of facts. */
+.rv-add-about { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 12px; }
+.rv-add-poster {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--pd-line);
+  border-radius: var(--pd-r-sm);
+  background: #000;
+  overflow: hidden;
+}
+.rv-add-poster img { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.rv-add-poster .rv-thumb-video { font-size: 0.85rem; }
+.rv-add-words p { margin: 0; }
+.rv-add-name { font-weight: 600; overflow-wrap: anywhere; }
+.rv-add-facts { font-size: 0.9rem; color: var(--pd-muted); }
+/* How much of the video has gone: a bar that fills, and the same in words under it. */
+.rv-add-going { margin-top: 16px; }
+.rv-meter { height: 8px; border-radius: 4px; background: var(--pd-line); overflow: hidden; }
+.rv-meter span { display: block; width: 0; height: 100%; border-radius: 4px; background: var(--pd-gold); transition: width 0.2s; }
 
 /* ---------------------------------------------------------------- the message along the bottom */
 .rv-toast {

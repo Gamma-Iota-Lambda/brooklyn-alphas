@@ -1,11 +1,12 @@
 // School Daze photo drop, the database side (supabase/migrations/20261118000100_photo_drop.sql and
-// 20261118000200_photo_drop_repeats.sql) on real Postgres (PGlite): the three codes, every reason a
-// photo is refused and the order they come in, a photo sent twice, the limits, closing, review, the
-// slideshow list, and that no API role gets near any of it.
+// the three after it) on real Postgres (PGlite): the three codes, every reason a photo is refused
+// and the order they come in, a photo sent twice, the limits, closing, review, the slideshow list,
+// the committee's videos, and that no API role gets near any of it.
 // The Edge Function that calls these is tested in photo-drop-function.test.mjs.
 //   node --test "tests/calendar/photo-drop.test.mjs"
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
 import { createDb } from './harness.mjs';
 
 // Two days before the party. Uploads close at noon New York time on Saturday, Nov. 21.
@@ -61,6 +62,32 @@ async function photo(h, over = {}) {
 }
 const set = (h, list, status, by = 'Eugene Aiken', code = REVIEW) =>
   run(h, `drop_review_set($1, ($2::text)::uuid[], $3, $4)`, [code, ids(list), status, by]);
+
+// A committee video, as the Edge Function asks for a place for one: the review code, the
+// organizer's name, and what the organizer's browser read from the file.
+const MB50 = 52428800;
+const NOT_A_VIDEO = "That file isn't a video we can use. Add an MP4 or MOV file.";
+const VIDEO_GONE = 'That video is no longer here. Add it again.';
+const video = (h, over = {}) => {
+  const p = { code: REVIEW, by: 'Eugene Aiken', caption: null, width: 1920, height: 1080, bytes: 14000000, seconds: 23.5, mime: 'video/mp4', ...over };
+  return run(h, `drop_video_reserve($1, $2, $3, $4::integer, $5::integer, ($6::text)::bigint, ($7::text)::numeric, $8)`,
+    [p.code, p.by, p.caption, p.width, p.height, p.bytes === null ? null : String(p.bytes), p.seconds === null ? null : String(p.seconds), p.mime]);
+};
+const videoHeld = (h, id, code = REVIEW) => run(h, 'drop_video_held($1, $2::uuid)', [code, id]);
+// The files are in the bucket: the video goes into the show. thumb says whether a poster came.
+const videoStored = (h, r, over = {}) => {
+  const p = { code: REVIEW, by: 'Eugene Aiken', thumb: true, url: `https://files.example/${r.path}?token=one`, until: '2026-12-03T15:00:00Z', ...over };
+  const thumbUrl = 'thumbUrl' in p ? p.thumbUrl : (p.thumb ? `https://files.example/${r.thumb_path}?token=one` : null);
+  return run(h, `drop_video_stored($1, $2::uuid, $3, ($4::text)::boolean, $5, $6, ($7::text)::timestamptz)`,
+    [p.code, r.id, p.by, p.thumb === null ? null : String(p.thumb), p.url, thumbUrl, p.until]);
+};
+// A video that has arrived and is in the show. Returns its id.
+async function clip(h, over = {}, stored = {}) {
+  const r = await video(h, over);
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(await videoStored(h, r, stored), { ok: true, id: r.id });
+  return r.id;
+}
 
 test('each page has its own code, compared without regard to case or extra spaces', async () => {
   const h = await ready({ codes: false });
@@ -124,17 +151,18 @@ test('each page has its own code, compared without regard to case or extra space
   assert.equal((await run(h, 'drop_open($1)', ['Daze-2026-NEW'])).ok, true);
 });
 
-test('the migration starts open until noon on the day, with the limits, a private JPEG bucket, and a closed table', async () => {
+test('the migrations start open until noon on the day, with the limits, a private bucket for JPEGs and videos, and a closed table', async () => {
   const h = await ready();
   assert.deepEqual(await run(h, 'drop_state()'), {
-    open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 0, bytes: 0
+    open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 0, bytes: 0,
+    max_videos: 40, video_max_bytes: 52428800, video_total_bytes: 209715200, videos: 0, video_bytes: 0
   });
   assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), {
     ok: true, open: true, reason: null, closes_at: '2026-11-21T17:00:00+00:00', per_person: 5,
     limits: { min_edge: 500, max_edge: 2560, max_bytes: 6291456 }
   });
   assert.deepEqual(await h.sql(`select id, name, public, file_size_limit::int as file_size_limit, allowed_mime_types from storage.buckets where id = 'photo-drop'`),
-    [{ id: 'photo-drop', name: 'photo-drop', public: false, file_size_limit: 8388608, allowed_mime_types: ['image/jpeg'] }]);
+    [{ id: 'photo-drop', name: 'photo-drop', public: false, file_size_limit: 52428800, allowed_mime_types: ['image/jpeg', 'video/mp4', 'video/quicktime'] }]);
 
   const [table] = await h.sql(`select relrowsecurity from pg_class where oid = 'public.drop_photos'::regclass`);
   assert.equal(table.relrowsecurity, true);
@@ -219,7 +247,7 @@ test('what a reserved photo keeps: tidy text, a lower-case email, its paths, its
     id: r.id, status: 'sending', name: 'Ada Lovelace', email: 'ada@example.com', caption: 'Howard, class of 1998',
     width: 2560, height: 1707, bytes: 1500000, has_thumb: true, original, path: `photos/${r.id}.jpg`, thumb_path: `thumbs/${r.id}.jpg`,
     url: null, thumb_url: null, signed_until: null, ip_hash: row.ip_hash, sha256: sha, created_at: '2026-11-19T15:00:00.000Z',
-    stored_at: null, reviewed_at: null, reviewed_by: null
+    stored_at: null, reviewed_at: null, reviewed_by: null, kind: 'photo', seconds: null, mime: null
   });
   assert.match(row.ip_hash, /^[0-9a-f]{64}$/);
   const [plain] = await h.sql(`select encode(sha256(convert_to('203.0.113.9', 'UTF8')), 'hex') as hash`);
@@ -572,14 +600,16 @@ test('the organizers list, approve, reject, send back, and caption', async () =>
   const unfinished = await reserve(h, { name: 'Still Sending', email: 'slow@example.com' });
 
   let list = await run(h, 'drop_review_list($1)', [REVIEW]);
-  assert.deepEqual(list.settings, { open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 4, bytes: 5400000 });
+  assert.deepEqual(list.settings, { open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 4, bytes: 5400000,
+    max_videos: 40, video_max_bytes: 52428800, video_total_bytes: 209715200, videos: 0, video_bytes: 0 });
   assert.deepEqual(list.counts, { waiting: 3, approved: 0, rejected: 0 });
   assert.deepEqual(list.photos.map((p) => p.id), [a, b, c], 'oldest first, without the one still on its way');
   assert.deepEqual(list.photos[0], {
     id: a, status: 'waiting', name: 'Ada Lovelace', email: 'ada@example.com', caption: 'Howard, class of 1998',
     width: 2560, height: 1707, bytes: 1500000, original: { name: 'IMG_0042.HEIC', width: 4032, height: 3024, bytes: 2310456, type: 'image/heic' },
     created_at: '2026-11-19T15:00:00+00:00', reviewed_at: null, reviewed_by: null,
-    url: `https://files.example/photos/${a}.jpg?token=one`, thumb_url: `https://files.example/thumbs/${a}.jpg?token=one`
+    url: `https://files.example/photos/${a}.jpg?token=one`, thumb_url: `https://files.example/thumbs/${a}.jpg?token=one`,
+    kind: 'photo', seconds: null, mime: null
   });
   assert.equal(list.photos[1].thumb_url, list.photos[1].url, 'no thumbnail: the photo stands in');
 
@@ -699,7 +729,7 @@ test('the slideshow gets approved photos in the order they were approved, and no
   const c = await photo(h, { name: 'Katherine Johnson', email: 'katherine@example.com' });
   const d = await photo(h, { name: 'Dorothy Vaughan', email: 'dorothy@example.com' });
   const unfinished = await reserve(h, { email: 'slow@example.com' });
-  assert.deepEqual(await run(h, 'drop_screen_list($1)', [SCREEN]), { ok: true, photos: [] });
+  assert.deepEqual(await run(h, 'drop_screen_list($1)', [SCREEN]), { ok: true, photos: [], videos: [] });
 
   await h.setNow(minutes(10));
   await set(h, [c], 'approved');
@@ -713,7 +743,7 @@ test('the slideshow gets approved photos in the order they were approved, and no
     // Approved together: the older photo first.
     { id: a, url: `https://files.example/photos/${a}.jpg?token=one`, thumb_url: `https://files.example/thumbs/${a}.jpg?token=one`, width: 2560, height: 1707, caption: 'Howard, class of 1998' },
     { id: b, url: `https://files.example/photos/${b}.jpg?token=one`, thumb_url: `https://files.example/photos/${b}.jpg?token=one`, width: 1200, height: 1600, caption: null }
-  ] });
+  ], videos: [] });
   assert.doesNotMatch(JSON.stringify(list), /Lovelace|Hopper|Johnson|example\.com|reviewed|Eugene|status|original/);
 
   // Sent back to waiting, a photo leaves the slideshow. Approved again, it goes to the end.
@@ -763,6 +793,540 @@ test('links that run out within three days are due for renewal, and fresh ones a
   assert.deepEqual(await run(h, 'drop_resign_due()'), []);
 });
 
+test('a video is added with the review code only, and is refused for one reason at a time, in order', async () => {
+  const h = await ready();
+  const no = (status, reason, error) => ({ ok: false, status, reason, error });
+  const notVideo = no(400, 'video', NOT_A_VIDEO);
+  const tooLarge = (mb) => no(400, 'size', `That video is too large. One video can be ${mb} MB at most.`);
+  const everything = { code: 'nope', by: '  ', caption: 'x'.repeat(81), mime: 'video/webm', width: 0, height: 70000, bytes: MB50 + 1 };
+
+  // The code first, with everything else wrong. The code every guest has opens nothing here, and
+  // neither does the venue's.
+  for (const code of ['nope', UPLOAD, SCREEN, '', null]) {
+    assert.deepEqual(await video(h, { ...everything, code }), no(403, 'code', WRONG_CODE), String(code));
+  }
+  // Then what the organizer typed: the name, then the caption.
+  const typed = { ...everything, code: ` ${REVIEW.toUpperCase()} ` };
+  assert.deepEqual(await video(h, typed), no(400, 'input', 'Add your name.'));
+  assert.deepEqual(await video(h, { ...typed, by: null }), no(400, 'input', 'Add your name.'));
+  assert.deepEqual(await video(h, { ...typed, by: 'Eugene Aiken' }), no(400, 'input', 'Keep the caption to 80 characters or fewer.'));
+  // Then the file: its type, then its numbers, then its size.
+  const named = { ...typed, by: 'Eugene Aiken', caption: 'x'.repeat(80) };
+  for (const mime of ['video/webm', 'image/jpeg', 'VIDEO/MP4', ' video/mp4', 'video/mp4; codecs=avc1', '', null]) {
+    assert.deepEqual(await video(h, { ...named, mime }), notVideo, String(mime));
+  }
+  const filed = { ...named, mime: 'video/mp4' };
+  assert.deepEqual(await video(h, filed), notVideo, 'no width, and a height past any video');
+  for (const bad of [{ width: null }, { width: 0 }, { width: 65536 }, { height: null }, { height: 0 }, { height: -1080 }, { bytes: null }, { bytes: 0 }, { bytes: -1 }]) {
+    assert.deepEqual(await video(h, { ...filed, width: 1920, height: 1080, bytes: 14000000, ...bad }), notVideo, JSON.stringify(bad));
+  }
+  const sized = { ...filed, width: 1920, height: 1080 };
+  assert.deepEqual(await video(h, sized), tooLarge(50), 'one byte over 50 MB');
+  assert.deepEqual(await video(h, { ...sized, bytes: 3000000000 }), tooLarge(50), 'more than the row could hold');
+  assert.equal((await rows(h)).length, 0, 'none of the refusals saved anything');
+
+  // The size limit is a setting, said in whole megabytes, rounded down. Mistyped, it counts as
+  // the default. Set past what the row's integer column holds, it stops there.
+  await setting(h, 'drop_video_max_bytes', '10000000');
+  assert.deepEqual(await video(h, { ...sized, bytes: 10000001 }), tooLarge(9));
+  assert.equal((await video(h, { ...sized, bytes: 10000000 })).ok, true, 'the limit itself is fine');
+  await setting(h, 'drop_video_max_bytes', 'fifty');
+  assert.deepEqual(await video(h, sized), tooLarge(50));
+  assert.equal((await video(h, { ...sized, bytes: MB50 })).ok, true, '50 MB to the byte');
+  await setting(h, 'drop_video_max_bytes', '99999999999');
+  assert.equal((await run(h, 'drop_state()')).video_max_bytes, 2147483647);
+  assert.deepEqual(await video(h, { ...sized, bytes: 2147483648 }), tooLarge(2047));
+  await setting(h, 'drop_video_max_bytes', String(MB50));
+
+  // Last, whether there is room. Both videos above are still on their way in, and hold a place.
+  await setting(h, 'drop_max_videos', '3');
+  assert.equal((await video(h, { ...sized, bytes: 1, width: 1, height: 65535 })).ok, true, 'the smallest and the tallest');
+  const full = no(409, 'full', 'The show has all the videos it can take. Delete one to add another.');
+  assert.deepEqual(await video(h, { ...sized, bytes: 1 }), full);
+  assert.deepEqual(await video(h, { ...sized, bytes: MB50 + 1 }), tooLarge(50), 'too large is said before full');
+  // And after the count, the room the videos have between them: 62,428,801 bytes are held.
+  await setting(h, 'drop_video_total_bytes', '62428802');
+  assert.deepEqual(await video(h, { ...sized, bytes: 2 }), full, 'the count is said before the room');
+  await setting(h, 'drop_max_videos', 'three');
+  assert.equal((await run(h, 'drop_state()')).max_videos, 40, 'mistyped, the default');
+  assert.deepEqual(await video(h, { ...sized, bytes: 2 }),
+    no(409, 'full', "That video doesn't fit. All the videos together can take 59 MB, and 60 MB is in use. Delete one to add another."));
+  assert.deepEqual(await video(h, { ...sized, bytes: MB50 + 1 }), tooLarge(50), 'too large is said before no room');
+  assert.equal((await rows(h)).length, 3, 'and nothing was saved');
+  assert.equal((await video(h, { ...sized, bytes: 1 })).ok, true, 'the last byte of room');
+  await setting(h, 'drop_video_total_bytes', '209715200');
+  assert.equal((await rows(h)).length, 4);
+
+  // The committee can add a video when guests can't send a photo: uploads switched off, past the
+  // deadline, or full.
+  await setting(h, 'drop_open', 'false');
+  assert.equal((await reserve(h)).reason, 'closed');
+  assert.equal((await video(h)).ok, true);
+  await setting(h, 'drop_open', 'true');
+  await h.setNow('2026-11-21T17:00:00Z');
+  assert.equal((await reserve(h)).reason, 'closed');
+  assert.equal((await video(h)).ok, true);
+  await h.setNow(NOW);
+  await setting(h, 'drop_max_photos', '0');
+  assert.equal((await reserve(h)).reason, 'full');
+  assert.equal((await video(h)).ok, true);
+  assert.deepEqual(await rows(h, `select kind, status, count(*)::int as n from public.drop_photos group by kind, status`), [{ kind: 'video', status: 'sending', n: 7 }]);
+});
+
+test("what a video keeps: the organizer's name, the file's exact size, its length, its two paths, and no guest's email", async () => {
+  const h = await ready();
+  const no = (status, reason, error) => ({ ok: false, status, reason, error });
+  const gone = (status) => no(status, 'input', VIDEO_GONE);
+  const missing = '00000000-0000-4000-8000-000000000000';
+  const r = await video(h, { code: '  ORGANIZERS only  review phrase ', by: `  Eugene   Aiken ${'x'.repeat(60)}`, caption: '  Step  show, 2019 ', seconds: 23.456 });
+  assert.match(r.id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(r, { ok: true, id: r.id, path: `videos/${r.id}.mp4`, thumb_path: `thumbs/${r.id}.jpg`, bytes: 14000000, mime: 'video/mp4' });
+  const whole = async (id) => {
+    const [row] = await rows(h, `select * from public.drop_photos where id = '${id}'`);
+    const time = (t) => (t ? t.toISOString() : null);
+    return { ...row, created_at: time(row.created_at), stored_at: time(row.stored_at), reviewed_at: time(row.reviewed_at), signed_until: time(row.signed_until) };
+  };
+  const sending = {
+    id: r.id, status: 'sending', kind: 'video', name: `Eugene Aiken ${'x'.repeat(47)}`, email: 'committee', caption: 'Step show, 2019',
+    width: 1920, height: 1080, bytes: 14000000, has_thumb: false, original: null, path: `videos/${r.id}.mp4`, thumb_path: `thumbs/${r.id}.jpg`,
+    url: null, thumb_url: null, signed_until: null, ip_hash: null, sha256: null, created_at: '2026-11-19T15:00:00.000Z',
+    stored_at: null, reviewed_at: null, reviewed_by: null, seconds: '23.46', mime: 'video/mp4'
+  };
+  assert.deepEqual(await whole(r.id), sending);
+
+  // A MOV file keeps its own ending. No caption is no caption.
+  const mov = await video(h, { mime: 'video/quicktime', caption: '   ', width: 1080, height: 1920, bytes: MB50 });
+  assert.deepEqual(mov, { ok: true, id: mov.id, path: `videos/${mov.id}.mov`, thumb_path: `thumbs/${mov.id}.jpg`, bytes: MB50, mime: 'video/quicktime' });
+  assert.deepEqual(await rows(h, `select caption, width, height, bytes, mime from public.drop_photos where id = '${mov.id}'`),
+    [{ caption: null, width: 1080, height: 1920, bytes: MB50, mime: 'video/quicktime' }]);
+
+  // The length is kept to a hundredth of a second. One that can't be right is left out, and the
+  // video is taken all the same.
+  for (const [seconds, kept] of [[null, null], [0, null], [-3, null], [0.004, null], [0.005, '0.01'], [3, '3.00'], [12.345, '12.35'], [86400, '86400.00'], [86400.01, null], [1e9, null]]) {
+    const one = await video(h, { seconds });
+    assert.equal(one.ok, true, String(seconds));
+    assert.deepEqual(await rows(h, `select seconds from public.drop_photos where id = '${one.id}'`), [{ seconds: kept }], String(seconds));
+    await run(h, 'drop_abandon($1::uuid)', [one.id]);
+  }
+
+  // The video on its way in under an id, for the review code alone. A guest's photo on its way
+  // in is not one.
+  const guest = await reserve(h);
+  assert.deepEqual(await videoHeld(h, r.id), r, 'what the reserve answered');
+  assert.deepEqual(await videoHeld(h, r.id, ` ${REVIEW.toUpperCase()} `), r);
+  for (const code of [UPLOAD, SCREEN, 'nope', '', null]) assert.deepEqual(await videoHeld(h, r.id, code), no(403, 'code', WRONG_CODE), String(code));
+  // Refused for an id that is no video on its way in. The refusal says whether any row has the
+  // id at all: with none, the function may clear files left at the id's paths, and a guest's
+  // photo must never be taken for that.
+  assert.deepEqual(await videoHeld(h, missing), { ...gone(409), gone: true });
+  assert.deepEqual(await videoHeld(h, guest.id), { ...gone(409), gone: false }, "a guest's photo is a row, and is left alone");
+
+  // The files are in: it only goes into the show with the review code, a link, and an end to
+  // that link, and only a video on its way in does.
+  for (const code of [UPLOAD, SCREEN, 'nope', '', null]) assert.deepEqual(await videoStored(h, r, { code }), no(403, 'code', WRONG_CODE), String(code));
+  assert.deepEqual(await videoStored(h, r, { url: '' }), gone(400));
+  assert.deepEqual(await videoStored(h, r, { url: null }), gone(400));
+  assert.deepEqual(await videoStored(h, r, { until: null }), gone(400));
+  assert.deepEqual(await videoStored(h, { ...r, id: missing }), gone(400));
+  assert.deepEqual(await videoStored(h, { ...r, id: guest.id }), gone(400));
+  assert.deepEqual(await whole(r.id), sending, 'none of that changed it');
+  assert.deepEqual(await rows(h, `select kind, status, url from public.drop_photos where id = '${guest.id}'`), [{ kind: 'photo', status: 'sending', url: null }]);
+
+  // Approved as it arrives, by the organizer who added it, at that moment.
+  await h.setNow(minutes(4));
+  assert.deepEqual(await videoStored(h, r, { by: '  Brother   Aiken ' }), { ok: true, id: r.id });
+  assert.deepEqual(await whole(r.id), {
+    ...sending, status: 'approved', has_thumb: true, url: `https://files.example/videos/${r.id}.mp4?token=one`,
+    thumb_url: `https://files.example/thumbs/${r.id}.jpg?token=one`, signed_until: '2026-12-03T15:00:00.000Z',
+    stored_at: '2026-11-19T15:04:00.000Z', reviewed_at: '2026-11-19T15:04:00.000Z', reviewed_by: 'Brother Aiken'
+  });
+  assert.deepEqual(await videoStored(h, r), gone(400), 'only once');
+  // Asked about again, a video that has arrived says so: a page whose first answer got lost
+  // must hear that the video is in, not that it is gone.
+  assert.deepEqual(await videoHeld(h, r.id), { ok: true, done: true, id: r.id }, 'it has arrived');
+  for (const code of [UPLOAD, SCREEN, 'nope', '', null]) assert.deepEqual(await videoHeld(h, r.id, code), no(403, 'code', WRONG_CODE), `arrived, ${code}`);
+
+  // With no poster, the row lets go of the poster's path. With no name given, the name it was
+  // added under stands.
+  assert.deepEqual(await videoStored(h, mov, { thumb: false, by: '  ' }), { ok: true, id: mov.id });
+  assert.deepEqual(await rows(h, `select status, has_thumb, thumb_path, thumb_url, reviewed_by from public.drop_photos where id = '${mov.id}'`),
+    [{ status: 'approved', has_thumb: false, thumb_path: null, thumb_url: null, reviewed_by: 'Eugene Aiken' }]);
+  const bare = await video(h);
+  assert.deepEqual(await videoStored(h, bare, { thumb: null, thumbUrl: '', by: `${'y'.repeat(70)}` }), { ok: true, id: bare.id });
+  assert.deepEqual(await rows(h, `select has_thumb, thumb_path, thumb_url, reviewed_by from public.drop_photos where id = '${bare.id}'`),
+    [{ has_thumb: false, thumb_path: null, thumb_url: null, reviewed_by: 'y'.repeat(60) }]);
+
+  // Given up, a video on its way in is forgotten. One that arrived stays.
+  const dropped = await video(h);
+  await run(h, 'drop_abandon($1::uuid)', [dropped.id]);
+  await run(h, 'drop_abandon($1::uuid)', [r.id]);
+  assert.deepEqual((await rows(h, `select id from public.drop_photos where kind = 'video'`)).map((x) => x.id).sort(), [r.id, mov.id, bare.id].sort());
+});
+
+test("videos never take a guest's place, and guests' photos never take a video's", async () => {
+  const h = await ready();
+  const state = async () => {
+    const s = await run(h, 'drop_state()');
+    return [s.state, s.photos, s.bytes, s.videos, s.video_bytes];
+  };
+  // Fifteen videos of 50 MB each: more than the 750 MB the guests' photos may use. The videos'
+  // own total is raised to let them in.
+  await setting(h, 'drop_video_total_bytes', '2000000000');
+  for (let n = 0; n < 15; n += 1) await clip(h, { bytes: MB50 });
+  assert.ok(15 * MB50 > 750000000);
+  assert.deepEqual(await state(), ['open', 0, 0, 15, 15 * MB50]);
+  assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), {
+    ok: true, open: true, reason: null, closes_at: '2026-11-21T17:00:00+00:00', per_person: 5, limits: { min_edge: 500, max_edge: 2560, max_bytes: 6291456 }
+  });
+  // A guest's photo goes in as ever, with all five places still hers.
+  const sent = await reserve(h);
+  assert.deepEqual(sent, { ok: true, id: sent.id, path: `photos/${sent.id}.jpg`, thumb_path: `thumbs/${sent.id}.jpg`, left: 4 });
+  assert.equal(await stored(h, sent), true);
+  assert.deepEqual(await state(), ['open', 1, 1500000, 15, 15 * MB50]);
+
+  // Six hundred rows of video would not fill the drop either: only photos count toward 600.
+  await setting(h, 'drop_max_photos', '16');
+  assert.deepEqual((await state())[0], 'open', '16 rows, of which one is a photo');
+  await setting(h, 'drop_max_photos', '2');
+  await photo(h, { email: 'grace@example.com' });
+  assert.deepEqual(await state(), ['full', 2, 3000000, 15, 15 * MB50]);
+  assert.equal((await reserve(h, { email: 'new@example.com' })).reason, 'full');
+  // Full for guests, and the committee still adds a video. It is counted while on its way in.
+  const coming = await video(h, { bytes: 1000 });
+  assert.equal(coming.ok, true);
+  assert.deepEqual(await state(), ['full', 2, 3000000, 16, 15 * MB50 + 1000]);
+
+  // The videos' own limit turns away a video, and no guest.
+  await setting(h, 'drop_max_photos', '600');
+  await setting(h, 'drop_max_videos', '16');
+  assert.deepEqual(await video(h), { ok: false, status: 409, reason: 'full', error: 'The show has all the videos it can take. Delete one to add another.' });
+  assert.deepEqual((await state())[0], 'open');
+  assert.equal((await reserve(h, { email: 'new@example.com' })).ok, true);
+
+  // A video on its way in holds its place for 3 hours, and no longer.
+  await h.setNow('2026-11-19T17:59:59Z');
+  assert.equal((await run(h, 'drop_state()')).videos, 16);
+  assert.equal((await video(h)).reason, 'full');
+  await h.setNow('2026-11-19T18:00:00Z');
+  assert.deepEqual([(await run(h, 'drop_state()')).videos, (await run(h, 'drop_state()')).video_bytes], [15, 15 * MB50]);
+  assert.equal((await video(h)).ok, true);
+  // A video that arrived counts until it is deleted, whatever was decided about it since.
+  const [first] = await rows(h, `select id from public.drop_photos where kind = 'video' and status = 'approved' order by created_at, id limit 1`);
+  await set(h, [first.id], 'waiting');
+  await set(h, [first.id], 'rejected');
+  assert.equal((await run(h, 'drop_state()')).videos, 16);
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([first.id])]), { ok: true, deleted: 1 });
+  assert.equal((await run(h, 'drop_state()')).videos, 15);
+});
+
+test("the videos together have a total of their own: one that would go over is refused, and a deleted one gives its room back", async () => {
+  const h = await ready();
+  const TOTAL = 200000000;
+  const noRoom = (limit, used) => ({ ok: false, status: 409, reason: 'full',
+    error: `That video doesn't fit. All the videos together can take ${limit} MB, and ${used} MB is in use. Delete one to add another.` });
+  const use = async () => {
+    const s = await run(h, 'drop_state()');
+    return [s.videos, s.video_bytes, s.video_total_bytes];
+  };
+  assert.deepEqual(await use(), [0, 0, 209715200], 'the setting as the migration leaves it: 200 MB as the pages count them');
+  // The rest is worked out with a round number.
+  await setting(h, 'drop_video_total_bytes', String(TOTAL));
+
+  // Three videos of 50 MB fit. A fourth would go over, and nothing of it is saved. The limit is
+  // said in whole megabytes rounded down, and what is in use rounded up.
+  const shown = [];
+  for (let n = 0; n < 3; n += 1) shown.push(await clip(h, { bytes: MB50 }));
+  assert.deepEqual(await video(h, { bytes: MB50 }), noRoom(190, 150));
+  const left = TOTAL - 3 * MB50;
+  assert.deepEqual(await video(h, { bytes: left + 1 }), noRoom(190, 150), 'one byte over');
+  assert.deepEqual(await use(), [3, 3 * MB50, TOTAL]);
+  assert.equal((await rows(h)).length, 3);
+  // What is left fits to the byte. On its way in, a video holds its room.
+  const last = await video(h, { bytes: left });
+  assert.equal(last.ok, true);
+  assert.deepEqual(await use(), [4, TOTAL, TOTAL]);
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  // Given up, it gives the room back. So does one that never arrived, once its 3 hours are over.
+  await run(h, 'drop_abandon($1::uuid)', [last.id]);
+  const slow = await video(h, { bytes: left });
+  assert.equal(slow.ok, true);
+  await h.setNow('2026-11-19T17:59:59Z');
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  await h.setNow('2026-11-19T18:00:00Z');
+  assert.deepEqual(await use(), [3, 3 * MB50, TOTAL]);
+  const fits = await video(h, { bytes: left });
+  assert.equal(fits.ok, true);
+  assert.deepEqual(await videoStored(h, fits), { ok: true, id: fits.id });
+  assert.deepEqual(await run(h, 'drop_stale()'), [slow.path, slow.thumb_path]);
+
+  // A video that arrived holds its room whatever is decided about it, until it is deleted.
+  await set(h, [shown[0]], 'waiting');
+  await set(h, [shown[0]], 'rejected');
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([shown[0]])]), { ok: true, deleted: 1 });
+  assert.deepEqual(await use(), [3, TOTAL - MB50, TOTAL]);
+  assert.deepEqual(await video(h, { bytes: MB50 + 1 }), { ok: false, status: 400, reason: 'size', error: 'That video is too large. One video can be 50 MB at most.' },
+    'too large is still said first');
+  assert.equal((await video(h, { bytes: MB50 })).ok, true, 'the room the deleted one gave back');
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+
+  // None of this reaches a guest: with the videos' room used up, uploads are open, a photo goes
+  // in, and its bytes are counted with the photos, never with the videos.
+  assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), {
+    ok: true, open: true, reason: null, closes_at: '2026-11-21T17:00:00+00:00', per_person: 5, limits: { min_edge: 500, max_edge: 2560, max_bytes: 6291456 }
+  });
+  const sent = await reserve(h);
+  assert.deepEqual(sent, { ok: true, id: sent.id, path: `photos/${sent.id}.jpg`, thumb_path: `thumbs/${sent.id}.jpg`, left: 4 });
+  assert.equal(await stored(h, sent), true);
+  const state = await run(h, 'drop_state()');
+  assert.deepEqual([state.state, state.photos, state.bytes, state.videos, state.video_bytes], ['open', 1, 1500000, 4, TOTAL]);
+  // And the other way: guests' photos up to their own limit leave the videos' room as it was.
+  await setting(h, 'drop_max_bytes', '1500000');
+  assert.equal((await run(h, 'drop_state()')).state, 'full');
+  await setting(h, 'drop_video_total_bytes', String(TOTAL + 1));
+  assert.equal((await video(h, { bytes: 1 })).ok, true, 'full for guests, and one more byte of room for a video');
+  await setting(h, 'drop_max_bytes', '750000000');
+
+  // The total is a setting and nothing else. Raised, there is room. Mistyped, it counts as the
+  // default. At nothing, no video fits.
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  await setting(h, 'drop_video_total_bytes', '1000000000');
+  assert.equal((await run(h, 'drop_state()')).video_total_bytes, 1000000000);
+  assert.equal((await video(h, { bytes: MB50 })).ok, true);
+  await setting(h, 'drop_video_total_bytes', '200 MB');
+  assert.equal((await run(h, 'drop_state()')).video_total_bytes, 209715200);
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(200, 241));
+  await setting(h, 'drop_video_total_bytes', '0');
+  await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids((await rows(h, `select id from public.drop_photos where kind = 'video'`)).map((r) => r.id))]);
+  assert.deepEqual(await use(), [0, 0, 0]);
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(0, 0));
+});
+
+test('a video on its way in is given 3 hours before the tidy-up takes it, and a photo still 15 minutes', async () => {
+  const h = await ready();
+  const p = await reserve(h);
+  const v = await video(h);
+  const m = await video(h, { mime: 'video/quicktime' });
+  const shown = await clip(h);
+  await h.setNow(minutes(60));
+  const later = await video(h);
+  // A guest's photo that never finished goes at 15 minutes, as before. The videos stay.
+  await h.setNow(minutes(14));
+  assert.deepEqual(await run(h, 'drop_stale()'), []);
+  await h.setNow(minutes(15));
+  assert.deepEqual([...await run(h, 'drop_stale()')].sort(), [p.path, p.thumb_path].sort());
+  assert.deepEqual(await run(h, 'drop_stale()'), []);
+  // Two hours on, when the upload link runs out, a video is still expected.
+  await h.setNow(minutes(120));
+  assert.deepEqual(await run(h, 'drop_stale()'), []);
+  assert.deepEqual(await videoHeld(h, v.id), v);
+  await h.setNow('2026-11-19T17:59:59Z');
+  assert.deepEqual(await run(h, 'drop_stale()'), []);
+  // One arrives with a second to spare, and is in the show for good.
+  assert.deepEqual(await videoStored(h, v), { ok: true, id: v.id });
+  // At 3 hours the other is taken, with both its paths, the poster's too.
+  await h.setNow(minutes(180));
+  assert.deepEqual([...await run(h, 'drop_stale()')].sort(), [`videos/${m.id}.mov`, `thumbs/${m.id}.jpg`].sort());
+  // 3 hours and a minute after the first: the one added an hour later still has two hours.
+  await h.setNow(minutes(181));
+  assert.deepEqual(await run(h, 'drop_stale()'), []);
+  assert.deepEqual((await rows(h)).map((r) => [r.id, r.status]).sort(), [[v.id, 'approved'], [shown, 'approved'], [later.id, 'sending']].sort());
+  await h.setNow(minutes(240));
+  assert.deepEqual([...await run(h, 'drop_stale()')].sort(), [later.path, later.thumb_path].sort());
+  await h.setNow('2027-01-01T00:00:00Z');
+  assert.deepEqual(await run(h, 'drop_stale()'), [], 'a video that arrived is never tidied away');
+  assert.equal((await rows(h)).length, 2);
+});
+
+test('the review list says what kind each row is, and the slideshow gets videos beside the photos, never among them', async () => {
+  const h = await ready();
+  const a = await photo(h, { caption: 'Howard, class of 1998' });
+  await h.setNow(minutes(1));
+  const v = await clip(h, { caption: 'Step show, 2019', seconds: 23.5 });
+  await h.setNow(minutes(2));
+  const b = await photo(h, { name: 'Grace Hopper', email: 'grace@example.com', thumb: false });
+  await h.setNow(minutes(3));
+  const w = await clip(h, { by: 'Brother Banks', mime: 'video/quicktime', width: 1080, height: 1920, bytes: MB50, seconds: null }, { by: 'Brother Banks', thumb: false });
+  const coming = await video(h);
+  const link = (folder, id, ending) => `https://files.example/${folder}/${id}.${ending}?token=one`;
+
+  let list = await run(h, 'drop_review_list($1)', [REVIEW]);
+  assert.deepEqual(list.photos.map((p) => [p.id, p.kind, p.status]), [[a, 'photo', 'waiting'], [v, 'video', 'approved'], [b, 'photo', 'waiting'], [w, 'video', 'approved']],
+    'oldest first, photos and videos together, without the video still on its way in');
+  // The counts are by status, whatever the kind. The settings count the two kinds apart.
+  assert.deepEqual(list.counts, { waiting: 2, approved: 2, rejected: 0 });
+  assert.deepEqual(list.settings, { open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 2, bytes: 3000000,
+    max_videos: 40, video_max_bytes: MB50, video_total_bytes: 209715200, videos: 3, video_bytes: 14000000 + MB50 + 14000000 });
+  assert.deepEqual(list.photos[1], {
+    id: v, status: 'approved', name: 'Eugene Aiken', email: 'committee', caption: 'Step show, 2019',
+    width: 1920, height: 1080, bytes: 14000000, original: null,
+    created_at: '2026-11-19T15:01:00+00:00', reviewed_at: '2026-11-19T15:01:00+00:00', reviewed_by: 'Eugene Aiken',
+    url: link('videos', v, 'mp4'), thumb_url: link('thumbs', v, 'jpg'), kind: 'video', seconds: 23.5, mime: 'video/mp4'
+  });
+  // A photo with no thumbnail stands in for its own. A video with no poster has none: its file
+  // is never handed over where a picture is expected.
+  assert.equal(list.photos[2].thumb_url, link('photos', b, 'jpg'));
+  assert.deepEqual([list.photos[3].url, list.photos[3].thumb_url, list.photos[3].seconds, list.photos[3].mime, list.photos[3].reviewed_by],
+    [link('videos', w, 'mov'), null, null, 'video/quicktime', 'Brother Banks']);
+  assert.deepEqual(list.photos.filter((p) => p.kind === 'photo').map((p) => [p.seconds, p.mime]), [[null, null], [null, null]]);
+
+  // The slideshow: photos under photos, exactly as before, and videos under videos, each in the
+  // order it was approved, with the exact size of the file and nothing about who added it.
+  await h.setNow(minutes(10));
+  await set(h, [b], 'approved');
+  await h.setNow(minutes(11));
+  await set(h, [a], 'approved');
+  const screen = await run(h, 'drop_screen_list($1)', [SCREEN]);
+  assert.deepEqual(screen, { ok: true,
+    photos: [
+      { id: b, url: link('photos', b, 'jpg'), thumb_url: link('photos', b, 'jpg'), width: 2560, height: 1707, caption: null },
+      { id: a, url: link('photos', a, 'jpg'), thumb_url: link('thumbs', a, 'jpg'), width: 2560, height: 1707, caption: 'Howard, class of 1998' }
+    ],
+    videos: [
+      { id: v, url: link('videos', v, 'mp4'), thumb_url: link('thumbs', v, 'jpg'), width: 1920, height: 1080, caption: 'Step show, 2019', bytes: 14000000, seconds: 23.5 },
+      { id: w, url: link('videos', w, 'mov'), thumb_url: null, width: 1080, height: 1920, caption: null, bytes: MB50, seconds: null }
+    ] });
+  assert.doesNotMatch(JSON.stringify(screen), /Aiken|Banks|committee|Lovelace|Hopper|example\.com|reviewed|status|original|mime|kind/);
+  for (const code of [REVIEW, UPLOAD, 'nope']) {
+    assert.deepEqual(await run(h, 'drop_screen_list($1)', [code]), { ok: false, status: 403, reason: 'code', error: WRONG_CODE });
+  }
+
+  // A video is taken out of the show the way a photo is: back to waiting. Approved again, it
+  // goes to the end of the videos.
+  const showing = async () => (await run(h, 'drop_screen_list($1)', [SCREEN])).videos.map((x) => x.id);
+  const paths = (list) => run(h, 'drop_review_paths($1, ($2::text)::uuid[])', [REVIEW, ids(list)]);
+  await h.setNow(minutes(20));
+  assert.deepEqual(await set(h, [v, coming.id], 'waiting'), { ok: true, changed: 1 }, 'the one still on its way in is left alone');
+  assert.deepEqual(await showing(), [w]);
+  assert.deepEqual(await rows(h, `select status, reviewed_at, reviewed_by from public.drop_photos where id = '${v}'`), [{ status: 'waiting', reviewed_at: null, reviewed_by: null }]);
+  assert.deepEqual((await run(h, 'drop_review_list($1)', [REVIEW])).counts, { waiting: 1, approved: 3, rejected: 0 });
+  assert.deepEqual(await set(h, [v], 'approved', 'Someone Else'), { ok: true, changed: 1 });
+  assert.deepEqual(await showing(), [w, v]);
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).photos.map((x) => x.id), [b, a], 'the photos never moved');
+  // An approved video can't be rejected or deleted straight off the screens. Back to waiting,
+  // rejected, then deleted: its two files are named, and the row goes.
+  assert.deepEqual(await set(h, [v], 'rejected'), { ok: true, changed: 0 });
+  assert.deepEqual(await paths([v, w]), { ok: true, ids: [], paths: [] });
+  assert.deepEqual(await set(h, [v, w], 'waiting'), { ok: true, changed: 2 });
+  assert.deepEqual(await showing(), []);
+  assert.deepEqual(await set(h, [v, w], 'rejected'), { ok: true, changed: 2 });
+  const found = await paths([v, w, a]);
+  assert.deepEqual(found.ids, [v, w]);
+  assert.deepEqual([...found.paths].sort(), [`videos/${v}.mp4`, `thumbs/${v}.jpg`, `videos/${w}.mov`].sort(), 'no poster path for the video that has none');
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([v])]), { ok: true, deleted: 1 });
+  // A caption is changed on a video as on a photo.
+  assert.deepEqual(await set(h, [w], 'waiting'), { ok: true, changed: 1 });
+  assert.deepEqual(await set(h, [w], 'approved'), { ok: true, changed: 1 });
+  assert.deepEqual(await run(h, 'drop_review_caption($1, $2::uuid, $3)', [REVIEW, w, '  Probate,   2021 ']), { ok: true });
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).videos.map((x) => [x.id, x.caption, x.bytes]), [[w, 'Probate, 2021', MB50]]);
+
+  // Delete everything names every row's files, a video on its way in and its poster included.
+  const all = await paths(null);
+  assert.deepEqual([...all.ids].sort(), [a, b, w, coming.id].sort());
+  assert.deepEqual([...all.paths].sort(),
+    [`photos/${a}.jpg`, `thumbs/${a}.jpg`, `photos/${b}.jpg`, `videos/${w}.mov`, coming.path, coming.thumb_path].sort());
+});
+
+test("a video's links are renewed with the photos'", async () => {
+  const h = await ready();
+  const v = await clip(h);
+  const w = await clip(h, { mime: 'video/quicktime' }, { thumb: false });
+  const a = await photo(h);
+  const coming = await video(h);
+  assert.deepEqual(await run(h, 'drop_resign_due()'), [], 'signed until Dec. 3, two weeks off');
+  await h.setNow('2026-11-30T15:00:00Z');
+  const due = await run(h, 'drop_resign_due()');
+  const byId = (x, y) => x.id.localeCompare(y.id);
+  assert.deepEqual([...due].sort(byId), [
+    { id: v, path: `videos/${v}.mp4`, thumb_path: `thumbs/${v}.jpg` },
+    // No poster arrived, so there is no second file to sign.
+    { id: w, path: `videos/${w}.mov`, thumb_path: null },
+    { id: a, path: `photos/${a}.jpg`, thumb_path: `thumbs/${a}.jpg` }
+  ].sort(byId), 'not the video still on its way in');
+  const fresh = [
+    { id: v, url: 'https://files.example/v?token=two', thumb_url: 'https://files.example/v-poster?token=two', signed_until: '2026-12-14T15:00:00.000Z' },
+    { id: w, url: 'https://files.example/w?token=two', thumb_url: null, signed_until: '2026-12-14T15:00:00.000Z' },
+    { id: coming.id, url: 'https://files.example/c?token=two', thumb_url: null, signed_until: '2026-12-14T15:00:00.000Z' }
+  ];
+  assert.equal(await run(h, 'drop_resign_save(($1::text)::jsonb)', [JSON.stringify(fresh)]), 2);
+  // The slideshow is handed the new links, and the same size as before.
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).videos.map((x) => [x.id, x.url, x.thumb_url, x.bytes]).sort(), [
+    [v, 'https://files.example/v?token=two', 'https://files.example/v-poster?token=two', 14000000],
+    [w, 'https://files.example/w?token=two', null, 14000000]
+  ].sort());
+  assert.deepEqual((await run(h, 'drop_resign_due()')).map((d) => d.id), [a]);
+});
+
+test('run on a drop already in use, the video migration leaves every photo, setting, and answer as it was', async () => {
+  const VIDEO = '20261118000400_photo_drop_video.sql';
+  const earlier = readdirSync(new URL('../../supabase/migrations/', import.meta.url)).filter((f) => f.endsWith('.sql') && f < VIDEO);
+  assert.ok(earlier.includes('20261118000300_photo_drop_review_order.sql'));
+  const h = await createDb({ codes: false, migrations: earlier });
+  await h.setNow(NOW);
+  for (const [kind, code] of [['upload', UPLOAD], ['review', REVIEW], ['screen', SCREEN]]) await h.sql('select cal_private.drop_set_code($1, $2)', [kind, code]);
+  await assert.rejects(() => video(h), /drop_video_reserve/, 'before it runs there is no way to add a video');
+
+  // The drop as it stands today: photos waiting, approved and rejected, one on its way in, a
+  // limit the organizers changed, and one of the new settings put in ahead of time.
+  const a = await photo(h, { caption: 'Howard, class of 1998', original: { name: 'IMG_0042.HEIC', width: 4032, height: 3024, bytes: 2310456, type: 'image/heic' } });
+  const b = await photo(h, { email: 'grace@example.com', thumb: false });
+  const c = await photo(h, { email: 'katherine@example.com' });
+  const coming = await reserve(h, { email: 'slow@example.com' });
+  await set(h, [a], 'approved');
+  await set(h, [c], 'rejected');
+  await setting(h, 'drop_max_photos', '900');
+  await setting(h, 'drop_max_videos', '12');
+  const settings = () => h.sql(`select key, value from cal_private.config where key like 'drop\\_%' order by key`);
+  const buckets = () => h.sql(`select id, name, public, file_size_limit::int as file_size_limit, allowed_mime_types from storage.buckets where id <> 'photo-drop' order by id`);
+  const was = {
+    rows: await rows(h), state: await run(h, 'drop_state()'), open: await run(h, 'drop_open($1)', [UPLOAD]),
+    list: await run(h, 'drop_review_list($1)', [REVIEW]), screen: await run(h, 'drop_screen_list($1)', [SCREEN]),
+    settings: await settings(), buckets: await buckets()
+  };
+  assert.equal(was.rows.length, 4);
+  assert.equal('kind' in was.rows[0], false);
+
+  await h.migrate(VIDEO);
+
+  // Every row is a photo, and nothing else about it changed.
+  assert.deepEqual(await rows(h), was.rows.map((r) => ({ ...r, kind: 'photo', seconds: null, mime: null })));
+  // Each answer keeps every key it had, with the value it had. The new keys sit beside them.
+  const more = { max_videos: 12, video_max_bytes: MB50, video_total_bytes: 209715200, videos: 0, video_bytes: 0 };
+  assert.deepEqual(await run(h, 'drop_state()'), { ...was.state, ...more });
+  assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), was.open);
+  assert.deepEqual(await run(h, 'drop_review_list($1)', [REVIEW]), {
+    ...was.list, settings: { ...was.list.settings, ...more }, photos: was.list.photos.map((p) => ({ ...p, kind: 'photo', seconds: null, mime: null }))
+  });
+  assert.deepEqual(await run(h, 'drop_screen_list($1)', [SCREEN]), { ...was.screen, videos: [] });
+  // Settings already there are left alone, the one for videos included. Only what was missing
+  // is added.
+  assert.deepEqual(await settings(),
+    [...was.settings, { key: 'drop_video_max_bytes', value: String(MB50) }, { key: 'drop_video_total_bytes', value: '209715200' }].sort((x, y) => (x.key < y.key ? -1 : 1)));
+  assert.deepEqual((await settings()).filter((s) => ['drop_max_photos', 'drop_max_videos'].includes(s.key)).map((s) => s.value), ['900', '12']);
+  // The bucket that was already there takes videos now. No other bucket is touched.
+  assert.deepEqual(await h.sql(`select file_size_limit::int as file_size_limit, allowed_mime_types from storage.buckets where id = 'photo-drop'`),
+    [{ file_size_limit: MB50, allowed_mime_types: ['image/jpeg', 'video/mp4', 'video/quicktime'] }]);
+  assert.deepEqual(await buckets(), was.buckets);
+
+  // What the function deployed before this ran asks for still works: a send in both forms it
+  // has had, the review actions, the tidy-up, and Delete.
+  const next = await reserve(h, { email: 'new@example.com' });
+  assert.deepEqual(next, { ok: true, id: next.id, path: `photos/${next.id}.jpg`, thumb_path: `thumbs/${next.id}.jpg`, left: 4 });
+  assert.equal(await stored(h, next), true);
+  const old = await run(h, `drop_reserve($1, 'Grace Hopper', 'grace@example.com', null, 2560, 1707, 1500000, true, '198.51.100.7', null)`, [UPLOAD]);
+  assert.deepEqual(old, { ok: true, id: old.id, path: `photos/${old.id}.jpg`, thumb_path: `thumbs/${old.id}.jpg`, left: 3 });
+  // Approved a minute after the first, so the order between the two is the order of approval.
+  await h.setNow(minutes(1));
+  assert.deepEqual(await set(h, [b], 'approved'), { ok: true, changed: 1 });
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).photos.map((p) => p.id), [a, b]);
+  await h.setNow(minutes(15));
+  assert.deepEqual([...await run(h, 'drop_stale()')].sort(), [coming.path, coming.thumb_path, old.path, old.thumb_path].sort());
+  assert.deepEqual(await run(h, 'drop_review_paths($1, ($2::text)::uuid[])', [REVIEW, ids([c])]), { ok: true, ids: [c], paths: [`photos/${c}.jpg`, `thumbs/${c}.jpg`] });
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([c])]), { ok: true, deleted: 1 });
+  // And a video can be added now.
+  assert.equal((await video(h)).ok, true);
+});
+
 test('no API role can run any of the functions, read a row, or reach the bucket', async () => {
   const h = await ready();
   await photo(h);
@@ -778,7 +1342,7 @@ test('no API role can run any of the functions, read a row, or reach the bucket'
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'cal_private' and p.proname like 'drop\\_%'
     order by 1`);
-  assert.equal(fns.length, 22);
+  assert.equal(fns.length, 25);
   for (const f of fns) {
     assert.deepEqual([f.anon, f.authenticated, f.service_role], [false, false, false], f.signature);
   }
@@ -787,6 +1351,12 @@ test('no API role can run any of the functions, read a row, or reach the bucket'
   assert.deepEqual(fns.filter((f) => f.signature.startsWith('cal_private.drop_reserve(')), [
     { signature: 'cal_private.drop_reserve(text,text,text,text,integer,integer,integer,boolean,text,jsonb)', anon: false, authenticated: false, service_role: false },
     { signature: 'cal_private.drop_reserve(text,text,text,text,integer,integer,integer,boolean,text,jsonb,text)', anon: false, authenticated: false, service_role: false }
+  ]);
+  // And the three that add a video.
+  assert.deepEqual(fns.filter((f) => f.signature.startsWith('cal_private.drop_video_')).map((f) => f.signature), [
+    'cal_private.drop_video_held(text,uuid)',
+    'cal_private.drop_video_reserve(text,text,text,integer,integer,bigint,numeric,text)',
+    'cal_private.drop_video_stored(text,uuid,text,boolean,text,text,timestamp with time zone)'
   ]);
   assert.deepEqual(await h.sql(`select p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public' and p.proname like 'drop%'`), [],
     'nothing is exposed through the Data API');
@@ -803,6 +1373,10 @@ test('no API role can run any of the functions, read a row, or reach the bucket'
       [UPLOAD]), /permission denied/);
     await assert.rejects(() => h.select(who, 'select cal_private.drop_set_code($1, $2)', ['review', 'a new review code of mine']), /permission denied/);
     await assert.rejects(() => h.select(who, 'select cal_private.drop_stale()'), /permission denied/);
+    await assert.rejects(() => h.select(who, `select cal_private.drop_video_reserve($1, 'Eugene Aiken', null, 1920, 1080, 14000000, 23.5, 'video/mp4')`, [REVIEW]), /permission denied/);
+    await assert.rejects(() => h.select(who, 'select cal_private.drop_video_held($1, $2::uuid)', [REVIEW, '00000000-0000-4000-8000-000000000000']), /permission denied/);
+    await assert.rejects(() => h.select(who, `select cal_private.drop_video_stored($1, $2::uuid, 'Eugene Aiken', false, 'https://files.example/x', null, now())`,
+      [REVIEW, '00000000-0000-4000-8000-000000000000']), /permission denied/);
     await assert.rejects(() => h.select(who, 'select * from public.drop_photos'), /permission denied/);
     await assert.rejects(() => h.select(who, 'select count(*) from public.drop_photos'), /permission denied/);
     await assert.rejects(() => h.select(who, `update public.drop_photos set status = 'approved'`), /permission denied/);
