@@ -1367,16 +1367,23 @@ test('video-done puts a video in the show only when Storage holds the whole file
   assert.equal(s.calls('sign').length, 0);
   assert.equal((await s.review('list')).body.settings.videos, 0, 'none of them holds a place');
 
-  // Asked twice, a video is finished once: the second hears it is no longer on its way in, and
-  // nothing of the video in the show is touched. An id that was never a video's hears the same.
+  // Asked twice, a video is finished once. The second hears the same good news (the page asks
+  // again when the first answer got lost), and nothing of the video in the show is touched. A
+  // guest's photo is not a video on its way in, and nothing of it is touched either.
   const good = await s.clip({ file: clipFile, poster });
   is(good.done, 200, { ok: true, id: good.id });
   const photo = (await s.send()).body.id;
   const calls = s.storage.calls.length;
-  is(await s.review('video-done', { id: good.id, by: 'Eugene Aiken' }), 409, VIDEO_GONE);
-  is(await s.review('video-done', { id: NO_ROW }), 409, VIDEO_GONE);
+  is(await s.review('video-done', { id: good.id, by: 'Someone Else' }), 200, { ok: true, id: good.id });
+  assert.equal((await s.rows(`select reviewed_by from public.drop_photos where id = '${good.id}'`))[0].reviewed_by, 'Eugene Aiken', 'the first answer stands');
   is(await s.review('video-done', { id: photo, by: 'Eugene Aiken' }), 409, VIDEO_GONE, "a guest's photo is not a video on its way in");
   assert.equal(s.storage.calls.length, calls, 'Storage was asked nothing');
+  // An id no row has: its row went (cancelled, or everything was deleted) while its upload links
+  // were still good, so a file may have landed since. Whatever is at the id's three paths goes.
+  s.storage.files.set(`videos/${NO_ROW}.mp4`, { bytes: Buffer.alloc(9), type: 'video/mp4', cacheControl: 'no-cache', created: s.storage.now() });
+  is(await s.review('video-done', { id: NO_ROW }), 409, VIDEO_GONE);
+  assert.equal(s.storage.calls.length, calls + 1);
+  assert.deepEqual(s.calls('remove').at(-1).json.prefixes, [`videos/${NO_ROW}.mp4`, `videos/${NO_ROW}.mov`, `thumbs/${NO_ROW}.jpg`]);
   assert.deepEqual(s.storage.paths(), [`photos/${photo}.jpg`, `thumbs/${good.id}.jpg`, `thumbs/${photo}.jpg`, `videos/${good.id}.mp4`].sort());
   assert.deepEqual((await s.rows('select id, status from public.drop_photos order by created_at, id')).map((r) => r.status).sort(), ['approved', 'waiting']);
   assert.deepEqual(s.logs, []);
@@ -1626,13 +1633,21 @@ test('video-cancel gives a video up with whatever of it arrived, and leaves alon
   assert.deepEqual(await s.rows(), []);
   assert.deepEqual(s.storage.paths(), []);
 
-  // Already cancelled, never there, in the show, or a guest's photo: not an error, and nothing
-  // is touched. The page cancels on any failure, without knowing how far the video got.
+  // Already cancelled, never there, in the show, or a guest's photo: not an error. The page
+  // cancels on any failure, without knowing how far the video got. A video in the show and a
+  // guest's photo are rows, and nothing of theirs is touched.
   const shown = await s.clip({ file: clipFile });
   const photo = (await s.send()).body.id;
-  const calls = s.storage.calls.length;
-  for (const id of [late, early, NO_ROW, shown.id, photo]) is(await cancel(id), 200, { ok: true }, id);
+  let calls = s.storage.calls.length;
+  for (const id of [shown.id, photo]) is(await cancel(id), 200, { ok: true }, id);
   assert.equal(s.storage.calls.length, calls, 'Storage was asked nothing');
+  // An id no row has may still have a file: its upload links outlive its row. Each cancel
+  // clears the id's three paths, and takes nothing else.
+  for (const id of [late, early, NO_ROW]) {
+    is(await cancel(id), 200, { ok: true }, id);
+    assert.deepEqual(s.calls('remove').at(-1).json.prefixes, [`videos/${id}.mp4`, `videos/${id}.mov`, `thumbs/${id}.jpg`]);
+  }
+  assert.equal(s.storage.calls.length, calls + 3);
   assert.deepEqual((await s.rows('select id, status from public.drop_photos')).map((r) => [r.id, r.status]).sort(), [[shown.id, 'approved'], [photo, 'waiting']].sort());
   assert.equal(s.storage.paths().length, 4);
   // Only the review code cancels.

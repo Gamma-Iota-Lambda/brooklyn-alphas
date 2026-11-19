@@ -821,6 +821,19 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     return kept && kept.ok && Array.isArray(kept.ids) ? kept.ids.includes(id) : null;
   }
 
+  // No row has this id any more (cancelled, or everything was deleted), but its upload links
+  // stay good for their two hours, so a file can still land after that. Whatever sits at the
+  // three paths a video's id can have is removed. Only ever called when the database has said no
+  // row has the id: a guest's photo keeps its small copy at thumbs/<id>.jpg too. Never fails
+  // its caller.
+  async function clearLeftovers(id) {
+    try {
+      await removeFiles([`videos/${id}.mp4`, `videos/${id}.mov`, `thumbs/${id}.jpg`]);
+    } catch (e) {
+      log.error(`photo-drop: video ${id} is gone, and its files may still be in the bucket: ${errorText(e)}`);
+    }
+  }
+
   // Gives up a video that is on its way in: its files first, then its row, so a failure partway
   // leaves a row that can be given up again rather than files nobody can find. If video-done
   // finished this same video in between, its row is in the show by now and outlives that. With
@@ -839,7 +852,13 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     const id = oneId(body.id);
     const by = typed(body.by);
     const held = await db.videoHeld(code, id);
-    if (!held || !held.ok) return refused(held);
+    // Asked again after it already worked (the first answer got lost on the way back): the
+    // video is in, and that is the answer.
+    if (held && held.ok && held.done) return json(200, { ok: true, id });
+    if (!held || !held.ok) {
+      if (held && held.gone === true) await clearLeftovers(id);
+      return refused(held);
+    }
     let link = '';
     let posterLink = null;
     try {
@@ -888,7 +907,11 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
   async function videoCancel(code, body) {
     const id = oneId(body.id);
     const held = await db.videoHeld(code, id);
-    if (held && !held.ok && held.status === 409) return json(200, { ok: true });
+    if (held && held.ok && held.done) return json(200, { ok: true });
+    if (held && !held.ok && held.status === 409) {
+      if (held.gone === true) await clearLeftovers(id);
+      return json(200, { ok: true });
+    }
     if (!held || !held.ok) return refused(held);
     try {
       await dropVideo(code, held);

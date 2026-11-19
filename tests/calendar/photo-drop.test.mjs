@@ -915,8 +915,11 @@ test("what a video keeps: the organizer's name, the file's exact size, its lengt
   assert.deepEqual(await videoHeld(h, r.id), r, 'what the reserve answered');
   assert.deepEqual(await videoHeld(h, r.id, ` ${REVIEW.toUpperCase()} `), r);
   for (const code of [UPLOAD, SCREEN, 'nope', '', null]) assert.deepEqual(await videoHeld(h, r.id, code), no(403, 'code', WRONG_CODE), String(code));
-  assert.deepEqual(await videoHeld(h, missing), gone(409));
-  assert.deepEqual(await videoHeld(h, guest.id), gone(409));
+  // Refused for an id that is no video on its way in. The refusal says whether any row has the
+  // id at all: with none, the function may clear files left at the id's paths, and a guest's
+  // photo must never be taken for that.
+  assert.deepEqual(await videoHeld(h, missing), { ...gone(409), gone: true });
+  assert.deepEqual(await videoHeld(h, guest.id), { ...gone(409), gone: false }, "a guest's photo is a row, and is left alone");
 
   // The files are in: it only goes into the show with the review code, a link, and an end to
   // that link, and only a video on its way in does.
@@ -938,7 +941,10 @@ test("what a video keeps: the organizer's name, the file's exact size, its lengt
     stored_at: '2026-11-19T15:04:00.000Z', reviewed_at: '2026-11-19T15:04:00.000Z', reviewed_by: 'Brother Aiken'
   });
   assert.deepEqual(await videoStored(h, r), gone(400), 'only once');
-  assert.deepEqual(await videoHeld(h, r.id), gone(409), 'it is no longer on its way in');
+  // Asked about again, a video that has arrived says so: a page whose first answer got lost
+  // must hear that the video is in, not that it is gone.
+  assert.deepEqual(await videoHeld(h, r.id), { ok: true, done: true, id: r.id }, 'it has arrived');
+  for (const code of [UPLOAD, SCREEN, 'nope', '', null]) assert.deepEqual(await videoHeld(h, r.id, code), no(403, 'code', WRONG_CODE), `arrived, ${code}`);
 
   // With no poster, the row lets go of the poster's path. With no name given, the name it was
   // added under stands.

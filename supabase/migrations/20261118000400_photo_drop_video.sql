@@ -247,6 +247,11 @@ $$;
 
 -- The video that is on its way in under this id: { ok, id, path, thumb_path, bytes, mime }. The
 -- Edge Function asks once the browser says both uploads are done, and again to cancel one.
+-- A video that has already arrived answers { ok, done: true, id }: a page whose first answer got
+-- lost asks again, and must hear that the video is in, not that it is gone. Anything else is
+-- refused, and the refusal says whether any row has this id (gone: true when none does), so the
+-- Edge Function can clear files that reached the bucket after their row had gone, and never
+-- touches the files of a guest's photo.
 create or replace function cal_private.drop_video_held(p_code text, p_id uuid)
 returns jsonb
 language plpgsql
@@ -256,6 +261,8 @@ set search_path = ''
 as $$
 declare
   v_held jsonb;
+  v_kind text;
+  v_status text;
 begin
   if not cal_private.drop_code_ok('review', p_code) then
     return cal_private.drop_no(403, 'code', 'That code isn''t right.');
@@ -264,10 +271,15 @@ begin
   into v_held
   from public.drop_photos p
   where p.id = p_id and p.kind = 'video' and p.status = 'sending';
-  if v_held is null then
-    return cal_private.drop_no(409, 'input', 'That video is no longer here. Add it again.');
+  if v_held is not null then
+    return v_held;
   end if;
-  return v_held;
+  select p.kind, p.status into v_kind, v_status from public.drop_photos p where p.id = p_id;
+  if v_kind = 'video' and v_status <> 'sending' then
+    return jsonb_build_object('ok', true, 'done', true, 'id', p_id);
+  end if;
+  return cal_private.drop_no(409, 'input', 'That video is no longer here. Add it again.')
+    || jsonb_build_object('gone', v_kind is null);
 end;
 $$;
 
