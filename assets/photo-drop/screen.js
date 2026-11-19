@@ -53,7 +53,7 @@ const SECONDS = [5, 8, 12, 20];
 const PAST = 200; // how far back Previous can go
 const EVERY = [5, 10, 20]; // the choices for how many photos go by between two videos
 const CLIP_WAIT = 8000; // a video on this computer that hasn't shown its first picture by now is left out
-const CLIP_MAX = 600000; // the longest a video stays on screen
+const CLIP_MAX = 3600000; // the longest a video stays on screen, whatever length its file claims
 const PAUSE_MAX = 180000; // a pause ends by itself after this: nobody is at this computer all night
 // A picture with nothing in it. An Image that is let go of is given this in place of its photo:
 // that stops the download, if it is still under way, and answers anything waiting on it. Just

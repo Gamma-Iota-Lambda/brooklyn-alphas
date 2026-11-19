@@ -17,6 +17,7 @@ const POSTER_QUALITY = 0.8;
 const POSTER_MAX_BYTES = 307200; // the server drops a larger one
 const ANSWER_TIMEOUT = 30000;
 const STALL_TIMEOUT = 60000; // no byte has moved for this long: the connection is gone
+const STORE_TIMEOUT = 300000; // every byte has gone: this long for storage to put a large file away and answer
 const CHECK_TRIES = 3; // asking the server to check the video, when the answer got lost
 const CHECK_PAUSE = 2000;
 const SETTLE_TIMEOUT = 10000;
@@ -183,17 +184,18 @@ function put(link, body, type, { progress, holder }) {
       clearTimeout(timer);
       reject(new DropError(message, { reason: 'upload', status: xhr.status || 0 }));
     };
-    const moving = () => {
+    const moving = (all = false) => {
       clearTimeout(timer);
-      timer = setTimeout(() => xhr.abort(), STALL_TIMEOUT);
+      timer = setTimeout(() => xhr.abort(), all ? STORE_TIMEOUT : STALL_TIMEOUT);
     };
     xhr.open('PUT', link);
     xhr.setRequestHeader('Content-Type', type);
     xhr.setRequestHeader('cache-control', KEEP);
     xhr.setRequestHeader('x-upsert', 'true');
     xhr.upload.addEventListener('progress', (e) => {
-      moving();
-      progress(e.loaded, e.lengthComputable ? e.total : body.size);
+      const total = e.lengthComputable ? e.total : body.size;
+      moving(e.loaded >= total);
+      progress(e.loaded, total);
     });
     xhr.addEventListener('load', () => {
       clearTimeout(timer);
