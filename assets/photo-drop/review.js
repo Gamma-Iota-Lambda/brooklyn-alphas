@@ -13,7 +13,7 @@
 // Kept on the device: the review code and the organizer's name, until Sign out.
 import { READY, DropError, review, esc } from './api.js';
 import { VERDICTS, verdictFor } from './image.js';
-import { videoType, readVideo, sendVideo } from './video.js';
+import { videoType, readVideo, sendVideo, settleVideos } from './video.js';
 import { createZips } from './zip.js';
 
 // Tells the small script in the page that this one arrived.
@@ -1216,6 +1216,12 @@ function askVideo() {
   paintAdd();
   $('#rv-add').showModal();
   $('#rv-add-file').focus();
+  // A place left held by an upload that failed, or by a reload partway through one, is handed
+  // back now, so the numbers are right before the next video is chosen.
+  const session = S.session;
+  settleVideos(S.code).then((n) => {
+    if (n && session === S.session) refreshNow();
+  });
 }
 
 // Draws the box from the video that is chosen and from whether it is on its way.

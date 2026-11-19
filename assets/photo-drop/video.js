@@ -19,7 +19,9 @@ const ANSWER_TIMEOUT = 30000;
 const STALL_TIMEOUT = 60000; // no byte has moved for this long: the connection is gone
 const CHECK_TRIES = 3; // asking the server to check the video, when the answer got lost
 const CHECK_PAUSE = 2000;
+const SETTLE_TIMEOUT = 10000;
 const KEEP = 'max-age=31536000';
+const OWED_KEY = 'gil.drop.review.owed';
 
 // 'video/mp4' or 'video/quicktime' for a file the show takes, by its name and by what the browser
 // makes of it, or '' for anything else. A browser that can't tell says nothing, and the name decides.
@@ -128,6 +130,48 @@ export async function readVideo(file) {
 
 const STOPPED = 'The upload stopped. Check the connection and add it again.';
 
+// Places held on the server that this tab hasn't handed back yet: an upload that failed while
+// the connection was down, or a page that was reloaded partway through one. Until its place is
+// let go, such a video counts toward the videos' limits (the server lets go by itself only after
+// three hours). The ids are kept for this tab, so they outlast a reload.
+const owed = new Set();
+try {
+  for (const id of JSON.parse(sessionStorage.getItem(OWED_KEY) || '[]')) if (typeof id === 'string' && id) owed.add(id);
+} catch {
+  // No storage, or nothing readable in it.
+}
+const keepOwed = () => {
+  try {
+    sessionStorage.setItem(OWED_KEY, JSON.stringify([...owed]));
+  } catch {
+    // Kept in memory only.
+  }
+};
+const owe = (id) => {
+  owed.add(id);
+  keepOwed();
+};
+const paid = (id) => {
+  if (owed.delete(id)) keepOwed();
+};
+
+// Hands back every place this tab still holds, and resolves with how many it let go. Never
+// rejects. Not to be called while this tab is sending a video: that one's place is held too.
+// Asking the server to forget a video that has arrived after all does nothing to it.
+export async function settleVideos(code) {
+  const late = new DropError('That took too long.', { reason: 'network' });
+  const let_go = await Promise.all([...owed].map(async (id) => {
+    try {
+      await within(review(code, 'video-cancel', { id }), SETTLE_TIMEOUT, late);
+      paid(id);
+      return 1;
+    } catch {
+      return 0; // still owed: tried again the next time
+    }
+  }));
+  return let_go.reduce((sum, n) => sum + n, 0);
+}
+
 // Puts the file where a link from the server points. XMLHttpRequest, because fetch doesn't say
 // how much has gone. There is no limit on the whole upload, which can take many minutes on a
 // slow connection: it is given up only when nothing has moved for a minute.
@@ -212,10 +256,11 @@ export function sendVideo({ code, by, video }, step = () => {}) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         await within(review(code, 'video-cancel', { id: which }), ANSWER_TIMEOUT, late);
+        paid(which);
         return;
       } catch (e) {
-        // Storage was struggling: once more. Anything else, and the server tidies up by itself
-        // in a few hours.
+        // Storage was struggling: once more. Anything else, and the place stays owed: it is
+        // handed back before the next video is added, or by the server in a few hours.
         if (!(e instanceof DropError) || e.reason !== 'storage') return;
       }
     }
@@ -223,6 +268,8 @@ export function sendVideo({ code, by, video }, step = () => {}) {
 
   const run = async () => {
     step({ step: 'asking' });
+    // First, any place an earlier try left held, so it doesn't take this one's room.
+    await unlessStopped(settleVideos(code));
     const place = review(code, 'video', {
       by,
       caption: video.caption || '',
@@ -237,11 +284,16 @@ export function sendVideo({ code, by, video }, step = () => {}) {
       answer = await unlessStopped(within(place, ANSWER_TIMEOUT, late));
     } catch (e) {
       // An answer that lands after the wait was given up still holds a place. Hand it back.
-      place.then((held) => { if (held && held.id) forget(held.id); }, () => {});
+      place.then((held) => {
+        if (!held || !held.id) return;
+        owe(held.id);
+        forget(held.id);
+      }, () => {});
       throw e;
     }
     if (!answer || !answer.id || !answer.upload || !answer.upload.video) throw new DropError('Something went wrong. Try again.');
     id = answer.id;
+    owe(id);
     if (video.poster && answer.upload.poster) {
       step({ step: 'poster' });
       await unlessStopped(putPoster(answer.upload.poster, video.poster, holder));
@@ -256,6 +308,7 @@ export function sendVideo({ code, by, video }, step = () => {}) {
     for (let attempt = 1; ; attempt += 1) {
       try {
         await unlessStopped(within(review(code, 'video-done', { id, by }), ANSWER_TIMEOUT, late));
+        paid(id);
         return { id };
       } catch (e) {
         // The file is in storage, and sending it again could take many minutes. When the answer
