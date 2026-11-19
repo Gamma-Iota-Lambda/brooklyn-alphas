@@ -22,6 +22,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 ├── impact-20.html              # Impact $20 donation campaign
 ├── recommended-readings.html   # Curated reading list
 ├── scholarship.html            # Judge Myles A. Paige Scholarship
+├── press.html                  # Press kit for journalists: facts, media contact, and downloads
 ├── calendar.html               # Content calendar for the media team and brothers (behind the home page's Sign in button)
 ├── 404.html                    # Custom not-found page
 ├── style.css                   # All shared styles (single stylesheet)
@@ -39,6 +40,7 @@ This is the official website for Gamma Iota Lambda Chapter of Alpha Phi Alpha Fr
 │   ├── review.html             # The organizers approve photos for the big screens
 │   └── screen.html             # The slideshow for the venue's computer
 ├── assets/calendar/            # The calendar's script, styles, demo data, and Supabase client
+├── assets/press/               # Downloads for the Press page (the press kit PDF)
 ├── assets/photo-drop/          # The photo drop's scripts, styles, and the event flyer
 ├── supabase/                   # The calendar's and the photo drop's database (migrations, seed, setup, go-live steps) and their Edge Functions
 ├── tests/calendar/             # The calendar's database and browser tests, and the photo drop's database and Edge Function tests
