@@ -1186,6 +1186,28 @@ const askBeforeLeaving = (e) => {
   e.returnValue = '';
 };
 
+// Keeps the screen on while a video is going up, where the browser allows it: a computer that
+// goes to sleep stops the upload until it wakes. The browser lets go of this whenever the page
+// is hidden, so it is asked for again each time the page comes back in front.
+let awake = null;
+async function stayAwake(on) {
+  try {
+    if (!on) {
+      const lock = awake;
+      awake = null;
+      if (lock) await lock.release();
+      return;
+    }
+    if (awake || !navigator.wakeLock || document.visibilityState !== 'visible') return;
+    const lock = await navigator.wakeLock.request('screen');
+    if (!S.sending || awake) return void lock.release().catch(() => {});
+    awake = lock;
+    lock.addEventListener('release', () => { if (awake === lock) awake = null; });
+  } catch {
+    // The screen follows the computer's own settings.
+  }
+}
+
 function paintAddTool() {
   const on = takesVideos(S.settings);
   $('#rv-add-tool').hidden = !on;
@@ -1318,6 +1340,7 @@ async function addVideo() {
   const sending = { job: null, stopping: false };
   S.sending = sending;
   window.addEventListener('beforeunload', askBeforeLeaving);
+  stayAwake(true);
   addNote('');
   paintAdd();
   paintSending({ step: 'asking' });
@@ -1347,6 +1370,7 @@ async function addVideo() {
   }
   S.sending = null;
   window.removeEventListener('beforeunload', askBeforeLeaving);
+  stayAwake(false);
   if (!error || landed) {
     $('#rv-add').close();
     refreshNow();
@@ -1377,6 +1401,7 @@ function stopSending() {
   const sending = S.sending;
   S.sending = null;
   window.removeEventListener('beforeunload', askBeforeLeaving);
+  stayAwake(false);
   if (sending && sending.job) sending.job.cancel();
 }
 
@@ -1556,6 +1581,7 @@ function listen() {
 
   // Adding a video
   const add = $('#rv-add');
+  document.addEventListener('visibilitychange', () => { if (S.sending) stayAwake(true); });
   $('#rv-add-open').addEventListener('click', askVideo);
   $('#rv-add-file').addEventListener('change', (e) => videoChosen(e.target.files[0]));
   $('#rv-add-form').addEventListener('submit', (e) => {

@@ -606,6 +606,8 @@ function again() {
 // browser has: the photos' pass keeps its place while a video plays.
 const clips = createClips({
   clock,
+  // Asked whenever a piece of a video has come down: may the next one be asked for now?
+  idle: () => !DEMO && S.on && quiet(),
   onReady: (id) => {
     // A video that has just arrived has the next turn.
     if (!S.clipLine.includes(id)) S.clipLine.unshift(id);
@@ -703,7 +705,10 @@ function clipSlide(id, t) {
 // How the video being got ready is getting on. One that can't be played here after all is left
 // out until the page is reloaded, and the photos carry on.
 function clipStep(slide, t) {
-  if (slide.main === null && t - slide.startedAt >= CLIP_WAIT) slide.main = false;
+  // A browser loads no video in a tab that is behind another. The wait for its first picture
+  // only counts while the page is in front: its silence back there says nothing about the file.
+  if (document.visibilityState !== 'visible') slide.startedAt = t;
+  else if (slide.main === null && t - slide.startedAt >= CLIP_WAIT) slide.main = false;
   const at = landed(slide, t);
   if (at === '' || (at === 'in' && build(slide))) return;
   clips.bad(slide.id);
@@ -756,6 +761,7 @@ function clipNote() {
   let words = `Videos: ${p.ready} of ${p.listed} ready`;
   if (p.coming !== null) words += `, the next one ${p.coming}% here`;
   if (p.bad) words += `, ${p.bad} can't be played on this computer`;
+  if (p.left) words += `, ${p.left} with no room to keep ${p.left === 1 ? 'it' : 'them'} on this computer`;
   if (note.textContent !== words) note.textContent = words;
 }
 

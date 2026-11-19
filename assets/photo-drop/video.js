@@ -22,8 +22,7 @@ const STORE_TIMEOUT = 300000; // every byte has gone: this long for storage to p
 const PIECE = 6 * 1024 * 1024; // storage takes a resumable upload in pieces of exactly this size, but for the last
 const RETRY = [1000, 3000, 5000, 10000, 20000, 30000]; // the wait before each new try; the last one repeats
 const GIVE_UP = 600000; // nothing has got through for this long: the upload is given up
-const CHECK_TRIES = 3; // asking the server to check the video, when the answer got lost
-const CHECK_PAUSE = 2000;
+const SWEEP_AFTER = 60000; // after a cancelled upload, the server is asked once more to clear what landed late
 const SETTLE_TIMEOUT = 10000;
 const KEEP = 'max-age=31536000';
 const KEEP_SECONDS = '31536000'; // the same, as a resumable upload states it
@@ -161,13 +160,37 @@ const paid = (id) => {
   if (owed.delete(id)) keepOwed();
 };
 
+// While a video is going up, its tab holds a lock in the video's name, which every tab of this
+// browser can see. A copy of the tab (Duplicate tab copies what a tab remembers, the places it
+// holds included) can tell by it that the upload is alive, and leaves its place alone.
+const lockName = (id) => `gil.drop.video.${id}`;
+const locks = () => (typeof navigator !== 'undefined' && navigator.locks && navigator.locks.request ? navigator.locks : null);
+// Takes the lock. The answer is how to let go of it.
+function holdLock(id) {
+  if (!locks()) return () => {};
+  let release = () => {};
+  const held = new Promise((resolve) => { release = resolve; });
+  locks().request(lockName(id), () => held).catch(() => {});
+  return release;
+}
+// Is some tab sending this video right now?
+async function inUse(id) {
+  if (!locks()) return false;
+  try {
+    return await locks().request(lockName(id), { ifAvailable: true }, (lock) => !lock);
+  } catch {
+    return false;
+  }
+}
+
 // Hands back every place this tab still holds, and resolves with how many it let go. Never
-// rejects. Not to be called while this tab is sending a video: that one's place is held too.
+// rejects. A place whose video some tab is sending right now is left alone.
 // Asking the server to forget a video that has arrived after all does nothing to it.
 export async function settleVideos(code) {
   const late = new DropError('That took too long.', { reason: 'network' });
   const let_go = await Promise.all([...owed].map(async (id) => {
     try {
+      if (await inUse(id)) return 0;
       await within(review(code, 'video-cancel', { id }), SETTLE_TIMEOUT, late);
       paid(id);
       return 1;
@@ -280,6 +303,9 @@ async function sendInPieces(link, file, type, { progress, waiting, holder }) {
   // The wait before another try. The upload is given up when nothing has got through for too long.
   const pause = async (sent) => {
     alive();
+    // The ten minutes run from the first try that failed, not from the last piece that got
+    // through: a computer that slept through them still gets a try when it wakes.
+    if (tries === 0) lastMove = Date.now();
     if (Date.now() - lastMove > GIVE_UP) throw stopped();
     waiting(sent, size);
     await sleep(RETRY[Math.min(tries, RETRY.length - 1)]);
@@ -459,6 +485,8 @@ export function sendVideo({ code, by, video }, step = () => {}) {
   let id = '';
   let asked = false;
   let cancelled = false;
+  let sending = false; // the file has started on its way to storage
+  let unlock = () => {};
   let quit;
   const stopped = new Promise((resolve, reject) => { quit = reject; });
   stopped.catch(() => {});
@@ -470,6 +498,10 @@ export function sendVideo({ code, by, video }, step = () => {}) {
       try {
         await within(review(code, 'video-cancel', { id: which }), ANSWER_TIMEOUT, late);
         paid(which);
+        // An upload that was cut off as its last bytes went can still be put away by storage a
+        // moment later, after the server has looked and found nothing to remove. Asked once
+        // more in a minute, the server clears whatever landed.
+        if (sending) setTimeout(() => { review(code, 'video-cancel', { id: which }).catch(() => {}); }, SWEEP_AFTER);
         return;
       } catch (e) {
         // Storage was struggling: once more. Anything else, and the place stays owed: it is
@@ -507,11 +539,13 @@ export function sendVideo({ code, by, video }, step = () => {}) {
     if (!answer || !answer.id || !answer.upload || !answer.upload.video) throw new DropError('Something went wrong. Try again.');
     id = answer.id;
     owe(id);
+    unlock = holdLock(id);
     if (video.poster && answer.upload.poster) {
       step({ step: 'poster' });
       await unlessStopped(putPoster(answer.upload.poster, video.poster, holder));
     }
     step({ step: 'sending', sent: 0, total: video.file.size });
+    sending = true;
     const type = answer.upload.type || video.mime;
     const progress = (sent, total) => step({ step: 'sending', sent, total });
     try {
@@ -526,17 +560,23 @@ export function sendVideo({ code, by, video }, step = () => {}) {
     }
     step({ step: 'checking' });
     asked = true;
-    for (let attempt = 1; ; attempt += 1) {
+    // The file is in storage, and sending it again could take an hour. So the server is asked
+    // for as long as its answer is only "not now": an answer that got lost, storage that
+    // couldn't be looked in, or an error on the way. The waits are the ones between pieces, and
+    // it is given up after the same ten minutes. A plain no ends it at once.
+    let firstMiss = 0;
+    for (let attempt = 0; ; attempt += 1) {
       try {
         await unlessStopped(within(review(code, 'video-done', { id, by }), ANSWER_TIMEOUT, late));
         paid(id);
         return { id };
       } catch (e) {
-        // The file is in storage, and sending it again could take many minutes. When the answer
-        // got lost or storage couldn't be asked, the same question is worth a second and a third try.
-        const again = !cancelled && attempt < CHECK_TRIES && e instanceof DropError && (e.reason === 'network' || e.reason === 'storage');
-        if (!again) throw e;
-        await unlessStopped(new Promise((resolve) => setTimeout(resolve, CHECK_PAUSE)));
+        const notNow = e instanceof DropError
+          && (e.reason === 'network' || e.reason === 'storage' || (!e.reason && (e.status === 0 || e.status === 429 || e.status >= 500)));
+        if (cancelled || !notNow) throw e;
+        if (!firstMiss) firstMiss = Date.now();
+        if (Date.now() - firstMiss > GIVE_UP) throw e;
+        await unlessStopped(sleep(RETRY[Math.min(attempt, RETRY.length - 1)]));
       }
     }
   };
@@ -547,7 +587,7 @@ export function sendVideo({ code, by, video }, step = () => {}) {
     error.id = id;
     error.asked = asked;
     throw error;
-  });
+  }).finally(() => unlock());
 
   return {
     done,
