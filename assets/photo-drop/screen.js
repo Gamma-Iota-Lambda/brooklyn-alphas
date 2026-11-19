@@ -14,7 +14,13 @@
 //
 // A photo is never stretched past one and a half times its own pixels. A small photo shows as a
 // framed print over the blurred ground instead.
+//
+// The committee's videos play in between the photos: one after every so many photos, taking
+// turns. A video goes on screen only once the whole file is on this computer (clips.js brings
+// them down when the photos are not using the connection), so it never stops to load. "The
+// videos" below has the rules. With no videos in the show, none of it does anything.
 import { READY, screen, codeFromAddress } from './api.js';
+import { createClips } from './clips.js';
 
 // Tells the small script in the page that this one arrived.
 window.GIL_DROP_STARTED = true;
@@ -45,6 +51,9 @@ const TILT = 1.4; // degrees, for a framed print
 const PRINT_ROOM = 0.84; // a print takes no more than this share of the screen it could fill
 const SECONDS = [5, 8, 12, 20];
 const PAST = 200; // how far back Previous can go
+const EVERY = [5, 10, 20]; // the choices for how many photos go by between two videos
+const CLIP_WAIT = 8000; // a video on this computer that hasn't shown its first picture by now is left out
+const CLIP_MAX = 600000; // the longest a video stays on screen
 const PAUSE_MAX = 180000; // a pause ends by itself after this: nobody is at this computer all night
 // A picture with nothing in it. An Image that is let go of is given this in place of its photo:
 // that stops the download, if it is still under way, and answers anything waiting on it. Just
@@ -134,6 +143,11 @@ const S = {
   order: 'shuffle', // or 'oldest'
   captions: true,
   mark: true,
+  every: 10, // a video plays after this many photos
+  sound: false, // the videos play with their sound
+  since: 0, // photos shown since a video last went up
+  clipLine: [], // the videos still to have their turn this round
+  lastClip: '', // the video that played last, so a new round doesn't open with it again
   photos: new Map(), // id -> { id, url, thumbUrl, caption }: the approved photos, as last heard
   ids: [], // their ids in the server's order, oldest approved first
   queue: [], // the ids still to come in this pass
@@ -216,6 +230,8 @@ function fillForm() {
   for (const el of document.querySelectorAll('#sc-form input[name="order"]')) el.checked = el.value === S.order;
   $('#sc-captions').checked = S.captions;
   $('#sc-mark').checked = S.mark;
+  for (const el of document.querySelectorAll('#sc-form input[name="every"]')) el.checked = Number(el.value) === S.every;
+  $('#sc-sound').checked = S.sound;
 }
 
 function readForm() {
@@ -225,9 +241,11 @@ function readForm() {
   S.order = chosen('order') === 'oldest' ? 'oldest' : 'shuffle';
   S.captions = $('#sc-captions').checked;
   S.mark = $('#sc-mark').checked;
+  S.every = EVERY.includes(Number(chosen('every'))) ? Number(chosen('every')) : 10;
+  S.sound = $('#sc-sound').checked;
 }
 
-const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark });
+const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound });
 
 // "Start the slideshow". Asks the server once before the stage goes up, so a wrong code or a dead
 // connection is found while someone is still standing at the computer. `resumed`: the page was
@@ -245,9 +263,16 @@ async function begin({ resumed = false } = {}) {
   $('#sc-start').disabled = true;
   status(DEMO ? 'Making the test pictures.' : 'Getting the photos.');
   let list = [];
+  let videos = null; // null: no answer from the server, so nothing is known about the videos
   let failed = null;
   try {
-    list = DEMO ? await testPictures() : (await ask()).photos;
+    if (DEMO) {
+      list = await testPictures();
+    } else {
+      const answer = await ask();
+      list = answer.photos;
+      videos = Array.isArray(answer.videos) ? answer.videos : [];
+    }
   } catch (e) {
     failed = e || new Error('failed');
   }
@@ -260,11 +285,11 @@ async function begin({ resumed = false } = {}) {
     return problem('start', DEMO ? "This browser couldn't make the test pictures." : "We couldn't get the photos. Check the connection and try again.");
   }
   keep();
-  play(failed ? [] : list);
+  play(failed ? [] : list, failed ? null : videos);
 }
 
 // ---------------------------------------------------------------- starting and stopping the show
-function play(list) {
+function play(list, videos = null) {
   S.on = true;
   S.run += 1;
   S.paused = false;
@@ -279,9 +304,13 @@ function play(list) {
   S.ready = new Set();
   S.tried = new Set();
   S.kept = new Set();
+  S.since = 0;
+  S.clipLine = [];
+  S.lastClip = '';
   S.old = S.now = S.next = S.trying = null;
   $('#sc-slides').textContent = '';
   take(list);
+  if (videos) takeClips(videos);
   // The photos this browser showed before, if they are still in the show under the same link.
   if (!DEMO) {
     for (const mark of seen.get()) {
@@ -321,6 +350,8 @@ function stop() {
   S.ticker = S.checker = 0;
   cancel(S.next);
   cancel(S.trying);
+  discard(S.now);
+  discard(S.old);
   S.old = S.now = S.next = S.trying = null;
   $('#sc-slides').textContent = '';
   letSleep();
@@ -353,6 +384,7 @@ async function check() {
   S.answered = asked;
   if (!answer || !Array.isArray(answer.photos)) return;
   take(answer.photos);
+  takeClips(answer.videos);
   // This small answer getting through doesn't say photos will: a slow connection carries it and
   // still crawls on a photo. But the first answer after the server couldn't be reached at all
   // means the connection has just come back, so a try that began before it did starts afresh.
@@ -393,7 +425,7 @@ function take(list) {
     for (const id of [...set]) if (!here(id)) set.delete(id);
   }
   if (underWay) S.queue.unshift(...fresh);
-  if (S.next && !here(S.next.id)) {
+  if (S.next && !S.next.video && !here(S.next.id)) {
     cancel(S.next);
     S.next = null;
   }
@@ -403,7 +435,7 @@ function take(list) {
   }
   // A photo taken out of the show leaves the screen now: for the next one if it is ready or the
   // browser has one to put up (see `gone` in tick), for the title card if not.
-  if (S.now && !here(S.now.id)) {
+  if (S.now && !S.now.video && !here(S.now.id)) {
     if ((S.next && S.next.ready) || spare()) S.skip = true;
     else clear();
   }
@@ -482,7 +514,7 @@ function forget(id) {
 function mistaken(id) {
   forget(id);
   if (!S.now) S.shown.clear();
-  else if (!S.photos.has(S.now.id)) clear();
+  else if (!inShow(S.now)) clear();
 }
 
 // Is there a photo the browser has, other than the one on screen, for the show to go to?
@@ -507,7 +539,7 @@ function aside() {
   S.slow = true;
   if (slide.back) {
     // Previous couldn't get its photo: stay on this one rather than jump ahead.
-    S.skip = !!S.now && !S.photos.has(S.now.id);
+    S.skip = !!S.now && !inShow(S.now);
   } else if (!slide.fill && !S.kept.has(slide.id)) {
     S.kept.add(slide.id);
     S.queue = [slide.id, ...S.queue.filter((id) => id !== slide.id)];
@@ -567,6 +599,166 @@ function again() {
   S.trying = null;
 }
 
+// ---------------------------------------------------------------- the videos
+// clips.js brings the committee's videos down and keeps them on this computer. Here: when one
+// plays, and how. A video is a slide like a photo (S.next, S.now, S.old), but it is never in
+// the photos' line (S.queue), their history (S.past) or the sets that say which photos the
+// browser has: the photos' pass keeps its place while a video plays.
+const clips = createClips({
+  clock,
+  onReady: (id) => {
+    // A video that has just arrived has the next turn.
+    if (!S.clipLine.includes(id)) S.clipLine.unshift(id);
+    if (S.on) tick();
+  }
+});
+
+// Is the slide's photo or video still in the show?
+const inShow = (slide) => (slide.video ? clips.has(slide.id) : S.photos.has(slide.id));
+
+// A promise nobody waits for must not turn into an error in the console.
+const quietly = (promise) => { if (promise && promise.catch) promise.catch(() => {}); };
+
+// Takes the server's list of videos. One that is no longer in it leaves the screen now.
+function takeClips(list) {
+  clips.take(Array.isArray(list) ? list : []);
+  S.clipLine = S.clipLine.filter((id) => clips.has(id));
+  if (S.next && S.next.video && !clips.has(S.next.id)) {
+    cancel(S.next);
+    S.next = null;
+  }
+  if (S.now && S.now.video && !clips.has(S.now.id)) {
+    if ((S.next && S.next.ready) || spare()) S.skip = true;
+    else clear();
+  }
+}
+
+// May a piece of a video be asked for? Only when the photos are not using the connection: the
+// next one is ready and waiting, and nothing is being tried behind the scenes. On a slow
+// connection a photo is being tried nearly all the time, so the photos come first, and the
+// videos get the connection once the photos are ahead or all here.
+const quiet = () => !S.trying && (!S.next || S.next.ready);
+
+// The video to get ready next, or '' when it isn't a video's turn. One plays after every
+// S.every photos (after each pass, when there are fewer photos than that), and the videos take
+// turns. A video also goes up when there is nothing else to show: no photo on screen, or one
+// that has run past its time with no photo to follow it.
+function dueClip(t) {
+  const ready = clips.ready();
+  if (!ready.length) return '';
+  const on = S.now ? S.now.id : '';
+  const stuck = !!S.now && !S.paused && t >= S.dueAt + PATIENCE;
+  if (S.now && !stuck) {
+    if (S.ids.length && S.now.video) return ''; // not two videos in a row while there are photos
+    if (S.ids.length && S.since < Math.min(S.every, S.ids.length)) return '';
+  }
+  S.clipLine = S.clipLine.filter((id) => ready.includes(id));
+  if (!S.clipLine.some((id) => id !== on)) {
+    S.clipLine = ready.slice();
+    if (S.clipLine.length > 1 && S.clipLine[0] === S.lastClip) S.clipLine.push(S.clipLine.shift());
+  }
+  const at = S.clipLine.findIndex((id) => id !== on);
+  return at >= 0 ? S.clipLine.splice(at, 1)[0] : '';
+}
+
+// Starts getting a video ready for the screen: a slide with a <video> where a photo has its
+// <img>. The blurred ground behind it is its poster picture.
+function clipSlide(id, t) {
+  const clip = clips.get(id);
+  const slide = { id, video: true, back: false, fill: false, cached: true, ready: false, main: null, mainAt: 0, loadedAt: 0, hasBack: null, startedAt: t, img: null, v: document.createElement('video'), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
+  const wanted = () => S.next === slide;
+  const settle = (ok) => {
+    if (slide.main !== null) return;
+    slide.main = ok;
+    slide.mainAt = clock();
+    if (wanted()) tick();
+  };
+  slide.v.muted = !S.sound;
+  slide.v.playsInline = true;
+  slide.v.preload = 'auto';
+  slide.v.disablePictureInPicture = true;
+  slide.v.addEventListener('loadeddata', () => settle(slide.v.videoWidth > 0 && slide.v.videoHeight > 0));
+  slide.v.addEventListener('error', () => settle(false));
+  // The moment it ends is the moment to move on, whatever its length was said to be.
+  slide.v.addEventListener('ended', () => {
+    if (S.now !== slide || S.paused) return;
+    S.dueAt = Math.min(S.dueAt, clock());
+    tick();
+  });
+  slide.v.src = clip.src;
+  if (clip.thumbUrl) {
+    slide.backImg = new Image();
+    slide.backImg.alt = '';
+    slide.backImg.src = clip.thumbUrl;
+    arrived(slide.backImg).then((ok) => {
+      slide.hasBack = ok;
+      if (wanted()) tick();
+    });
+  } else {
+    slide.hasBack = false;
+  }
+  return slide;
+}
+
+// How the video being got ready is getting on. One that can't be played here after all is left
+// out until the page is reloaded, and the photos carry on.
+function clipStep(slide, t) {
+  if (slide.main === null && t - slide.startedAt >= CLIP_WAIT) slide.main = false;
+  const at = landed(slide, t);
+  if (at === '' || (at === 'in' && build(slide))) return;
+  clips.bad(slide.id);
+  discard(slide);
+  S.next = null;
+}
+
+// How long a video stays on screen: its own length, as the browser reads it, or failing that
+// as the server has it.
+function clipMs(slide) {
+  const said = (clips.get(slide.id) || {}).seconds;
+  const seconds = Number.isFinite(slide.v.duration) && slide.v.duration > 0 ? slide.v.duration : said;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(CLIP_MAX, Math.max(2000, seconds * 1000)) : S.seconds * 1000;
+}
+
+// Plays the video on screen from its start. With nothing else to show, it goes round and round.
+// A browser that won't play sound without a click plays it silent.
+function startClip(slide) {
+  const v = slide.v;
+  v.loop = !S.ids.length && clips.ready().length < 2;
+  try { v.currentTime = 0; } catch { /* it starts from where it is */ }
+  const go = v.play();
+  if (go && go.catch) {
+    go.catch(() => {
+      v.muted = true;
+      quietly(v.play());
+    });
+  }
+}
+
+// Takes a slide out of the page for good. A video is stopped and let go of.
+function discard(slide) {
+  if (!slide) return;
+  if (slide.el) slide.el.remove();
+  if (!slide.video) return;
+  try {
+    slide.v.pause();
+    slide.v.removeAttribute('src');
+    slide.v.load();
+  } catch { /* already let go of */ }
+}
+
+// The line in the controls that says how the videos are coming along.
+function clipNote() {
+  const note = $('#sc-clips');
+  if (!note) return;
+  const p = clips.progress();
+  note.hidden = !p.listed;
+  if (!p.listed) return;
+  let words = `Videos: ${p.ready} of ${p.listed} ready`;
+  if (p.coming !== null) words += `, the next one ${p.coming}% here`;
+  if (p.bad) words += `, ${p.bad} can't be played on this computer`;
+  if (note.textContent !== words) note.textContent = words;
+}
+
 // ---------------------------------------------------------------- the clock
 // Looks at the show and makes the next move. Runs every quarter second while the show plays, and
 // straight away when something happens (a key, a photo arriving, a fresh list).
@@ -576,7 +768,7 @@ function tick() {
 
   // The photo that has faded out leaves the page.
   if (S.old && t >= S.old.removeAt) {
-    S.old.el.remove();
+    discard(S.old);
     S.old = null;
   }
 
@@ -600,9 +792,12 @@ function tick() {
     }
   }
 
+  // The video being got ready is on this computer: it is there at once, or it can't be played.
+  if (S.next && S.next.video && !S.next.ready) clipStep(S.next, t);
+
   // The photo being got ready: has it arrived, failed, or taken too long?
   const coming = S.next;
-  if (coming && !coming.ready) {
+  if (coming && !coming.video && !coming.ready) {
     const at = landed(coming, t);
     if (at === 'out' || (at === 'in' && !build(coming))) {
       miss(t);
@@ -618,7 +813,7 @@ function tick() {
       // showing is a little past its time, when there is another to show instead, and never
       // past LOAD_TIMEOUT. It isn't waited for at all when the one showing has been taken out
       // of the show.
-      const gone = !!S.now && !S.photos.has(S.now.id);
+      const gone = !!S.now && !inShow(S.now);
       const late = gone || (!!S.now && !S.paused && t >= S.dueAt + PATIENCE);
       if (!coming.cached && (age >= LOAD_TIMEOUT || ((S.slow || late) && spare()))) aside();
     }
@@ -629,6 +824,12 @@ function tick() {
 
   // Time to change photos. The first photo shows as soon as it is ready.
   if (S.next && S.next.ready && (S.skip || !S.now || (!S.paused && t >= S.dueAt))) change(t);
+
+  // A video's turn comes round every so many photos. It needs nothing from the network.
+  if (!S.next) {
+    const id = dueClip(t);
+    if (id) S.next = clipSlide(id, t);
+  }
 
   // Start getting the one after ready. The pause after a failed load is for the network's
   // sake: a photo the browser has needs none. On a slow connection with no photo in hand to go
@@ -648,6 +849,16 @@ function tick() {
     const id = nextTry();
     if (id) S.trying = load(id, false, t);
   }
+
+  // A video that has played to its end with nothing to follow it plays again.
+  if (S.now && S.now.video && !S.next && !S.paused && !S.now.v.loop && t >= S.dueAt + PATIENCE) {
+    startClip(S.now);
+    S.dueAt = t + clipMs(S.now);
+  }
+
+  // The videos come down in the gaps, when the photos are not using the connection.
+  if (!DEMO) clips.pump(quiet());
+  if (S.awake) clipNote();
 
   if (S.awake && t >= S.awakeUntil) sleep();
   // A wake lock can be taken away (a low battery, a power setting). Take it back.
@@ -718,6 +929,7 @@ function landed(slide, t) {
 // Lets go of a slide that will never show, and stops its downloads if they are still under way.
 function cancel(slide) {
   if (!slide) return;
+  if (slide.video) return discard(slide);
   if (slide.el) slide.el.remove();
   if (slide.main === null) {
     // Chrome takes a moment to drop a download. Asked for the same photo before it has, it
@@ -743,7 +955,7 @@ function miss(t) {
   else S.retryAt = t + RETRY[Math.min(S.misses, RETRY.length) - 1];
   if (S.misses >= 2) S.slow = true;
   // Previous couldn't get its photo: stay on this one rather than jump ahead.
-  if (slide.back) S.skip = !!S.now && !S.photos.has(S.now.id);
+  if (slide.back) S.skip = !!S.now && !inShow(S.now);
 }
 
 function say(slide, caption) {
@@ -754,12 +966,13 @@ function say(slide, caption) {
 // Puts a loaded photo in the page, see-through, on top of the one showing. False when the
 // picture turned out to have no size.
 function build(slide) {
-  const photo = S.photos.get(slide.id);
-  slide.w = slide.img.naturalWidth;
-  slide.h = slide.img.naturalHeight;
+  const photo = slide.video ? clips.get(slide.id) : S.photos.get(slide.id);
+  const picture = slide.video ? slide.v : slide.img;
+  slide.w = slide.video ? picture.videoWidth : picture.naturalWidth;
+  slide.h = slide.video ? picture.videoHeight : picture.naturalHeight;
   if (!photo || !slide.w || !slide.h) return false;
   const el = document.createElement('div');
-  el.className = 'sc-slide';
+  el.className = slide.video ? 'sc-slide is-clip' : 'sc-slide';
   el.dataset.id = slide.id;
   if (slide.hasBack || (slide.backImg && slide.backImg.complete && slide.backImg.naturalWidth > 0)) {
     slide.backImg.className = 'sc-back';
@@ -770,8 +983,8 @@ function build(slide) {
   }
   slide.frame = document.createElement('div');
   slide.frame.className = 'sc-frame';
-  slide.img.className = 'sc-photo';
-  slide.frame.append(slide.img);
+  picture.className = slide.video ? 'sc-photo sc-clip' : 'sc-photo';
+  slide.frame.append(picture);
   slide.cap = document.createElement('p');
   slide.cap.className = 'sc-caption';
   slide.cap.append(document.createElement('span'));
@@ -794,7 +1007,7 @@ function layout(slide) {
   if (!W || !H || !slide.el) return;
   const most = MAX_UPSCALE / (window.devicePixelRatio || 1);
   const fit = Math.min(W / slide.w, H / slide.h);
-  const print = fit > most;
+  const print = !slide.video && fit > most;
   let scale = fit;
   let from = 1;
   let to = 1;
@@ -806,7 +1019,7 @@ function layout(slide) {
     const sin = Math.sin(turn);
     scale = Math.min((most * slide.w) / (slide.w * cos + slide.h * sin), (most * slide.h) / (slide.h * cos + slide.w * sin), fit * PRINT_ROOM);
     from = 0.965; // the print grows to its full size and stops there
-  } else {
+  } else if (!slide.video) {
     to = Math.max(1, Math.min(ZOOM, most / fit)); // the zoom stops at the limit too
   }
   slide.el.classList.toggle('is-print', print);
@@ -821,33 +1034,41 @@ function layout(slide) {
 function change(t) {
   const slide = S.next;
   S.next = null;
-  if (S.old) S.old.el.remove();
+  discard(S.old);
   S.old = S.now;
   if (S.old) {
     S.old.removeAt = t + FADE + 300;
+    if (S.old.video) S.old.v.muted = true; // its picture fades out; its sound stops now
     if (!slide.back && S.photos.has(S.old.id)) {
       S.past.push(S.old.id);
       if (S.past.length > PAST) S.past.shift();
     }
   }
   S.now = slide;
-  S.shown.delete(slide.id); // so the set stays in the order the photos were last on screen
-  S.shown.add(slide.id);
-  S.ready.delete(slide.id);
-  S.kept.delete(slide.id);
-  if (!DEMO) seen.set([...S.shown].map((id) => S.photos.get(id)).filter(Boolean).map(markOf));
+  if (slide.video) {
+    S.since = 0;
+    S.lastClip = slide.id;
+  } else {
+    S.since += 1;
+    S.shown.delete(slide.id); // so the set stays in the order the photos were last on screen
+    S.shown.add(slide.id);
+    S.ready.delete(slide.id);
+    S.kept.delete(slide.id);
+    S.misses = 0;
+    if (!DEMO) seen.set([...S.shown].map((id) => S.photos.get(id)).filter(Boolean).map(markOf));
+  }
   void slide.el.offsetWidth; // so the fade starts from clear, even for a photo that only just arrived
   slide.el.classList.add('is-on');
   stage.classList.add('has-photo');
-  S.dueAt = t + S.seconds * 1000;
-  S.left = S.seconds * 1000;
+  S.left = slide.video ? clipMs(slide) : S.seconds * 1000;
+  S.dueAt = t + S.left;
   S.skip = false;
-  S.misses = 0;
+  if (slide.video) startClip(slide);
 }
 
 // No approved photos are left: the one on screen fades away to the title card.
 function clear() {
-  if (S.old) S.old.el.remove();
+  discard(S.old);
   S.old = S.now;
   S.now = null;
   if (S.old) {
@@ -871,9 +1092,9 @@ function previous() {
   // The photo that was waiting, and the one on screen, go back to the front of the line, so
   // Next after Previous retraces the same steps.
   const waiting = S.next;
-  const first = waiting && waiting.back ? [] : [S.now.id];
+  const first = (waiting && waiting.back) || S.now.video ? [] : [S.now.id];
   if (waiting) {
-    first.push(waiting.id);
+    if (!waiting.video) first.push(waiting.id);
     cancel(waiting);
     S.next = null;
   }
@@ -891,6 +1112,10 @@ function pause(on) {
   S.paused = on;
   S.pausedAt = t;
   stage.classList.toggle('is-paused', on); // holds the zoom too
+  if (S.now && S.now.video) {
+    if (on) S.now.v.pause();
+    else quietly(S.now.v.play());
+  }
   labels();
 }
 
@@ -1130,6 +1355,8 @@ function start() {
   S.order = kept.order === 'oldest' ? 'oldest' : 'shuffle';
   S.captions = kept.captions !== false;
   S.mark = kept.mark !== false;
+  S.every = EVERY.includes(kept.every) ? kept.every : 10;
+  S.sound = kept.sound === true;
   fillForm();
   if (DEMO) {
     $('#sc-code-field').hidden = true;

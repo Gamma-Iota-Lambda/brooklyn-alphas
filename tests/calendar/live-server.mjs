@@ -5,7 +5,9 @@
 //   * Storage: uploads, signed links, downloads, and removal, with the storage policies enforced
 //   * Edge Functions: the real calendar-social function, talking to a simulated Instagram and Threads
 //     (meta-sim.mjs) instead of Meta's servers, and the real photo-drop function, keeping its photos
-//     in a simulated Storage bucket (storage-sim.mjs) whose signed links this server answers
+//     and videos in a simulated Storage bucket (storage-sim.mjs). This server answers that
+//     bucket's signed links, whole or a piece at a time, and takes a browser's upload to one of
+//     its upload links
 //   * Static hosting for the site, with assets/calendar/config.js pointed at this server
 // Adapted from the Alpha Academy Trading Floor's stand-in. live-smoke.mjs and photo-drop-smoke.mjs
 // drive it.
@@ -23,7 +25,8 @@ import { createHandler as createDrop, makeDb as makeDropDb, BUCKET as DROP_BUCKE
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml'
+  '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4', '.mov': 'video/quicktime'
 };
 const IDENT = /^[a-z_][a-z0-9_]*$/;
 const TABLES = new Set(['cal_posts', 'cal_requests', 'cal_members', 'cal_staff', 'dir_brothers', 'dir_messages', 'cal_social_accounts', 'cal_social_posts',
@@ -319,14 +322,57 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
         return send(res, 200, nameParts.length ? { signedURL: out[0].signedURL } : out);
       }
       // The photo drop's signed links, which its function hands to the pages. Storage sends a
-      // signed file with Expires at the link's end and lets any page read it.
+      // signed file with Expires at the link's end and lets any page read it. Asked for a range
+      // of bytes, it sends that piece alone: the slideshow brings a video down a piece at a time,
+      // and a browser playing one asks the same way.
       if (path.startsWith(`/storage/v1/object/sign/${DROP_BUCKET}/`) && req.method === 'GET') {
         const open = { 'Access-Control-Allow-Origin': '*' };
         const grant = storage.signed.get(url.searchParams.get('token') || '');
         const bytes = storage.fileFor(origin + req.url);
         if (!grant || !bytes) return send(res, 400, { statusCode: '400', error: 'InvalidSignature', message: 'The signature is not valid' }, open);
-        res.writeHead(200, { ...open, 'Content-Type': storage.files.get(grant.path).type, 'Content-Length': bytes.length, Expires: new Date(grant.until).toUTCString() });
+        const about = { ...open, 'Content-Type': storage.files.get(grant.path).type, 'Accept-Ranges': 'bytes', Expires: new Date(grant.until).toUTCString() };
+        // bytes=FROM-TO, bytes=FROM- (to the end), or bytes=-COUNT (the last so many).
+        const range = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || '').trim());
+        if (range && (range[1] || range[2])) {
+          const from = range[1] ? Number(range[1]) : Math.max(bytes.length - Number(range[2]), 0);
+          const to = range[1] && range[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+          if (from > to || (!range[1] && Number(range[2]) === 0)) {
+            res.writeHead(416, { ...about, 'Content-Range': `bytes */${bytes.length}`, 'Content-Length': 0 });
+            return res.end();
+          }
+          res.writeHead(206, { ...about, 'Content-Range': `bytes ${from}-${to}/${bytes.length}`, 'Content-Length': to - from + 1 });
+          return res.end(bytes.subarray(from, to + 1));
+        }
+        res.writeHead(200, { ...about, 'Content-Length': bytes.length });
         return res.end(bytes);
+      }
+      // The photo drop's uploads. An organizer's browser sends a video and its poster straight to
+      // Storage, each to a link the function handed out, so they land in the bucket the function
+      // then looks in. No key comes with them: the link is the permission. Storage lets any page
+      // send to one, and says so when the browser asks first.
+      if (path.startsWith(`/storage/v1/object/upload/sign/${DROP_BUCKET}/`) && (req.method === 'PUT' || req.method === 'OPTIONS')) {
+        const open = { 'Access-Control-Allow-Origin': '*' };
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            ...open,
+            'Access-Control-Allow-Methods': 'PUT, OPTIONS',
+            'Access-Control-Allow-Headers': req.headers['access-control-request-headers'] || 'content-type, cache-control, x-upsert',
+            'Access-Control-Max-Age': '86400'
+          });
+          return res.end();
+        }
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const headers = Object.fromEntries(['content-type', 'cache-control', 'x-upsert'].filter((k) => req.headers[k]).map((k) => [k, req.headers[k]]));
+        let out;
+        try {
+          out = await storage.fetch(origin + req.url, { method: 'PUT', headers, body: Buffer.concat(chunks) });
+        } catch {
+          // Storage not answering at all (storage.down): the browser sees its connection drop.
+          return req.socket.destroy();
+        }
+        res.writeHead(out.status, { ...open, 'Content-Type': 'application/json' });
+        return res.end(Buffer.from(await out.arrayBuffer()));
       }
       if (path.startsWith('/storage/v1/object/sign/') && req.method === 'GET') {
         const key = decodeURIComponent(path.slice('/storage/v1/object/sign/'.length));

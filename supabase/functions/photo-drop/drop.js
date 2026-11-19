@@ -6,12 +6,15 @@
 // Routes, all POST, under https://<project>.supabase.co/functions/v1/photo-drop:
 //   /open    The upload page: is this link good, and are photos still being taken?
 //   /send    The upload page: one photo, as a form.
-//   /review  The review page: list, set, caption, settings, delete, empty.
-//   /screen  The slideshow: the approved photos.
+//   /review  The review page: list, set, caption, settings, delete, empty, and for the committee's
+//            videos: video, video-done, video-cancel.
+//   /screen  The slideshow: the approved photos, and the committee's videos beside them.
 //
 // Each page sends its own code and the database checks it (the cal_private.drop_ functions in
-// migration 20261118000100_photo_drop.sql). Photos live in a private Storage bucket that only this
-// function's secret key reaches. The pages see them through signed links.
+// migration 20261118000100_photo_drop.sql and the three after it). Photos live in a private
+// Storage bucket that only this function's secret key reaches. The pages see them through signed
+// links. A video is the one thing that doesn't pass through here: the organizer's browser sends
+// it straight to the bucket, through a link this function hands out for that one file.
 
 const DAY = 86400000;
 export const BUCKET = 'photo-drop';
@@ -91,7 +94,17 @@ export function makeDb(query) {
     reviewDelete: (code, ids) => value('cal_private.drop_review_delete($1::text, ($2::text)::uuid[])', [code, idList(ids)]),
     screenList: (code) => value('cal_private.drop_screen_list($1::text)', [code]),
     resignDue: async () => (await value('cal_private.drop_resign_due()', [])) || [],
-    resignSave: (rows) => value('cal_private.drop_resign_save(($1::text)::jsonb)', [JSON.stringify(rows)])
+    resignSave: (rows) => value('cal_private.drop_resign_save(($1::text)::jsonb)', [JSON.stringify(rows)]),
+    // The size and the length go over as text too: one can be past what a driver takes for an
+    // integer, and the other has a fraction.
+    videoReserve: (p) =>
+      value(`cal_private.drop_video_reserve($1::text, $2::text, $3::text, $4::integer, $5::integer, ($6::text)::bigint,
+        ($7::text)::numeric, $8::text)`,
+        [p.code, p.by, p.caption, p.width, p.height, String(p.bytes), p.seconds === null ? null : String(p.seconds), p.mime]),
+    videoHeld: (code, id) => value('cal_private.drop_video_held($1::text, $2::uuid)', [code, id]),
+    videoStored: (code, id, by, hasThumb, url, thumbUrl, until) =>
+      value(`cal_private.drop_video_stored($1::text, $2::uuid, $3::text, ($4::text)::boolean, $5::text, $6::text,
+        ($7::text)::timestamptz)`, [code, id, by, hasThumb ? 'true' : 'false', url, thumbUrl, until])
   };
 }
 
@@ -353,6 +366,19 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
   }
   const signedUntil = () => new Date(now() + SIGN_DAYS * DAY).toISOString();
 
+  // A link an organizer's browser can send one file to, with no key: Storage takes a PUT to it
+  // for that path only, for two hours. A second PUT replaces the first, so an upload that broke
+  // off can be sent again.
+  async function uploadLink(path) {
+    const answer = await storage('sign', 'POST', `/object/upload/sign/${BUCKET}/${path}`, {
+      headers: { 'Content-Type': 'application/json', 'x-upsert': 'true' },
+      body: '{}'
+    });
+    const url = answer && typeof answer.url === 'string' && answer.url.includes('token=') ? answer.url : '';
+    if (!url) throw new StorageError('sign: an answer that made no sense');
+    return `${base()}/storage/v1${url.startsWith('/') ? '' : '/'}${url}`;
+  }
+
   // Takes files out of the bucket. A path with no file is not an error.
   async function removeFiles(paths) {
     for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
@@ -363,7 +389,25 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     }
   }
 
-  // The paths of the files in one of the bucket's two folders, up to a thousand a call.
+  // What Storage holds at a path: { size, type }, the file's size in bytes and the type it was
+  // stored with, or null when no file is there. This is how a video is checked: its bytes went
+  // from the organizer's browser to Storage and were never here. Storage is asked for the file's
+  // folder, narrowed to the file's name.
+  async function findFile(path) {
+    const cut = path.lastIndexOf('/');
+    const name = path.slice(cut + 1);
+    const answer = await storage('list', 'POST', `/object/list/${BUCKET}`, {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prefix: path.slice(0, Math.max(cut, 0)), search: name, limit: 100, offset: 0, sortBy: { column: 'name', order: 'asc' } })
+    });
+    if (!Array.isArray(answer)) throw new StorageError('list: an answer that made no sense');
+    const item = answer.find((x) => x && x.name === name);
+    if (!item) return null;
+    const about = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+    return { size: Number.isFinite(about.size) ? about.size : null, type: typeof about.mimetype === 'string' ? about.mimetype : null };
+  }
+
+  // The paths of the files in one of the bucket's three folders, up to a thousand a call.
   async function listFiles(folder) {
     const answer = await storage('list', 'POST', `/object/list/${BUCKET}`, {
       headers: { 'Content-Type': 'application/json' },
@@ -422,6 +466,12 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     } catch {
       throw broken();
     }
+  }
+
+  // One row's id from the review page.
+  function oneId(value) {
+    if (typeof value !== 'string' || !UUID.test(value)) throw new Refusal(400, 'input', UNREADABLE);
+    return value.toLowerCase();
   }
 
   // A list of 1 to 200 photo ids from the review page.
@@ -561,9 +611,18 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     maxPhotos: s.max_photos,
     maxBytes: s.max_bytes,
     photos: s.photos,
-    bytes: s.bytes
+    bytes: s.bytes,
+    // The committee's videos, counted apart from the guests' photos. A database that has not
+    // had the videos' migration yet can take none.
+    videos: s.videos ?? 0,
+    videoBytes: s.video_bytes ?? 0,
+    maxVideos: s.max_videos ?? 0,
+    videoMaxBytes: s.video_max_bytes ?? 0
   });
 
+  // One row of the review list. kind is 'photo' or 'video'. A photo with no thumbnail stands in
+  // for its own. A video with no poster has none: a page must never be handed a video file where
+  // it expects a picture.
   const photoOut = (p) => ({
     id: p.id,
     status: p.status,
@@ -578,7 +637,10 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     reviewedAt: iso(p.reviewed_at),
     reviewedBy: p.reviewed_by ?? null,
     url: p.url,
-    thumbUrl: p.thumb_url || p.url
+    thumbUrl: p.kind === 'video' ? p.thumb_url || '' : p.thumb_url || p.url,
+    kind: p.kind === 'video' ? 'video' : 'photo',
+    seconds: p.seconds ?? null,
+    mime: p.mime ?? null
   });
 
   // Removes sends that never finished, with their files. Nothing here can fail the list.
@@ -682,7 +744,7 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       if (!kept || !kept.ok || !Array.isArray(kept.paths)) throw new Error('the rows could not be read');
       const keep = new Set(kept.paths);
       let left = 0;
-      for (const folder of ['photos', 'thumbs']) {
+      for (const folder of ['photos', 'thumbs', 'videos']) {
         for (let round = 0; ; round += 1) {
           const found = await listFiles(folder);
           const stray = found.settled.filter((path) => !keep.has(path));
@@ -699,6 +761,142 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       log.error(`photo-drop: Delete everything could not check the bucket for leftover files: ${errorText(e)}`);
       return false;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // The committee's videos
+  // ---------------------------------------------------------------------------
+
+  // A video takes three actions on /review, in the order the page calls them. video holds a
+  // place and hands out two links, one for the video and one for its poster. The organizer's
+  // browser sends the files straight to Storage. video-done then asks Storage what arrived, and
+  // puts the video in the show. video-cancel gives it up. A video never waits for review: the
+  // organizer who added it has seen it.
+
+  // Asks to add a video: by (the organizer's name), caption (optional), and what the page read
+  // from the file: width, height, bytes, seconds (or null), and mime. Answers
+  // { ok, id, upload: { video, poster, type }, bytes }: the link to send each file to, and the
+  // type and the size the video has to arrive with.
+  async function videoStart(code, body) {
+    const fields = { by: typed(body.by), caption: typed(body.caption), mime: typed(body.mime) };
+    const count = (v) => Number.isSafeInteger(v) && v > 0;
+    const seconds = body.seconds === undefined ? null : body.seconds;
+    if (!count(body.width) || !count(body.height) || !count(body.bytes) || (seconds !== null && typeof seconds !== 'number')) {
+      throw new Refusal(400, 'input', UNREADABLE);
+    }
+    // A side longer than the database's integer holds is cut to that, and the database turns it
+    // away in its own words, as it does any side too long to be a video's.
+    const side = (n) => Math.min(n, 2147483647);
+    // The database checks the code, what was typed, and the limits, and holds a place.
+    const held = await db.videoReserve({
+      code,
+      ...fields,
+      width: side(body.width),
+      height: side(body.height),
+      bytes: body.bytes,
+      seconds: Number.isFinite(seconds) ? seconds : null
+    });
+    if (!held || !held.ok) return refused(held);
+    let video;
+    let poster;
+    try {
+      video = await uploadLink(held.path);
+      poster = await uploadLink(held.thumb_path);
+    } catch (e) {
+      try {
+        await db.abandon(held.id);
+      } catch {
+        // The row stays 'sending', and the review page's tidy-up removes it.
+      }
+      log.error(`photo-drop: video ${held.id} could not be given an upload link: ${errorText(e)}`);
+      return json(502, { error: "We couldn't start that upload. Try again.", reason: 'storage' });
+    }
+    return json(200, { ok: true, id: held.id, upload: { video, poster, type: held.mime }, bytes: held.bytes });
+  }
+
+  // Whether a row with this id is still there: true, false, or null when the database won't say.
+  async function rowIsThere(code, id) {
+    const kept = await db.reviewPaths(code, null);
+    return kept && kept.ok && Array.isArray(kept.ids) ? kept.ids.includes(id) : null;
+  }
+
+  // Gives up a video that is on its way in: its files first, then its row, so a failure partway
+  // leaves a row that can be given up again rather than files nobody can find. If video-done
+  // finished this same video in between, its row is in the show by now and outlives that. With
+  // its files gone it would be a video that never plays, so that row is deleted as well.
+  async function dropVideo(code, held) {
+    await removeFiles([held.path, held.thumb_path].filter(Boolean));
+    await db.abandon(held.id);
+    if (await rowIsThere(code, held.id)) await db.reviewDelete(code, [held.id]);
+  }
+
+  // The browser says both uploads have finished: { id, by }. The video goes into the show once
+  // Storage holds, at its path, a file of exactly the size and type its place was held for. The
+  // poster is kept only when it is a small JPEG, and the video goes in without one otherwise.
+  // Answers { ok, id }.
+  async function videoDone(code, body) {
+    const id = oneId(body.id);
+    const by = typed(body.by);
+    const held = await db.videoHeld(code, id);
+    if (!held || !held.ok) return refused(held);
+    let link = '';
+    let posterLink = null;
+    try {
+      const file = await findFile(held.path);
+      let whole = !!file && file.size === held.bytes && file.type === held.mime;
+      if (whole) {
+        const poster = held.thumb_path ? await findFile(held.thumb_path) : null;
+        const usable = !!poster && poster.type === 'image/jpeg' && poster.size > 0 && poster.size <= MAX_THUMB_BYTES;
+        if (poster && !usable) await removeFiles([held.thumb_path]);
+        const links = await signLinks(usable ? [held.path, held.thumb_path] : [held.path]);
+        link = links.get(held.path) || '';
+        posterLink = usable ? links.get(held.thumb_path) || null : null;
+        // No link means the file went missing between the two looks.
+        whole = !!link;
+      }
+      if (!whole) {
+        await dropVideo(code, held);
+        return json(400, { error: "That video didn't arrive whole. Add it again.", reason: 'video' });
+      }
+    } catch (e) {
+      if (!(e instanceof StorageError)) throw e;
+      // The row and the files stay as they are, so the page can ask again.
+      log.error(`photo-drop: video ${id} could not be checked: ${errorText(e)}`);
+      return json(502, { error: "We couldn't check that video. Try again.", reason: 'storage' });
+    }
+    const saved = await db.videoStored(code, id, by, !!posterLink, link, posterLink, signedUntil());
+    if (saved && saved.ok) return json(200, { ok: true, id });
+    // The row stopped being a video on its way in while its files were being checked. If it is
+    // still there, another video-done finished it first: it is in the show, its files are in
+    // use, and this one hears the same good news. If it is gone (cancelled, or everything was
+    // deleted), its files go too.
+    const there = await rowIsThere(code, id);
+    if (there) return json(200, { ok: true, id });
+    if (there === false) {
+      try {
+        await removeFiles([held.path, held.thumb_path].filter(Boolean));
+      } catch (e) {
+        log.error(`photo-drop: video ${id} is gone, and its files may still be in the bucket: ${errorText(e)}`);
+      }
+    }
+    return refused(saved);
+  }
+
+  // The organizer gave up, or the upload failed: { id }. A video that is no longer on its way in
+  // (already cancelled, or already in the show) is not an error, and is left as it is.
+  async function videoCancel(code, body) {
+    const id = oneId(body.id);
+    const held = await db.videoHeld(code, id);
+    if (held && !held.ok && held.status === 409) return json(200, { ok: true });
+    if (!held || !held.ok) return refused(held);
+    try {
+      await dropVideo(code, held);
+    } catch (e) {
+      if (!(e instanceof StorageError)) throw e;
+      log.error(`photo-drop: video ${id} could not be cancelled: ${errorText(e)}`);
+      return json(502, { error: "We couldn't delete those photos. Try again.", reason: 'storage' });
+    }
+    return json(200, { ok: true });
   }
 
   async function review(req) {
@@ -721,6 +919,9 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
       if (body.confirm !== 'DELETE') throw new Refusal(400, 'input', 'Type DELETE to delete every photo.');
       return deletePhotos(code, null);
     }
+    if (action === 'video') return videoStart(code, body);
+    if (action === 'video-done') return videoDone(code, body);
+    if (action === 'video-cancel') return videoCancel(code, body);
     throw new Refusal(400, 'input', UNREADABLE);
   }
 
@@ -728,13 +929,26 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
   // The slideshow
   // ---------------------------------------------------------------------------
 
+  // The approved photos, and beside them the committee's videos. A video comes with the exact
+  // size of its file, which the slideshow holds its download to, and its length. Its thumbUrl is
+  // its poster or nothing, never the video itself.
   async function screen(req) {
     const body = await readJson(req);
     const r = await db.screenList(typed(body.code));
     if (!r || !r.ok) return refused(r);
     return json(200, {
       ok: true,
-      photos: r.photos.map((p) => ({ id: p.id, url: p.url, thumbUrl: p.thumb_url || p.url, width: p.width, height: p.height, caption: p.caption ?? null }))
+      photos: r.photos.map((p) => ({ id: p.id, url: p.url, thumbUrl: p.thumb_url || p.url, width: p.width, height: p.height, caption: p.caption ?? null })),
+      videos: (r.videos || []).map((v) => ({
+        id: v.id,
+        url: v.url,
+        thumbUrl: v.thumb_url || '',
+        caption: v.caption ?? null,
+        bytes: v.bytes,
+        seconds: v.seconds ?? null,
+        width: v.width,
+        height: v.height
+      }))
     });
   }
 
