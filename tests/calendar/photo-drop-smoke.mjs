@@ -458,7 +458,7 @@ try {
   step('it is under Approved, with its badge and its length, and no email');
   await review.waitForFunction(() => document.querySelector('.rv-tab [data-count="approved"]').textContent === '3');
   assert.deepEqual(await counts(review), [3, 3, 0]);
-  assert.match(await text(review, '#rv-usage'), / of 600 photos\. Videos: 1, using 1 of 190 MB\.$/);
+  assert.match(await text(review, '#rv-usage'), / of 600 photos\. Videos: 1, using 1 of 200 MB\.$/);
   await tab(review, 'approved');
   assert.deepEqual(await review.locator('.rv-card').evaluateAll((cards) => cards.map((c) => c.dataset.id)), [first.id, second.id, video.id]);
   assert.equal(await text(review, `.rv-card[data-id="${video.id}"] .rv-size`), 'Video · 0:03 MP4 · 0.1 MB · 640 × 360');

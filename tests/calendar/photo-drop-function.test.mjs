@@ -650,7 +650,7 @@ test('the review list shows everything, tidies up sends that never finished, and
   assert.deepEqual(res.body, {
     ok: true,
     settings: { open: true, closesAt: '2026-11-21T17:00:00.000Z', state: 'open', perPerson: 5, maxPhotos: 600, maxBytes: 750000000, photos: 3, bytes: 960000,
-      videos: 0, videoBytes: 0, maxVideos: 40, videoMaxBytes: 52428800, videoTotalBytes: 200000000 },
+      videos: 0, videoBytes: 0, maxVideos: 40, videoMaxBytes: 52428800, videoTotalBytes: 209715200 },
     counts: { waiting: 2, approved: 0, rejected: 0 },
     photos: [
       { id: first, status: 'waiting', name: 'Ada Lovelace', email: 'ada@example.com', caption: 'Howard, class of 1998', width: 1600, height: 1200, bytes: 330000,
@@ -788,7 +788,7 @@ test('the organizers approve, reject, caption, and change the settings', async (
 
   // Settings: only what the page sent is changed.
   const settings = { open: true, closesAt: '2026-11-21T17:00:00.000Z', state: 'open', perPerson: 5, maxPhotos: 600, maxBytes: 750000000, photos: 3, bytes: 990000,
-    videos: 0, videoBytes: 0, maxVideos: 40, videoMaxBytes: 52428800, videoTotalBytes: 200000000 };
+    videos: 0, videoBytes: 0, maxVideos: 40, videoMaxBytes: 52428800, videoTotalBytes: 209715200 };
   is(await s.review('settings'), 200, { ok: true, settings });
   is(await s.review('settings', { open: false }), 200, { ok: true, settings: { ...settings, open: false, state: 'closed' } });
   is(await s.review('settings', { closesAt: '2026-11-21T15:00:00-05:00' }), 200, { ok: true, settings: { ...settings, open: false, state: 'closed', closesAt: '2026-11-21T20:00:00.000Z' } });
@@ -1257,7 +1257,7 @@ test("a video is turned away before any link is handed out: a wrong code, number
   await s.h.sql(`update cal_private.config set value = '40' where key = 'drop_max_videos'`);
   await s.h.sql(`update cal_private.config set value = '1999999' where key = 'drop_video_total_bytes'`);
   is(await s.video(), 409, { error: "That video doesn't fit. All the videos together can take 1 MB, and 0 MB is in use. Delete one to add another.", reason: 'full' });
-  await s.h.sql(`update cal_private.config set value = '200000000' where key = 'drop_video_total_bytes'`);
+  await s.h.sql(`update cal_private.config set value = '209715200' where key = 'drop_video_total_bytes'`);
   await nothing('refused by the database');
 
   // A length that can't be right is left out and the video is taken: missing, nothing, more than

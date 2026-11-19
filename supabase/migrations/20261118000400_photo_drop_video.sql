@@ -15,9 +15,10 @@
 --   what it downloads against that number.
 -- * Three settings: drop_video_max_bytes, the most one video may be (50 MB, which is also the most
 --   the free Supabase plan takes in one file), drop_max_videos, how many there may be (40), and
---   drop_video_total_bytes, the most all the videos together may take (200000000, which is
---   200 MB). The free plan holds 1 GB across the whole project, and the guests' photos may use
---   750 MB of it, so the videos have a total of their own.
+--   drop_video_total_bytes, the most all the videos together may take (209715200, which is
+--   200 MB as the pages count a video's megabytes: 1,048,576 bytes each). The free plan holds
+--   1 GB across the whole project, and the guests' photos may use 750 MB of it, so the videos
+--   have a total of their own.
 -- * The bucket takes MP4 and MOV files beside JPEGs, up to 50 MB a file. Guests still can't put
 --   anything there but a JPEG of 6 MB: their only way in is the Edge Function, which checks the
 --   photo it holds.
@@ -47,7 +48,7 @@ alter table public.drop_photos
 insert into cal_private.config (key, value) values
   ('drop_video_max_bytes', '52428800'),
   ('drop_max_videos', '40'),
-  ('drop_video_total_bytes', '200000000')
+  ('drop_video_total_bytes', '209715200')
 on conflict (key) do nothing;
 
 -- An update, not an insert: the bucket is already there, and the first migration leaves an
@@ -106,7 +107,7 @@ begin
     'bytes', v_bytes,
     'max_videos', cal_private.drop_number('max_videos', 40),
     'video_max_bytes', least(cal_private.drop_number('video_max_bytes', 52428800), 2147483647),
-    'video_total_bytes', cal_private.drop_number('video_total_bytes', 200000000),
+    'video_total_bytes', cal_private.drop_number('video_total_bytes', 209715200),
     'videos', v_videos,
     'video_bytes', v_video_bytes
   );
@@ -165,7 +166,7 @@ declare
   -- The limit as drop_state gives it: the setting, and never more than the row's integer column
   -- for the size can hold.
   v_max_bytes bigint := least(cal_private.drop_number('video_max_bytes', 52428800), 2147483647);
-  v_total_bytes bigint := cal_private.drop_number('video_total_bytes', 200000000);
+  v_total_bytes bigint := cal_private.drop_number('video_total_bytes', 209715200);
   v_seconds numeric;
   v_videos bigint;
   v_video_bytes bigint;
