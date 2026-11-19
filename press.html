@@ -50,7 +50,8 @@
     .pr-text + .pr-text { margin-top:1rem; }
     .pr-link { color:var(--gold-bright); text-decoration:none; border-bottom:1px solid rgba(212,160,23,0.5); transition:color 0.2s,border-color 0.2s; }
     .pr-link:hover { color:var(--gold-light); border-color:var(--gold-light); }
-    .pr-more { display:inline-block; margin-top:1.5rem; font-family:'Barlow Condensed',sans-serif; font-size:0.8rem; font-weight:600; letter-spacing:0.16em; text-transform:uppercase; }
+    .pr-more { display:inline-block; margin-top:0.5rem; padding:0.95rem 0; border-bottom:0; text-decoration:underline; text-decoration-color:rgba(212,160,23,0.5); text-underline-offset:0.35em; font-family:'Barlow Condensed',sans-serif; font-size:0.8rem; font-weight:600; letter-spacing:0.16em; text-transform:uppercase; }
+    .pr-more:hover { text-decoration-color:var(--gold-light); }
     .pr-more::after { content:' \2192'; }
     .pr-contact { background:rgba(184,134,11,0.06); border:1px solid rgba(184,134,11,0.22); border-left:3px solid var(--gold); padding:2rem 2.25rem; max-width:40rem; }
     .pr-contact .pr-h2 { color:var(--gold-bright); font-size:clamp(1.4rem,3vw,1.9rem); margin-bottom:1rem; }
@@ -60,7 +61,7 @@
     .pr-contact-line { font-family:'Barlow',sans-serif; font-size:0.95rem; font-weight:300; line-height:1.7; color:rgba(255,255,255,0.72); margin-top:1rem; }
     .pr-about { position:relative; }
     .pr-copy-row { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-top:1.5rem; min-height:2.6rem; }
-    .pr-copy { font-family:'Barlow Condensed',sans-serif; font-size:0.78rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-bright); background:transparent; border:1px solid rgba(184,134,11,0.55); padding:0.7rem 1.4rem; cursor:pointer; transition:border-color 0.2s,color 0.2s; }
+    .pr-copy { font-family:'Barlow Condensed',sans-serif; font-size:0.78rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-bright); background:transparent; border:1px solid rgba(184,134,11,0.55); padding:0.9rem 1.4rem; cursor:pointer; transition:border-color 0.2s,color 0.2s; }
     .pr-copy:hover { border-color:var(--gold-bright); color:var(--gold-light); }
     .pr-copy-status { font-family:'Barlow',sans-serif; font-size:0.9rem; color:rgba(255,255,255,0.8); }
     .pr-facts { border-top:1px solid rgba(184,134,11,0.18); max-width:56rem; }
@@ -71,7 +72,7 @@
     .pr-card { background:rgba(184,134,11,0.05); border:1px solid rgba(184,134,11,0.18); border-top:2px solid var(--gold); padding:1.75rem; }
     .pr-card h3 { font-family:'Playfair Display',serif; font-size:1.25rem; font-weight:700; color:var(--white); line-height:1.3; margin-bottom:0.75rem; }
     .pr-card p { font-family:'Barlow',sans-serif; font-size:0.95rem; font-weight:300; line-height:1.75; color:rgba(255,255,255,0.78); }
-    .pr-card .pr-more { margin-top:1.1rem; }
+    .pr-card .pr-more { margin-top:0.15rem; margin-bottom:-0.6rem; }
     .pr-leader { display:grid; grid-template-columns:220px 1fr; gap:3rem; align-items:start; }
     .pr-leader img { width:220px; height:220px; object-fit:cover; object-position:top center; display:block; border:2px solid var(--gold); }
     .pr-leader-name { font-family:'Playfair Display',serif; font-size:1.5rem; font-weight:700; color:var(--white); line-height:1.25; }
@@ -85,7 +86,7 @@
     .pr-dl-name { font-family:'Barlow',sans-serif; font-size:1rem; font-weight:400; color:var(--white); line-height:1.5; }
     .pr-dl-type { display:inline-block; margin-left:0.6rem; font-family:'Barlow Condensed',sans-serif; font-size:0.72rem; font-weight:600; letter-spacing:0.16em; color:var(--gold-bright); border:1px solid rgba(184,134,11,0.45); padding:0.1rem 0.5rem; vertical-align:middle; }
     .pr-dl-credit { display:block; font-family:'Barlow',sans-serif; font-size:0.85rem; font-weight:300; color:rgba(255,255,255,0.7); margin-top:0.25rem; }
-    .pr-dl-link { font-family:'Barlow Condensed',sans-serif; font-size:0.78rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-bright); text-decoration:none; border:1px solid rgba(184,134,11,0.55); padding:0.7rem 1.3rem; white-space:nowrap; transition:border-color 0.2s,color 0.2s; }
+    .pr-dl-link { font-family:'Barlow Condensed',sans-serif; font-size:0.78rem; font-weight:600; letter-spacing:0.18em; text-transform:uppercase; color:var(--gold-bright); text-decoration:none; border:1px solid rgba(184,134,11,0.55); padding:0.9rem 1.3rem; white-space:nowrap; transition:border-color 0.2s,color 0.2s; }
     .pr-dl-link:hover { border-color:var(--gold-bright); color:var(--gold-light); }
     .pr-usage { margin-top:1.5rem; font-size:0.95rem; }
     .pr-updated { margin-top:2rem; font-family:'Barlow Condensed',sans-serif; font-size:0.8rem; letter-spacing:0.1em; color:rgba(255,255,255,0.65); }
@@ -106,8 +107,10 @@
       .pr-table tbody th { width:100%; padding:1rem 0 0.2rem; border-bottom:0; }
       .pr-table td { padding:0 0 1rem; }
       .pr-btns .btn-primary, .pr-btns .btn-outline { width:100%; text-align:center; }
+      .pr-downloads li { flex-direction:column; align-items:flex-start; gap:0.9rem; }
     }
   </style>
+  <noscript><style>.reveal { opacity:1; transform:none; }</style></noscript>
 </head>
 <body data-page="press">
 
@@ -239,7 +242,7 @@
     <section class="pr-section pr-alt" aria-labelledby="pr-about-heading">
       <div class="pr-inner pr-about reveal">
         <h2 class="pr-h2" id="pr-about-heading">About Gamma Iota Lambda</h2>
-        <p class="pr-text" id="pr-about-text">Gamma Iota Lambda Chapter, the Brooklyn Alphas, is a graduate chapter of Alpha Phi Alpha Fraternity, Inc., the first intercollegiate Greek-letter fraternity established for African American men. Chartered in Brooklyn on May 5, 1945, the chapter develops leaders, promotes brotherhood and academic excellence, and provides service and advocacy for communities in Brooklyn and Long Island. Its programs include the Alpha Academy mentoring program, an annual MLK Day of Service and the Judge Myles A. Paige Scholarship. Learn more at <a href="https://www.gil1906.org" class="pr-link">www.gil1906.org</a>.</p>
+        <p class="pr-text" id="pr-about-text">Gamma Iota Lambda Chapter, the Brooklyn Alphas, is a graduate chapter of Alpha Phi Alpha Fraternity, Inc., the first intercollegiate Greek-letter fraternity established for African American men. Chartered in Brooklyn on May 5, 1945, the chapter develops leaders, promotes brotherhood and academic excellence, and provides service and advocacy for communities in Brooklyn and Long Island. Its programs include the Alpha Academy mentoring program, an annual MLK Day of Service and the Judge Myles A. Paige Scholarship. Learn more at <a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer" class="pr-link">www.gil1906.org</a>.</p>
         <div class="pr-copy-row">
           <button type="button" class="pr-copy" data-pr-copy="pr-about-text" aria-describedby="pr-copy-status">Copy</button>
           <span class="pr-copy-status" id="pr-copy-status" role="status" aria-live="polite"></span>
@@ -260,7 +263,7 @@
           <div class="pr-fact"><dt>Signature program</dt><dd>Alpha Academy, a leadership and college readiness program for young men in grades 9 to 12</dd></div>
           <div class="pr-fact"><dt>Charitable arm</dt><dd>Gamma Iota Lambda Foundation, Inc., a registered 501(c)(3) organization</dd></div>
           <div class="pr-fact"><dt>Chapter meetings</dt><dd>Second Saturday of each month, 2:00 p.m., Brooklyn College</dd></div>
-          <div class="pr-fact"><dt>Online</dt><dd><a href="https://www.gil1906.org" class="pr-link">www.gil1906.org</a> and Instagram <a href="https://www.instagram.com/gil1906/" target="_blank" rel="noopener noreferrer" class="pr-link">@gil1906</a></dd></div>
+          <div class="pr-fact"><dt>Online</dt><dd><a href="https://www.gil1906.org" target="_blank" rel="noopener noreferrer" class="pr-link">www.gil1906.org</a> and Instagram <a href="https://www.instagram.com/gil1906/" target="_blank" rel="noopener noreferrer" class="pr-link">@gil1906</a></dd></div>
         </dl>
       </div>
     </section>
@@ -498,7 +501,10 @@
             ok = true;
           }
         } catch (e) { ok = false; }
-        if (!ok) ok = byHand(text);
+        if (!ok) {
+          ok = byHand(text);
+          button.focus({ preventScroll: true });
+        }
         say(ok ? 'Copied to the clipboard.' : 'Copying did not work here. Select the paragraph and copy it by hand.');
       });
     });

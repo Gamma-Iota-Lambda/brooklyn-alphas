@@ -1181,7 +1181,7 @@ footer {
   text-transform: uppercase;
   margin-bottom: 0.25rem;
 }
-.footer-center { display: flex; gap: 2rem; }
+.footer-center { display: flex; gap: 2rem; flex-wrap: wrap; }
 .footer-center a {
   font-family: 'Barlow Condensed', sans-serif;
   font-size: 0.7rem;
