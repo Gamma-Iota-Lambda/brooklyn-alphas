@@ -361,14 +361,18 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
           });
           return res.end();
         }
+        // A browser that gives up partway (Cancel on the page) closes its connection before the
+        // answer. Storage then keeps nothing of that upload, and neither does the stand-in.
+        const gone = new AbortController();
+        res.on('close', () => { if (!res.writableEnded) gone.abort(); });
         const chunks = [];
         for await (const c of req) chunks.push(c);
         const headers = Object.fromEntries(['content-type', 'cache-control', 'x-upsert'].filter((k) => req.headers[k]).map((k) => [k, req.headers[k]]));
         let out;
         try {
-          out = await storage.fetch(origin + req.url, { method: 'PUT', headers, body: Buffer.concat(chunks) });
+          out = await storage.fetch(origin + req.url, { method: 'PUT', headers, body: Buffer.concat(chunks), signal: gone.signal });
         } catch {
-          // Storage not answering at all (storage.down): the browser sees its connection drop.
+          // Storage not answering at all (storage.down), or the browser gone: the connection drops.
           return req.socket.destroy();
         }
         res.writeHead(out.status, { ...open, 'Content-Type': 'application/json' });

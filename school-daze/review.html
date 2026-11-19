@@ -117,23 +117,28 @@
         <details class="pd-card rv-fold" id="rv-tools">
           <summary>
             <span class="rv-fold-name">Tools</span>
-            <span class="rv-fold-line">Slideshow, download, clean up</span>
+            <span class="rv-fold-line">Slideshow, videos, download, clean up</span>
           </summary>
           <div class="rv-fold-body">
             <div class="rv-tool">
               <a class="pd-btn" href="screen.html" target="_blank" rel="noopener">Open the slideshow</a>
               <p class="pd-hint">The page the venue's computer plays. It asks for the screen code, which is a different code from this page's.</p>
             </div>
+            <!-- Hidden until the server says it takes videos. -->
+            <div class="rv-tool" id="rv-add-tool" hidden>
+              <button class="pd-btn" type="button" id="rv-add-open">Add a video</button>
+              <p class="pd-hint" id="rv-add-hint"></p>
+            </div>
             <div class="rv-tool">
               <button class="pd-btn" type="button" id="rv-download">Download approved photos</button>
-              <p class="pd-hint">Saves the approved photos to this device at full size, as a ZIP file.</p>
+              <p class="pd-hint">Saves the approved photos to this device at full size, as a ZIP file. Videos aren't included.</p>
               <p class="rv-progress" id="rv-download-status"></p>
               <p class="pd-note bad" id="rv-download-missed" hidden></p>
               <ul class="rv-zips" id="rv-zips" aria-label="ZIP files ready to save"></ul>
             </div>
             <div class="rv-tool">
               <button class="pd-btn danger" type="button" id="rv-empty-all">Delete everything</button>
-              <p class="pd-hint">For after the party. Removes every photo and its files for good.</p>
+              <p class="pd-hint">For after the party. Removes every photo and video, and their files, for good.</p>
             </div>
           </div>
         </details>
@@ -167,7 +172,8 @@
 
 </div>
 
-  <!-- One photo, as large as the screen allows and never larger than it is. -->
+  <!-- One photo, as large as the screen allows and never larger than it is. A video from the
+       committee plays here too, in the video element. -->
   <dialog class="rv-view" id="rv-view" aria-label="One photo, full size">
     <div class="rv-view-top">
       <p class="rv-view-pos" id="rv-view-pos" role="status" aria-live="polite"></p>
@@ -176,6 +182,7 @@
     <div class="rv-view-stage" id="rv-view-stage">
       <p class="rv-view-wait" id="rv-view-wait">Loading the photo</p>
       <img id="rv-view-img" alt="" decoding="async" />
+      <video id="rv-view-video" controls playsinline preload="metadata" hidden></video>
     </div>
     <div class="rv-view-foot">
       <div class="rv-view-who" id="rv-view-who"></div>
@@ -209,6 +216,38 @@
   </dialog>
 
   <!-- What just went wrong, or a short "done". Moves into whichever box is open so it is seen. -->
+  <!-- A video from the committee: chosen, checked in this browser, then sent. -->
+  <dialog class="rv-ask rv-add" id="rv-add" aria-labelledby="rv-add-title">
+    <form id="rv-add-form" novalidate>
+      <h2 class="pd-h2" id="rv-add-title">Add a video</h2>
+      <p class="pd-note bad" id="rv-add-err" role="alert" hidden></p>
+      <div class="rv-add-pick" id="rv-add-pick">
+        <input class="pd-sr rv-add-file" id="rv-add-file" type="file" accept="video/mp4,video/quicktime,.mp4,.m4v,.mov" aria-describedby="rv-add-advice" />
+        <label class="pd-btn block" for="rv-add-file" id="rv-add-choose">Choose a video</label>
+      </div>
+      <div class="rv-add-about" id="rv-add-about" hidden>
+        <div class="rv-add-poster" id="rv-add-poster"></div>
+        <div class="rv-add-words">
+          <p class="rv-add-name" id="rv-add-name"></p>
+          <p class="rv-add-facts" id="rv-add-facts"></p>
+        </div>
+      </div>
+      <div class="pd-field">
+        <label for="rv-add-caption">Caption (optional)</label>
+        <input id="rv-add-caption" type="text" maxlength="80" enterkeyhint="done" autocomplete="off" />
+      </div>
+      <p class="pd-hint" id="rv-add-advice">It plays on the big screen in between the photos, with no sound unless sound is switched on at the slideshow. Under a minute works best.</p>
+      <div class="rv-add-going" id="rv-add-going" hidden>
+        <div class="rv-meter" id="rv-add-bar" role="progressbar" aria-label="How much of the video has been sent" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+        <p class="rv-progress" id="rv-add-status"></p>
+      </div>
+      <div class="pd-btnrow">
+        <button class="pd-btn" type="button" id="rv-add-no">Cancel</button>
+        <button class="pd-btn primary" type="submit" id="rv-add-go">Add to the slideshow</button>
+      </div>
+    </form>
+  </dialog>
+
   <div class="rv-toast" id="rv-toast" role="alert" hidden>
     <p id="rv-toast-text"></p>
     <button class="pd-btn small" type="button" id="rv-toast-close">OK</button>

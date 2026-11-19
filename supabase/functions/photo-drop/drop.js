@@ -617,7 +617,8 @@ export function createHandler({ env, db, fetch: fetchImpl, now = () => Date.now(
     videos: s.videos ?? 0,
     videoBytes: s.video_bytes ?? 0,
     maxVideos: s.max_videos ?? 0,
-    videoMaxBytes: s.video_max_bytes ?? 0
+    videoMaxBytes: s.video_max_bytes ?? 0,
+    videoTotalBytes: s.video_total_bytes ?? 0
   });
 
   // One row of the review list. kind is 'photo' or 'video'. A photo with no thumbnail stands in

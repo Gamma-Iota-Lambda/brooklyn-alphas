@@ -155,7 +155,7 @@ test('the migrations start open until noon on the day, with the limits, a privat
   const h = await ready();
   assert.deepEqual(await run(h, 'drop_state()'), {
     open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 0, bytes: 0,
-    max_videos: 40, video_max_bytes: 52428800, videos: 0, video_bytes: 0
+    max_videos: 40, video_max_bytes: 52428800, video_total_bytes: 200000000, videos: 0, video_bytes: 0
   });
   assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), {
     ok: true, open: true, reason: null, closes_at: '2026-11-21T17:00:00+00:00', per_person: 5,
@@ -601,7 +601,7 @@ test('the organizers list, approve, reject, send back, and caption', async () =>
 
   let list = await run(h, 'drop_review_list($1)', [REVIEW]);
   assert.deepEqual(list.settings, { open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 4, bytes: 5400000,
-    max_videos: 40, video_max_bytes: 52428800, videos: 0, video_bytes: 0 });
+    max_videos: 40, video_max_bytes: 52428800, video_total_bytes: 200000000, videos: 0, video_bytes: 0 });
   assert.deepEqual(list.counts, { waiting: 3, approved: 0, rejected: 0 });
   assert.deepEqual(list.photos.map((p) => p.id), [a, b, c], 'oldest first, without the one still on its way');
   assert.deepEqual(list.photos[0], {
@@ -844,9 +844,17 @@ test('a video is added with the review code only, and is refused for one reason 
   const full = no(409, 'full', 'The show has all the videos it can take. Delete one to add another.');
   assert.deepEqual(await video(h, { ...sized, bytes: 1 }), full);
   assert.deepEqual(await video(h, { ...sized, bytes: MB50 + 1 }), tooLarge(50), 'too large is said before full');
+  // And after the count, the room the videos have between them: 62,428,801 bytes are held.
+  await setting(h, 'drop_video_total_bytes', '62428802');
+  assert.deepEqual(await video(h, { ...sized, bytes: 2 }), full, 'the count is said before the room');
   await setting(h, 'drop_max_videos', 'three');
   assert.equal((await run(h, 'drop_state()')).max_videos, 40, 'mistyped, the default');
-  assert.equal((await video(h, { ...sized, bytes: 1 })).ok, true);
+  assert.deepEqual(await video(h, { ...sized, bytes: 2 }),
+    no(409, 'full', "That video doesn't fit. All the videos together can take 59 MB, and 60 MB is in use. Delete one to add another."));
+  assert.deepEqual(await video(h, { ...sized, bytes: MB50 + 1 }), tooLarge(50), 'too large is said before no room');
+  assert.equal((await rows(h)).length, 3, 'and nothing was saved');
+  assert.equal((await video(h, { ...sized, bytes: 1 })).ok, true, 'the last byte of room');
+  await setting(h, 'drop_video_total_bytes', '200000000');
   assert.equal((await rows(h)).length, 4);
 
   // The committee can add a video when guests can't send a photo: uploads switched off, past the
@@ -955,7 +963,9 @@ test("videos never take a guest's place, and guests' photos never take a video's
     const s = await run(h, 'drop_state()');
     return [s.state, s.photos, s.bytes, s.videos, s.video_bytes];
   };
-  // Fifteen videos of 50 MB each: more than the 750 MB the guests' photos may use.
+  // Fifteen videos of 50 MB each: more than the 750 MB the guests' photos may use. The videos'
+  // own total is raised to let them in.
+  await setting(h, 'drop_video_total_bytes', '2000000000');
   for (let n = 0; n < 15; n += 1) await clip(h, { bytes: MB50 });
   assert.ok(15 * MB50 > 750000000);
   assert.deepEqual(await state(), ['open', 0, 0, 15, 15 * MB50]);
@@ -1001,6 +1011,87 @@ test("videos never take a guest's place, and guests' photos never take a video's
   assert.equal((await run(h, 'drop_state()')).videos, 16);
   assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([first.id])]), { ok: true, deleted: 1 });
   assert.equal((await run(h, 'drop_state()')).videos, 15);
+});
+
+test("the videos together have a total of their own: one that would go over is refused, and a deleted one gives its room back", async () => {
+  const h = await ready();
+  const TOTAL = 200000000;
+  const noRoom = (limit, used) => ({ ok: false, status: 409, reason: 'full',
+    error: `That video doesn't fit. All the videos together can take ${limit} MB, and ${used} MB is in use. Delete one to add another.` });
+  const use = async () => {
+    const s = await run(h, 'drop_state()');
+    return [s.videos, s.video_bytes, s.video_total_bytes];
+  };
+  assert.deepEqual(await use(), [0, 0, TOTAL], 'the setting as the migration leaves it');
+
+  // Three videos of 50 MB fit. A fourth would go over, and nothing of it is saved. The limit is
+  // said in whole megabytes rounded down, and what is in use rounded up.
+  const shown = [];
+  for (let n = 0; n < 3; n += 1) shown.push(await clip(h, { bytes: MB50 }));
+  assert.deepEqual(await video(h, { bytes: MB50 }), noRoom(190, 150));
+  const left = TOTAL - 3 * MB50;
+  assert.deepEqual(await video(h, { bytes: left + 1 }), noRoom(190, 150), 'one byte over');
+  assert.deepEqual(await use(), [3, 3 * MB50, TOTAL]);
+  assert.equal((await rows(h)).length, 3);
+  // What is left fits to the byte. On its way in, a video holds its room.
+  const last = await video(h, { bytes: left });
+  assert.equal(last.ok, true);
+  assert.deepEqual(await use(), [4, TOTAL, TOTAL]);
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  // Given up, it gives the room back. So does one that never arrived, once its 3 hours are over.
+  await run(h, 'drop_abandon($1::uuid)', [last.id]);
+  const slow = await video(h, { bytes: left });
+  assert.equal(slow.ok, true);
+  await h.setNow('2026-11-19T17:59:59Z');
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  await h.setNow('2026-11-19T18:00:00Z');
+  assert.deepEqual(await use(), [3, 3 * MB50, TOTAL]);
+  const fits = await video(h, { bytes: left });
+  assert.equal(fits.ok, true);
+  assert.deepEqual(await videoStored(h, fits), { ok: true, id: fits.id });
+  assert.deepEqual(await run(h, 'drop_stale()'), [slow.path, slow.thumb_path]);
+
+  // A video that arrived holds its room whatever is decided about it, until it is deleted.
+  await set(h, [shown[0]], 'waiting');
+  await set(h, [shown[0]], 'rejected');
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([shown[0]])]), { ok: true, deleted: 1 });
+  assert.deepEqual(await use(), [3, TOTAL - MB50, TOTAL]);
+  assert.deepEqual(await video(h, { bytes: MB50 + 1 }), { ok: false, status: 400, reason: 'size', error: 'That video is too large. One video can be 50 MB at most.' },
+    'too large is still said first');
+  assert.equal((await video(h, { bytes: MB50 })).ok, true, 'the room the deleted one gave back');
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+
+  // None of this reaches a guest: with the videos' room used up, uploads are open, a photo goes
+  // in, and its bytes are counted with the photos, never with the videos.
+  assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), {
+    ok: true, open: true, reason: null, closes_at: '2026-11-21T17:00:00+00:00', per_person: 5, limits: { min_edge: 500, max_edge: 2560, max_bytes: 6291456 }
+  });
+  const sent = await reserve(h);
+  assert.deepEqual(sent, { ok: true, id: sent.id, path: `photos/${sent.id}.jpg`, thumb_path: `thumbs/${sent.id}.jpg`, left: 4 });
+  assert.equal(await stored(h, sent), true);
+  const state = await run(h, 'drop_state()');
+  assert.deepEqual([state.state, state.photos, state.bytes, state.videos, state.video_bytes], ['open', 1, 1500000, 4, TOTAL]);
+  // And the other way: guests' photos up to their own limit leave the videos' room as it was.
+  await setting(h, 'drop_max_bytes', '1500000');
+  assert.equal((await run(h, 'drop_state()')).state, 'full');
+  await setting(h, 'drop_video_total_bytes', String(TOTAL + 1));
+  assert.equal((await video(h, { bytes: 1 })).ok, true, 'full for guests, and one more byte of room for a video');
+  await setting(h, 'drop_max_bytes', '750000000');
+
+  // The total is a setting and nothing else. Raised, there is room. Mistyped, it counts as the
+  // default. At nothing, no video fits.
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 191));
+  await setting(h, 'drop_video_total_bytes', '1000000000');
+  assert.equal((await run(h, 'drop_state()')).video_total_bytes, 1000000000);
+  assert.equal((await video(h, { bytes: MB50 })).ok, true);
+  await setting(h, 'drop_video_total_bytes', '200 MB');
+  assert.equal((await run(h, 'drop_state()')).video_total_bytes, TOTAL);
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(190, 241));
+  await setting(h, 'drop_video_total_bytes', '0');
+  await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids((await rows(h, `select id from public.drop_photos where kind = 'video'`)).map((r) => r.id))]);
+  assert.deepEqual(await use(), [0, 0, 0]);
+  assert.deepEqual(await video(h, { bytes: 1 }), noRoom(0, 0));
 });
 
 test('a video on its way in is given 3 hours before the tidy-up takes it, and a photo still 15 minutes', async () => {
@@ -1057,7 +1148,7 @@ test('the review list says what kind each row is, and the slideshow gets videos 
   // The counts are by status, whatever the kind. The settings count the two kinds apart.
   assert.deepEqual(list.counts, { waiting: 2, approved: 2, rejected: 0 });
   assert.deepEqual(list.settings, { open: true, closes_at: '2026-11-21T17:00:00+00:00', state: 'open', per_person: 5, max_photos: 600, max_bytes: 750000000, photos: 2, bytes: 3000000,
-    max_videos: 40, video_max_bytes: MB50, videos: 3, video_bytes: 14000000 + MB50 + 14000000 });
+    max_videos: 40, video_max_bytes: MB50, video_total_bytes: 200000000, videos: 3, video_bytes: 14000000 + MB50 + 14000000 });
   assert.deepEqual(list.photos[1], {
     id: v, status: 'approved', name: 'Eugene Aiken', email: 'committee', caption: 'Step show, 2019',
     width: 1920, height: 1080, bytes: 14000000, original: null,
@@ -1192,7 +1283,7 @@ test('run on a drop already in use, the video migration leaves every photo, sett
   // Every row is a photo, and nothing else about it changed.
   assert.deepEqual(await rows(h), was.rows.map((r) => ({ ...r, kind: 'photo', seconds: null, mime: null })));
   // Each answer keeps every key it had, with the value it had. The new keys sit beside them.
-  const more = { max_videos: 12, video_max_bytes: MB50, videos: 0, video_bytes: 0 };
+  const more = { max_videos: 12, video_max_bytes: MB50, video_total_bytes: 200000000, videos: 0, video_bytes: 0 };
   assert.deepEqual(await run(h, 'drop_state()'), { ...was.state, ...more });
   assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), was.open);
   assert.deepEqual(await run(h, 'drop_review_list($1)', [REVIEW]), {
@@ -1201,7 +1292,8 @@ test('run on a drop already in use, the video migration leaves every photo, sett
   assert.deepEqual(await run(h, 'drop_screen_list($1)', [SCREEN]), { ...was.screen, videos: [] });
   // Settings already there are left alone, the one for videos included. Only what was missing
   // is added.
-  assert.deepEqual(await settings(), [...was.settings, { key: 'drop_video_max_bytes', value: String(MB50) }].sort((x, y) => (x.key < y.key ? -1 : 1)));
+  assert.deepEqual(await settings(),
+    [...was.settings, { key: 'drop_video_max_bytes', value: String(MB50) }, { key: 'drop_video_total_bytes', value: '200000000' }].sort((x, y) => (x.key < y.key ? -1 : 1)));
   assert.deepEqual((await settings()).filter((s) => ['drop_max_photos', 'drop_max_videos'].includes(s.key)).map((s) => s.value), ['900', '12']);
   // The bucket that was already there takes videos now. No other bucket is touched.
   assert.deepEqual(await h.sql(`select file_size_limit::int as file_size_limit, allowed_mime_types from storage.buckets where id = 'photo-drop'`),
@@ -1215,6 +1307,8 @@ test('run on a drop already in use, the video migration leaves every photo, sett
   assert.equal(await stored(h, next), true);
   const old = await run(h, `drop_reserve($1, 'Grace Hopper', 'grace@example.com', null, 2560, 1707, 1500000, true, '198.51.100.7', null)`, [UPLOAD]);
   assert.deepEqual(old, { ok: true, id: old.id, path: `photos/${old.id}.jpg`, thumb_path: `thumbs/${old.id}.jpg`, left: 3 });
+  // Approved a minute after the first, so the order between the two is the order of approval.
+  await h.setNow(minutes(1));
   assert.deepEqual(await set(h, [b], 'approved'), { ok: true, changed: 1 });
   assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).photos.map((p) => p.id), [a, b]);
   await h.setNow(minutes(15));

@@ -7,8 +7,11 @@
 // not a picture is refused on the page, and the sixth photo from one email is stopped by the
 // server. An organizer signs in on a laptop, fixes a caption, and goes through the line in the
 // full view, the only place a photo can be approved. The venue's slideshow plays the approved
-// photo and nothing else, and a photo approved later joins at its next check. Last: closing
-// uploads, Delete on the Rejected tab, and Delete everything, which leave no file behind.
+// photo and nothing else, and a photo approved later joins at its next check. The organizer then
+// adds a video for the committee: it is read on the page, sent straight to Storage with its
+// progress showing, lands under Approved, plays in the full view, and plays in a second slideshow
+// between the photos until Back to waiting takes it out. Last: closing uploads, Delete on the
+// Rejected tab, and Delete everything, which leave no file behind.
 //
 //   npm install --no-save @electric-sql/pglite@0.5.8 playwright@1.56.0
 //   npx playwright install chromium   (once)
@@ -17,7 +20,8 @@
 // Optional: SCREENSHOTS=dir saves screenshots along the way.
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { startLiveServer, DROP_UPLOAD_CODE, DROP_REVIEW_CODE, DROP_SCREEN_CODE } from './live-server.mjs';
 
 const SHOTS = process.env.SCREENSHOTS || '';
@@ -29,6 +33,8 @@ const BIG_SCREEN = { width: 1920, height: 1080 };
 // a tap in the full view for a moment after a photo opens, so a double tap can't hit the next one.
 const SETTLE = 1000;
 const LIMIT = "You've sent 5 photos, which is the most one person can send.";
+// Three seconds of 640 by 360, in a codec every Chromium plays.
+const CLIP = fileURLToPath(new URL('./fixtures/clip.mp4', import.meta.url));
 
 let current = 'starting';
 const step = (s) => { current = s; console.log('·', s); };
@@ -76,8 +82,8 @@ async function answered(who, route) {
 const text = async (page, selector) => ((await page.locator(selector).textContent()) || '').replace(/\s+/g, ' ').trim();
 const texts = async (locator) => (await locator.allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
 const shot = async (page, name, wait = 300) => { if (SHOTS) { await page.waitForTimeout(wait); await page.screenshot({ path: `${SHOTS}/drop-${name}.png` }); } };
-const rows = () => server.sql(`select id, status, name, email, caption, width, height, bytes, has_thumb, original, path, thumb_path, url, thumb_url, reviewed_by
-  from public.drop_photos order by created_at, id`);
+const rows = () => server.sql(`select id, status, name, email, caption, width, height, bytes, has_thumb, original, path, thumb_path, url, thumb_url, reviewed_by,
+  kind, seconds, mime from public.drop_photos order by created_at, id`);
 const statuses = async () => (await rows()).map((r) => r.status);
 
 // Waits for the database to say so: the pages show a change before the server has it.
@@ -156,6 +162,19 @@ async function viewing(page, id, position) {
   await page.waitForTimeout(SETTLE);
 }
 
+// The full view with a video in it, far enough along to play, and its buttons taking taps.
+async function playing(page, id, position) {
+  await page.waitForSelector(`#rv-view[open] #rv-view-video[data-id="${id}"]`);
+  await page.waitForFunction(() => document.querySelector('#rv-view-video').readyState >= 2);
+  assert.equal(await text(page, '#rv-view-pos'), position);
+  await page.waitForTimeout(SETTLE);
+}
+
+// Opens one of the review page's two folding panels, if it isn't open already.
+async function unfold(page, panel) {
+  if (!(await page.locator(panel).evaluate((el) => el.open))) await page.click(`${panel} summary`);
+}
+
 const counts = async (page) => (await texts(page.locator('.rv-tab [data-count]'))).map(Number);
 const tab = async (page, name) => {
   await page.click(`#rv-tab-${name}`);
@@ -163,6 +182,12 @@ const tab = async (page, name) => {
 };
 const card = (page, id) => page.locator(`.rv-card[data-id="${id}"]`);
 const acts = (page, id) => card(page, id).locator('.rv-actions [data-act]').evaluateAll((buttons) => buttons.map((b) => b.dataset.act));
+
+// Moves the mouse over the slideshow, which brings its controls up for a few seconds.
+async function nudge(page) {
+  await page.mouse.move(900, 500);
+  await page.mouse.move(960, 540, { steps: 4 });
+}
 
 const onScreen = (page) => page.locator('.sc-slide').evaluateAll((slides) => slides.map((s) => s.dataset.id));
 
@@ -387,6 +412,134 @@ try {
     'a small photo shows as a print and is not stretched across the screen');
   await shot(show, 'slideshow-joined', 1500); // once the fade is over
 
+  // ------------------------------------------------------------------ a video from the committee
+  step('Add a video refuses a file this browser can\'t open, then reads the clip: its length, size and poster');
+  await unfold(review, '#rv-tools');
+  assert.equal(await text(review, '#rv-add-hint'), "For the committee. Guests can't send videos. MP4 or MOV, 50 MB at most each.");
+  await review.click('#rv-add-open');
+  await review.waitForSelector('#rv-add[open]');
+  await review.setInputFiles('#rv-add-file', { name: 'notes.mp4', mimeType: 'video/mp4', buffer: NOTE.buffer }); // a text file, renamed
+  await review.waitForSelector('#rv-add-err');
+  assert.equal(await text(review, '#rv-add-err'),
+    "This browser can't open that video, so the slideshow may not be able to play it either. Save it as an MP4 (H.264) and add it again.");
+  assert.equal(await review.locator('#rv-add-about').isVisible(), false);
+  await review.setInputFiles('#rv-add-file', CLIP);
+  await review.waitForFunction(() => /×/.test(document.querySelector('#rv-add-facts').textContent));
+  assert.equal(await text(review, '#rv-add-facts'), '0:03 · 0.1 MB · 640 × 360');
+  assert.equal(await review.locator('#rv-add-err').isVisible(), false);
+  await review.waitForFunction(() => {
+    const poster = document.querySelector('#rv-add-poster img');
+    return poster && poster.complete && poster.naturalWidth === 480;
+  });
+  await review.fill('#rv-add-caption', 'The step show');
+  await shot(review, 'video-chosen');
+
+  step('he adds it: the box shows its progress with one button, Cancel, and then says it is in');
+  const clip = readFileSync(CLIP);
+  server.storage.slowUpload = 1500; // the clip is small: hold Storage back, so there is a wait to see
+  await review.click('#rv-add-go');
+  await review.waitForFunction(() => /^Sending the video: \d+%$/.test(document.querySelector('#rv-add-status').textContent));
+  assert.equal(await review.locator('#rv-add-bar').isVisible(), true);
+  assert.deepEqual(await texts(review.locator('#rv-add .pd-btnrow button:visible')), ['Cancel']);
+  assert.deepEqual((await rows()).filter((r) => r.kind === 'video').map((r) => r.status), ['sending'], 'a place is held for it, and it is not in the show yet');
+  await shot(review, 'video-sending', 0);
+  await review.waitForFunction(() => !document.querySelector('#rv-add').open && !document.querySelector('#rv-toast').hidden
+    && document.querySelector('#rv-toast-text').textContent === 'Video added. It joins the slideshow within a couple of minutes.');
+  server.storage.slowUpload = 0;
+  const video = (await rows()).find((r) => r.kind === 'video');
+  assert.deepEqual([video.status, video.name, video.email, video.caption, video.width, video.height, video.bytes, Number(video.seconds), video.mime, video.has_thumb, video.reviewed_by],
+    ['approved', 'Eugene Aiken', 'committee', 'The step show', 640, 360, clip.length, 3, 'video/mp4', true, 'Eugene Aiken']);
+  assert.deepEqual([video.path, video.thumb_path], [`videos/${video.id}.mp4`, `thumbs/${video.id}.jpg`]);
+  assert.ok(Buffer.from(server.storage.read(video.path)).equals(clip), 'the stored video is the file, byte for byte');
+  assert.equal(server.storage.files.get(video.path).type, 'video/mp4');
+  assert.deepEqual(await decoded(server.storage.read(video.thumb_path)), { width: 480, height: 270 }, 'with a poster made on the page');
+  assert.equal(server.storage.paths().length, 12, 'five photos and their thumbnails, the video and its poster');
+
+  step('it is under Approved, with its badge and its length, and no email');
+  await review.waitForFunction(() => document.querySelector('.rv-tab [data-count="approved"]').textContent === '3');
+  assert.deepEqual(await counts(review), [3, 3, 0]);
+  assert.match(await text(review, '#rv-usage'), / of 600 photos\. Videos: 1, using 1 of 190 MB\.$/);
+  await tab(review, 'approved');
+  assert.deepEqual(await review.locator('.rv-card').evaluateAll((cards) => cards.map((c) => c.dataset.id)), [first.id, second.id, video.id]);
+  assert.equal(await text(review, `.rv-card[data-id="${video.id}"] .rv-size`), 'Video · 0:03 MP4 · 0.1 MB · 640 × 360');
+  assert.equal(await text(review, `.rv-card[data-id="${video.id}"] .rv-name`), 'Added by Eugene Aiken');
+  assert.equal(await card(review, video.id).locator('.rv-email').count(), 0);
+  assert.equal(await text(review, `.rv-card[data-id="${video.id}"] .rv-cap-text`), 'The step show');
+  assert.deepEqual(await acts(review, video.id), ['waiting']);
+  assert.equal(await text(review, '#rv-shown'), '2 photos and 1 video approved, oldest first');
+  await review.waitForFunction((id) => document.querySelector(`.rv-card[data-id="${id}"] .rv-thumb img`).naturalWidth === 480, video.id);
+  await shot(review, 'video-approved');
+
+  step('it plays in the full view, where the arrow keys are the video\'s own');
+  await card(review, video.id).locator('.rv-thumb').click();
+  await playing(review, video.id, '3 of 3 approved');
+  assert.deepEqual(await review.evaluate(() => {
+    const v = document.querySelector('#rv-view-video');
+    return [v.videoWidth, v.videoHeight, v.controls, v.hidden, document.querySelector('#rv-view-img').hidden];
+  }), [640, 360, true, false, true]);
+  assert.equal(await text(review, '#rv-view-who .rv-view-name'), 'Added by Eugene Aiken Video · 0:03 MP4 · 0.1 MB · 640 × 360');
+  await review.evaluate(() => document.querySelector('#rv-view-video').play());
+  await review.waitForFunction(() => document.querySelector('#rv-view-video').currentTime > 0.5);
+  await shot(review, 'video-full-view', 0);
+  await review.focus('#rv-view-video');
+  await review.keyboard.press('ArrowLeft'); // winds the video back; from a button it would open the photo before
+  await review.waitForTimeout(300);
+  assert.equal(await review.locator('#rv-view-video').getAttribute('data-id'), video.id);
+  assert.equal(await text(review, '#rv-view-pos'), '3 of 3 approved');
+  await review.click('#rv-view-close');
+  await review.waitForFunction(() => !document.querySelector('#rv-view').open && !document.querySelector('#rv-view-video').hasAttribute('src'));
+
+  step('a second slideshow, in real time, plays the video between the photos');
+  const stage = await open('second screen', BIG_SCREEN, '/school-daze/screen.html');
+  const live = stage.page;
+  await live.waitForSelector('#sc-setup');
+  await live.fill('#sc-code', DROP_SCREEN_CODE);
+  for (const [name, value] of [['seconds', '5'], ['order', 'oldest'], ['every', '5']]) await live.click(`label.sc-choice:has(input[name="${name}"][value="${value}"])`);
+  await live.click('#sc-start');
+  await live.waitForSelector('#sc-stage');
+  await live.waitForSelector('.sc-slide.is-on:not(.is-clip)'); // a photo first
+  assert.deepEqual((await answered('second screen', 'screen')).map((a) => [a.status, a.body.photos.map((p) => p.id), a.body.videos.map((v) => [v.id, v.bytes, v.caption])]),
+    [[200, [first.id, second.id], [[video.id, clip.length, 'The step show']]]]);
+  // The video comes down in the background before its turn, and the controls say how that is
+  // going while they are in sight: moving the mouse brings them up. With two photos and a video
+  // after every five, its turn is after each pass through the photos.
+  await nudge(live);
+  await live.waitForFunction(() => document.querySelector('#sc-clips').textContent === 'Videos: 1 of 1 ready', null, { timeout: 30000 });
+  await live.waitForSelector(`.sc-slide.is-clip.is-on[data-id="${video.id}"]`, { timeout: 45000 });
+  await live.waitForFunction(() => document.querySelector('.sc-slide.is-clip.is-on video.sc-clip').currentTime > 0.5);
+  assert.deepEqual(await live.locator('.sc-slide.is-clip.is-on video.sc-clip').evaluate((v) => [v.videoWidth, v.videoHeight, v.muted, v.paused]), [640, 360, true, false],
+    'the video itself, playing, with no sound unless sound is switched on');
+  assert.equal(await text(live, '.sc-slide.is-clip.is-on .sc-caption'), 'The step show');
+  await shot(live, 'slideshow-video', 0);
+  await live.waitForSelector('.sc-slide.is-on:not(.is-clip)', { timeout: 30000 }); // and a photo after it
+
+  step('Back to waiting takes the video out of the show at the slideshow\'s next check');
+  await review.waitForTimeout(SETTLE);
+  await card(review, video.id).locator('[data-act="waiting"]').click();
+  await until('the video to be waiting', async () => (await rows()).find((r) => r.kind === 'video').status === 'waiting');
+  assert.deepEqual(await counts(review), [4, 2, 0]);
+  await tab(review, 'waiting');
+  assert.deepEqual(await acts(review, video.id), ['view', 'reject'], 'a waiting video is approved from the full view only, like a photo');
+  assert.equal(await text(review, '#rv-shown'), '3 photos and 1 video waiting, oldest first. Open one to approve it.');
+  // The check comes once a minute, and this slideshow's minute is a real one.
+  for (let i = 0; i < 750; i += 1) {
+    const asked = await answered('second screen', 'screen');
+    if (asked.length > 1 && asked[asked.length - 1].body.videos.length === 0) break;
+    assert.ok(i < 749, 'the slideshow asked again within 75 seconds');
+    await live.waitForTimeout(100);
+  }
+  await nudge(live);
+  await live.waitForFunction(() => document.querySelector('#sc-clips').hidden);
+  await live.evaluate(() => {
+    window.clipsShown = 0;
+    new MutationObserver((changes) => {
+      for (const change of changes) for (const node of change.addedNodes) if (node.classList && node.classList.contains('is-clip')) window.clipsShown += 1;
+    }).observe(document.querySelector('#sc-slides'), { childList: true });
+  });
+  await live.waitForTimeout(12000); // more than a pass through the two photos, at 5 seconds each
+  assert.equal(await live.evaluate(() => window.clipsShown), 0, 'no video in the pass after the check');
+  await stage.ctx.close();
+
   // ------------------------------------------------------------------ closing, and cleaning up
   step('closing uploads on the review page turns the upload page to its closed state');
   await review.click('#rv-uploads summary');
@@ -413,30 +566,31 @@ try {
   await review.waitForSelector('#rv-confirm[open]');
   assert.equal(await text(review, '#rv-confirm-title'), 'Delete this photo for good?');
   await review.click('#rv-confirm-yes');
-  await until('the photo to be deleted', async () => (await rows()).length === 4);
+  await until('the photo to be deleted', async () => (await rows()).length === 5);
   assert.deepEqual([server.storage.read(third.path), server.storage.read(third.thumb_path)], [null, null]);
-  assert.equal(server.storage.paths().length, 8);
-  assert.deepEqual(await counts(review), [2, 2, 0]);
+  assert.equal(server.storage.paths().length, 10, 'four photos and the video, each with its small picture');
+  assert.deepEqual(await counts(review), [3, 2, 0]);
 
-  step('Delete everything removes every photo, every file, and a file no row points to');
+  step('Delete everything removes every photo, the video, every file, and a file no row points to');
   // A send that died partway while Storage was struggling can leave a file like this one. Files
   // under ten minutes old are left alone, in case their photo is still arriving.
   const stray = 'photos/00000000-0000-4000-8000-000000000000.jpg';
   server.storage.seed(stray, ONE_MORE.buffer);
   server.storage.files.get(stray).created -= 3600000;
-  assert.equal(server.storage.paths().length, 9);
-  await review.click('#rv-tools summary');
+  assert.equal(server.storage.paths().length, 11);
+  assert.deepEqual(server.storage.paths().filter((path) => path.startsWith('videos/')), [video.path]);
+  await unfold(review, '#rv-tools');
   await review.click('#rv-empty-all');
   await review.waitForSelector('#rv-confirm[open]');
-  assert.match(await text(review, '#rv-confirm-text'), /^This deletes every photo and its files for good: 2 waiting, 2 approved and 0 rejected\./);
+  assert.match(await text(review, '#rv-confirm-text'), /^This deletes every photo and video and their files for good: 3 waiting, 2 approved and 0 rejected\./);
   assert.equal(await review.locator('#rv-confirm-yes').isDisabled(), true, 'not until the word is typed');
   await review.fill('#rv-confirm-input', 'DELETE');
   await shot(review, 'delete-everything');
   await review.click('#rv-confirm-yes');
   await review.waitForSelector('#rv-toast');
-  assert.equal(await text(review, '#rv-toast-text'), 'Deleted 4 photos. The drop is empty.');
+  assert.equal(await text(review, '#rv-toast-text'), 'Deleted 4 photos and 1 video. The drop is empty.');
   assert.equal((await rows()).length, 0);
-  assert.deepEqual(server.storage.paths(), []);
+  assert.deepEqual(server.storage.paths(), [], 'nothing is left, in videos/ or anywhere else');
   assert.deepEqual(await counts(review), [0, 0, 0]);
 
   step('the slideshow goes back to its title card at the next check');
@@ -451,7 +605,7 @@ try {
   assert.deepEqual(server.dropLog, [], 'the function logged nothing');
   assert.deepEqual(refusals.sort(), ['guest later send 409', 'guest open 403', 'organizer review 403', 'venue screen 403']);
   assert.deepEqual(errors, []);
-  console.log('Photo drop passed: a guest who sends, an organizer who reviews, the slideshow, closing, and deleting.');
+  console.log('Photo drop passed: a guest who sends, an organizer who reviews, the slideshow, a video from the committee, closing, and deleting.');
 } catch (e) {
   // Show what each page was displaying, so the failure explains itself.
   console.error(`\nFAILED at: ${current}\n`);

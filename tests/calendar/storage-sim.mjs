@@ -36,6 +36,9 @@ export class Storage {
     // The same for handing out a link for an upload, and for an upload sent to one.
     this.failUploadLink = false;
     this.failUpload = false;
+    // An upload on a slow connection: how many milliseconds Storage takes to answer an upload
+    // sent to a link. For a test that needs one to be still on its way.
+    this.slowUpload = 0;
   }
 
   // The bytes at a path, or null.
@@ -140,6 +143,10 @@ export class Storage {
       const path = at.slice(this.bucket.length + 1);
       const grant = this.uploads.get(url.searchParams.get('token') || '');
       if (!grant || grant.path !== path || grant.until <= this.now()) return error(400, 'InvalidSignature', 'The signature is invalid');
+      // An upload that is cut off before it is all in (init.signal, as fetch takes one) stores
+      // nothing, as with Storage.
+      if (this.slowUpload > 0) await new Promise((resolve) => setTimeout(resolve, this.slowUpload));
+      if (init.signal && init.signal.aborted) throw new DOMException('This operation was aborted', 'AbortError');
       if (failing(this.failUpload, [path])) return broken();
       return keep(path, grant.upsert) || reply(200, { Key: `${this.bucket}/${path}` });
     }

@@ -13,13 +13,18 @@
 --   A video's row holds the organizer's name, the fixed text 'committee' where a guest's email
 --   goes, and in bytes the exact size of the video file, without its poster: the slideshow checks
 --   what it downloads against that number.
--- * Two settings: drop_video_max_bytes, the most one video may be (50 MB, which is also the most
---   the free Supabase plan takes in one file), and drop_max_videos, how many there may be (40).
+-- * Three settings: drop_video_max_bytes, the most one video may be (50 MB, which is also the most
+--   the free Supabase plan takes in one file), drop_max_videos, how many there may be (40), and
+--   drop_video_total_bytes, the most all the videos together may take (200000000, which is
+--   200 MB). The free plan holds 1 GB across the whole project, and the guests' photos may use
+--   750 MB of it, so the videos have a total of their own.
 -- * The bucket takes MP4 and MOV files beside JPEGs, up to 50 MB a file. Guests still can't put
 --   anything there but a JPEG of 6 MB: their only way in is the Edge Function, which checks the
 --   photo it holds.
 -- * cal_private.drop_state counts photos and videos apart. Only the photos decide 'full', so a
 --   video never takes a guest's place, and a guest's photo never takes a video's.
+-- * Every limit is a setting. To raise the most one video may be, change drop_video_max_bytes
+--   and the bucket's file_size_limit together: Storage goes by the bucket's.
 -- * cal_private.drop_stale gives a video 3 hours to arrive where a photo has 15 minutes.
 -- * cal_private.drop_review_list says what kind each row is. cal_private.drop_screen_list lists
 --   the approved videos beside the approved photos, under videos.
@@ -41,7 +46,8 @@ alter table public.drop_photos
 
 insert into cal_private.config (key, value) values
   ('drop_video_max_bytes', '52428800'),
-  ('drop_max_videos', '40')
+  ('drop_max_videos', '40'),
+  ('drop_video_total_bytes', '200000000')
 on conflict (key) do nothing;
 
 -- An update, not an insert: the bucket is already there, and the first migration leaves an
@@ -57,9 +63,11 @@ where id = 'photo-drop';
 
 -- Where things stand: the switch, the deadline, the limits, and how much has come in. photos and
 -- bytes are the guests' photos alone, and state is decided from them exactly as before. videos
--- and video_bytes are the committee's videos, with their own two limits. A video still 'sending'
--- counts for its first 3 hours, the time its upload is given. video_max_bytes is never more than
--- the row's integer column for the size can hold, whatever the setting says.
+-- and video_bytes are the committee's videos, with their own limits: how many (max_videos), how
+-- large one may be (video_max_bytes), and how much they may take together (video_total_bytes). A
+-- video still 'sending' counts for its first 3 hours, the time its upload is given.
+-- video_max_bytes is never more than the row's integer column for the size can hold, whatever the
+-- setting says.
 create or replace function cal_private.drop_state()
 returns jsonb
 language plpgsql
@@ -98,6 +106,7 @@ begin
     'bytes', v_bytes,
     'max_videos', cal_private.drop_number('max_videos', 40),
     'video_max_bytes', least(cal_private.drop_number('video_max_bytes', 52428800), 2147483647),
+    'video_total_bytes', cal_private.drop_number('video_total_bytes', 200000000),
     'videos', v_videos,
     'video_bytes', v_video_bytes
   );
@@ -136,7 +145,8 @@ $$;
 -- Checks one video against everything and saves its row as 'sending'. For the review code: only
 -- the committee adds videos, and it can add one whether or not guests' uploads are open. The
 -- checks run in the order a person would want to hear about them: the code, then what they typed,
--- then the file, then whether there is room. Returns { ok, id, path, thumb_path, bytes, mime }.
+-- then the file, then whether there is room: for one more video, then for this one's size beside
+-- the rest. Returns { ok, id, path, thumb_path, bytes, mime }.
 -- The Edge Function then hands the organizer's browser a link to send each of the two files to.
 -- p_bytes is the size of the video file, and drop_video_stored's caller holds the stored file to
 -- it. p_seconds is its length, or null when the browser couldn't read one.
@@ -155,8 +165,10 @@ declare
   -- The limit as drop_state gives it: the setting, and never more than the row's integer column
   -- for the size can hold.
   v_max_bytes bigint := least(cal_private.drop_number('video_max_bytes', 52428800), 2147483647);
+  v_total_bytes bigint := cal_private.drop_number('video_total_bytes', 200000000);
   v_seconds numeric;
   v_videos bigint;
+  v_video_bytes bigint;
   v_id uuid := gen_random_uuid();
   v_path text;
   v_thumb_path text;
@@ -193,15 +205,23 @@ begin
   end if;
 
   -- One at a time from here on, under the lock a guest's photo takes, so two videos added at the
-  -- same moment can't both slip under the limit.
+  -- same moment can't both slip under a limit.
   perform pg_advisory_xact_lock(1906120421);
 
   -- Videos are counted the way drop_state counts them.
-  select count(*) into v_videos
+  select count(*), coalesce(sum(p.bytes), 0) into v_videos, v_video_bytes
   from public.drop_photos p
   where p.kind = 'video' and (p.status <> 'sending' or p.created_at > v_now - interval '3 hours');
   if v_videos >= cal_private.drop_number('max_videos', 40) then
     return cal_private.drop_no(409, 'full', 'The show has all the videos it can take. Delete one to add another.');
+  end if;
+  -- The videos share the project's storage with the guests' photos and the calendar's files, so
+  -- together they have a total of their own. Said in whole megabytes: the limit rounded down and
+  -- what is in use rounded up, so the two never promise room that isn't there.
+  if v_video_bytes + p_bytes > v_total_bytes then
+    return cal_private.drop_no(409, 'full',
+      format('That video doesn''t fit. All the videos together can take %s MB, and %s MB is in use. Delete one to add another.',
+        v_total_bytes / 1048576, (v_video_bytes + 1048575) / 1048576));
   end if;
 
   v_path := 'videos/' || v_id || case when p_mime = 'video/quicktime' then '.mov' else '.mp4' end;
