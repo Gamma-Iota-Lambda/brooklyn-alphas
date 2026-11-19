@@ -216,8 +216,8 @@ try {
   assert.equal(new URL(guest.page.url()).search, `?k=${DROP_UPLOAD_CODE}`, 'the code moves into the address, so a reload keeps it');
   assert.match(await text(guest.page, '#ph-deadline'), /^Send them by .+\.$/);
   await choose(guest.page, [LARGE, SMALL], 2);
-  assert.deepEqual(await texts(guest.page.locator('.ph-photo .pd-pill')), ['Sharp on the big screen', 'Small']);
-  assert.match(await text(guest.page, '.ph-photo:nth-child(2)'), /It will look soft on the big screen\. If you have a larger copy, send that one\./);
+  assert.deepEqual(await texts(guest.page.locator('.ph-photo .pd-pill')), ['Sharp', 'Small']);
+  assert.match(await text(guest.page, '.ph-photo:nth-child(2)'), /It may look soft\. If you have a larger copy, send that one\./);
   assert.equal(await text(guest.page, '#ph-room'), '2 chosen. You can add 3 more.');
 
   step('she adds a caption, ticks the box and sends: two JPEGs with thumbnails are stored, waiting');
@@ -280,7 +280,7 @@ try {
 
   step('three more reach the limit of 5, and the page offers no more');
   await choose(guest.page, MORE, 3);
-  assert.deepEqual(await texts(guest.page.locator('.ph-photo .pd-pill')), ['Sharp on the big screen', 'Good', 'Good']);
+  assert.deepEqual(await texts(guest.page.locator('.ph-photo .pd-pill')), ['Sharp', 'Good', 'Good']);
   assert.equal(await text(guest.page, '#ph-room'), "That's as many as you can send. To swap one, remove it first.");
   await send(guest.page);
   await guest.page.waitForSelector('#ph-done');
@@ -322,7 +322,7 @@ try {
   assert.deepEqual(await review.locator('.rv-card').evaluateAll((cards) => cards.map((c) => c.dataset.id)), (await rows()).map((r) => r.id), 'oldest first');
   assert.deepEqual(await texts(review.locator('.rv-card .rv-name')), Array(5).fill('Ada Lovelace'));
   assert.deepEqual(await texts(review.locator('.rv-card .rv-email')), Array(5).fill('ada@example.com'));
-  assert.equal(await text(review, `.rv-card[data-id="${first.id}"] .rv-size`), 'Sharp on the big screen 4000 × 3000');
+  assert.equal(await text(review, `.rv-card[data-id="${first.id}"] .rv-size`), 'Sharp 4000 × 3000');
   assert.equal(await text(review, `.rv-card[data-id="${second.id}"] .rv-size`), 'Small 800 × 600');
   await review.waitForFunction((id) => document.querySelector(`.rv-card[data-id="${id}"] .rv-thumb img`).naturalWidth === 480, first.id);
 
@@ -344,7 +344,7 @@ try {
   await viewing(review, first.id, '1 of 5 waiting');
   assert.deepEqual(await review.evaluate(() => [document.querySelector('#rv-view-img').naturalWidth, document.querySelector('#rv-view-img').naturalHeight]), [2560, 1920],
     'the full view shows the stored photo, not the thumbnail');
-  assert.equal(await text(review, '#rv-view-who .rv-view-name'), 'Ada Lovelace Sharp on the big screen 4000 × 3000');
+  assert.equal(await text(review, '#rv-view-who .rv-view-name'), 'Ada Lovelace Sharp 4000 × 3000');
   assert.equal(await text(review, '#rv-view-who .rv-view-cap'), 'Howard University, 1998');
   await shot(review, 'full-view');
   await review.click('#rv-view-actions [data-act="approve"]');

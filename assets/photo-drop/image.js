@@ -22,12 +22,13 @@ const NAME_MAX = 120; // the server keeps a photo's details only while they stay
 const PICKED_MAX_BYTES = 40 * 1024 * 1024; // no phone photo is this big, and opening one could crash the page
 
 // How a photo will look on the big screens, by the long side of the file the person picked.
-// `note` is the sentence to show with the label when there is more to say.
+// `note` is the sentence to show with the label when there is more to say. Guests read these,
+// and to them the photos are for a throwback tribute: the words don't mention a screen.
 export const VERDICTS = {
-  great: { label: 'Sharp on the big screen', note: '' },
+  great: { label: 'Sharp', note: '' },
   good: { label: 'Good', note: '' },
-  small: { label: 'Small', note: 'It will look soft on the big screen. If you have a larger copy, send that one.' },
-  tiny: { label: 'Too small', note: 'Too small for the big screen. If you have a larger copy, send that one.' }
+  small: { label: 'Small', note: 'It may look soft. If you have a larger copy, send that one.' },
+  tiny: { label: 'Too small', note: 'Too small to use. If you have a larger copy, send that one.' }
 };
 
 export function verdictFor(longSide, minEdge = LIMITS.minEdge) {

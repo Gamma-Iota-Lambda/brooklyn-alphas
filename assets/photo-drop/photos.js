@@ -1,6 +1,7 @@
 // School Daze photo drop: the upload page (school-daze/photos.html). Ticket buyers open it from
 // the link in their email, mostly on phones, and send a few photos from their college days for
-// the big screens at the party.
+// the big screens at the party. To guests it is a special throwback tribute: the page's words
+// never mention a screen.
 //
 // The page shows one section at a time: checking the link, asking for the code, closed, full, the
 // form, or the thank-you. Each photo is made ready in the browser (image.js) and sent on its own
