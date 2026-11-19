@@ -1287,14 +1287,20 @@ async function videoChosen(file) {
 }
 
 function paintSending(at) {
-  const sent = at.step === 'checking' ? 100 : at.step === 'sending' && at.total > 0 ? Math.min(100, Math.floor((at.sent / at.total) * 100)) : 0;
+  const going = at.step === 'sending' || at.step === 'waiting';
+  const sent = at.step === 'checking' ? 100 : going && at.total > 0 ? Math.min(100, Math.floor((at.sent / at.total) * 100)) : 0;
   const bar = $('#rv-add-bar');
   bar.setAttribute('aria-valuenow', String(sent));
   $('span', bar).style.width = `${sent}%`;
-  const words = at.step === 'checking' ? 'Checking it' : at.step === 'sending' ? `Sending the video: ${sent}%` : 'Getting ready';
-  if ($('#rv-add-status').textContent === words) return;
+  // 'waiting': the connection dropped partway. What has gone is kept, and the page tries again.
+  const words = at.step === 'checking' ? 'Checking it'
+    : at.step === 'sending' ? `Sending the video: ${sent}%`
+      : at.step === 'waiting' ? `The connection dropped at ${sent}%. Trying again` : 'Getting ready';
+  const was = $('#rv-add-status').textContent;
+  if (was === words) return;
   $('#rv-add-status').textContent = words;
   if (at.step === 'checking') say('Checking the video.');
+  if (at.step === 'waiting' && !was.startsWith('The connection dropped')) say('The connection dropped. Trying again.');
 }
 
 // Add to the slideshow. Until it ends one way or the other the box stays open with one button,

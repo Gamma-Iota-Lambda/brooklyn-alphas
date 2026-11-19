@@ -5,7 +5,8 @@
 // browser, which is the best sign the slideshow's browser can play it too, and reads its size and
 // length and a small picture of it (the poster). sendVideo() puts it in the chapter's storage:
 // the server hands out two links, the poster and the file go straight to storage through them,
-// and the server then checks what arrived before the video joins the show.
+// and the server then checks what arrived before the video joins the show. The file goes up in
+// pieces (a resumable upload), so a connection that drops costs one piece, not the whole video.
 import { DropError, review } from './api.js';
 
 const TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime' };
@@ -18,10 +19,14 @@ const POSTER_MAX_BYTES = 307200; // the server drops a larger one
 const ANSWER_TIMEOUT = 30000;
 const STALL_TIMEOUT = 60000; // no byte has moved for this long: the connection is gone
 const STORE_TIMEOUT = 300000; // every byte has gone: this long for storage to put a large file away and answer
+const PIECE = 6 * 1024 * 1024; // storage takes a resumable upload in pieces of exactly this size, but for the last
+const RETRY = [1000, 3000, 5000, 10000, 20000, 30000]; // the wait before each new try; the last one repeats
+const GIVE_UP = 600000; // nothing has got through for this long: the upload is given up
 const CHECK_TRIES = 3; // asking the server to check the video, when the answer got lost
 const CHECK_PAUSE = 2000;
 const SETTLE_TIMEOUT = 10000;
 const KEEP = 'max-age=31536000';
+const KEEP_SECONDS = '31536000'; // the same, as a resumable upload states it
 const OWED_KEY = 'gil.drop.review.owed';
 
 // 'video/mp4' or 'video/quicktime' for a file the show takes, by its name and by what the browser
@@ -173,9 +178,216 @@ export async function settleVideos(code) {
   return let_go.reduce((sum, n) => sum + n, 0);
 }
 
-// Puts the file where a link from the server points. XMLHttpRequest, because fetch doesn't say
-// how much has gone. There is no limit on the whole upload, which can take many minutes on a
-// slow connection: it is given up only when nothing has moved for a minute.
+const TOO_LARGE = 'That video is too large to store. Export a smaller copy, or trim it, and add it again.';
+const NOT_SENT = "The video didn't upload. Try again.";
+// Thrown by sendInPieces when this storage won't take the file that way. It then goes in one request.
+const IN_ONE = { inOne: true };
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+// What a link for an upload says about where its file goes: storage's address for resumable
+// uploads made with such a link's token (it ends in /sign: the one without is for people signed
+// in to Supabase, and refuses a token), the bucket, the path in it, and the token that is the
+// permission. Null for a link that doesn't read that way.
+function readLink(link) {
+  try {
+    const url = new URL(link);
+    const mark = '/object/upload/sign/';
+    const at = url.pathname.indexOf(mark);
+    const token = url.searchParams.get('token');
+    if (at < 0 || !token) return null;
+    const rest = decodeURIComponent(url.pathname.slice(at + mark.length));
+    const cut = rest.indexOf('/');
+    if (cut < 1 || cut === rest.length - 1) return null;
+    return { endpoint: `${url.origin}${url.pathname.slice(0, at)}/upload/resumable/sign`, bucket: rest.slice(0, cut), path: rest.slice(cut + 1), token };
+  } catch {
+    return null;
+  }
+}
+
+// One request of the resumable protocol that carries none of the file.
+async function ask(url, init, holder) {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), ANSWER_TIMEOUT);
+  holder.stop = stop;
+  try {
+    return await fetch(url, { ...init, cache: 'no-store', signal: stop.signal });
+  } finally {
+    clearTimeout(timer);
+    holder.stop = null;
+  }
+}
+
+// One piece of the file, from `offset` on. Resolves with the answer's status and the place the
+// server says it has reached (NaN when it doesn't say). Rejects when the piece didn't get there.
+function sendPiece(url, piece, offset, headers, { progress, holder }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let timer = 0;
+    const moving = (all = false) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => xhr.abort(), all ? STORE_TIMEOUT : STALL_TIMEOUT);
+    };
+    const fail = () => {
+      clearTimeout(timer);
+      reject(new Error('The piece did not arrive.'));
+    };
+    xhr.open('PATCH', url);
+    for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value);
+    xhr.setRequestHeader('Upload-Offset', String(offset));
+    xhr.setRequestHeader('Content-Type', 'application/offset+octet-stream');
+    xhr.upload.addEventListener('progress', (e) => {
+      moving(e.loaded >= piece.size);
+      progress(e.loaded);
+    });
+    xhr.addEventListener('load', () => {
+      clearTimeout(timer);
+      const said = xhr.getResponseHeader('Upload-Offset');
+      resolve({ status: xhr.status, offset: said === null || said === '' ? NaN : Number(said) });
+    });
+    xhr.addEventListener('error', fail);
+    xhr.addEventListener('abort', fail);
+    holder.xhr = xhr;
+    moving();
+    xhr.send(piece);
+  });
+}
+
+// Sends the file to storage in pieces (the TUS protocol, which Supabase Storage speaks), with the
+// link's token as the permission. A piece that doesn't get there is not the end of it: the page
+// waits, asks storage how much it has, and carries on from there, for as long as something gets
+// through every ten minutes. `progress(sent, total)` hears each step forward, and
+// `waiting(sent, total)` each time the page is waiting to try again.
+// Throws IN_ONE when this storage won't start an upload this way.
+async function sendInPieces(link, file, type, { progress, waiting, holder }) {
+  const to = readLink(link);
+  if (!to) throw IN_ONE;
+  const size = file.size;
+  const headers = { 'Tus-Resumable': '1.0.0', 'x-signature': to.token, 'x-upsert': 'true' };
+  const b64 = (text) => btoa(unescape(encodeURIComponent(text)));
+  const about = [['bucketName', to.bucket], ['objectName', to.path], ['contentType', type], ['cacheControl', KEEP_SECONDS]]
+    .map(([name, value]) => `${name} ${b64(value)}`).join(',');
+  const stopped = () => new DropError(STOPPED, { reason: 'upload' });
+  // Cancel ends every wait and every try.
+  const alive = () => {
+    if (holder.cancelled) throw stopped();
+  };
+  let lastMove = Date.now();
+  let tries = 0;
+  const moved = () => {
+    lastMove = Date.now();
+    tries = 0;
+  };
+  // The wait before another try. The upload is given up when nothing has got through for too long.
+  const pause = async (sent) => {
+    alive();
+    if (Date.now() - lastMove > GIVE_UP) throw stopped();
+    waiting(sent, size);
+    await sleep(RETRY[Math.min(tries, RETRY.length - 1)]);
+    tries += 1;
+    alive();
+  };
+
+  // A place for the upload: storage answers with the address the pieces go to.
+  const start = async () => {
+    for (;;) {
+      let res = null;
+      try {
+        res = await ask(to.endpoint, { method: 'POST', headers: { ...headers, 'Upload-Length': String(size), 'Upload-Metadata': about } }, holder);
+      } catch {
+        res = null;
+      }
+      alive();
+      if (res && res.status === 201) {
+        const location = res.headers.get('Location');
+        if (!location) throw IN_ONE; // the browser wasn't shown where: nothing to send pieces to
+        // Kept to the address the link named, whichever of its own names storage answers with.
+        const where = new URL(location, to.endpoint);
+        const named = new URL(to.endpoint);
+        where.protocol = named.protocol;
+        where.host = named.host;
+        moved();
+        return where.href;
+      }
+      if (res && res.status === 413) throw new DropError(TOO_LARGE, { reason: 'upload', status: 413 });
+      // Storage said no to starting this way: the file goes in one request instead.
+      if (res && res.status < 500 && res.status !== 429 && res.status !== 408) throw IN_ONE;
+      await pause(0);
+    }
+  };
+
+  // How much of the file storage has: a number of bytes, or -1 when it no longer knows the upload.
+  const reached = async (where) => {
+    const res = await ask(where, { method: 'HEAD', headers }, holder);
+    if (res.status === 404 || res.status === 410) return -1;
+    if (res.status === 400 || res.status === 401 || res.status === 403) throw new DropError(NOT_SENT, { reason: 'upload', status: res.status });
+    const said = res.headers.get('Upload-Offset');
+    const at = said === null || said === '' ? NaN : Number(said);
+    if (!res.ok || !Number.isInteger(at) || at < 0 || at > size) throw new Error('No answer about the upload.');
+    return at;
+  };
+
+  let where = await start();
+  let offset = 0;
+  let restarts = 0;
+  while (offset < size) {
+    alive();
+    const from = offset;
+    const end = Math.min(size, from + PIECE);
+    let answer = null;
+    try {
+      answer = await sendPiece(where, file.slice(from, end), from, headers, { holder, progress: (sent) => progress(Math.min(size, from + sent), size) });
+    } catch {
+      answer = null;
+    }
+    alive();
+    if (answer && (answer.status === 204 || answer.status === 200)) {
+      offset = Number.isInteger(answer.offset) && answer.offset > from && answer.offset <= size ? answer.offset : end;
+      moved();
+      progress(offset, size);
+      continue;
+    }
+    if (answer && answer.status === 413) throw new DropError(TOO_LARGE, { reason: 'upload', status: 413 });
+    // The permission ran out, or storage won't have this piece at all: no use trying it again.
+    if (answer && [400, 401, 403, 415].includes(answer.status)) throw new DropError(NOT_SENT, { reason: 'upload', status: answer.status });
+    // The piece didn't get there, or its answer got lost. Storage says how much it has, and the
+    // upload carries on from there.
+    for (;;) {
+      await pause(offset);
+      let at = null;
+      try {
+        at = await reached(where);
+      } catch (e) {
+        alive();
+        if (e instanceof DropError) throw e;
+        continue;
+      }
+      alive();
+      if (at >= 0) {
+        if (at > offset) moved();
+        offset = at;
+        break;
+      }
+      // Storage no longer knows the upload. Once the last piece has been sent, that means it
+      // took it and put the file away, and only its answer got lost: the server's check, which
+      // comes next, says for certain. Before that, the upload starts over.
+      if (end === size) {
+        offset = size;
+        break;
+      }
+      if (restarts >= 2) throw stopped();
+      restarts += 1;
+      where = await start();
+      offset = 0;
+      break;
+    }
+  }
+  progress(size, size);
+}
+
+// Puts the file where a link from the server points, in one request, for a storage that won't
+// take it in pieces. XMLHttpRequest, because fetch doesn't say how much has gone. There is no
+// limit on the whole upload, which can take many minutes on a slow connection: it is given up
+// only when nothing has moved for a minute.
 function put(link, body, type, { progress, holder }) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -200,9 +412,7 @@ function put(link, body, type, { progress, holder }) {
     xhr.addEventListener('load', () => {
       clearTimeout(timer);
       if (xhr.status >= 200 && xhr.status < 300) return resolve();
-      fail(xhr.status === 413
-        ? 'That video is too large to store. Export a smaller copy, or trim it, and add it again.'
-        : "The video didn't upload. Try again.");
+      fail(xhr.status === 413 ? TOO_LARGE : NOT_SENT);
     });
     xhr.addEventListener('error', () => fail(STOPPED));
     xhr.addEventListener('abort', () => fail(STOPPED));
@@ -234,7 +444,8 @@ async function putPoster(link, poster, holder) {
 }
 
 // Sends a video to the show. `video` is { file, mime, width, height, seconds, poster, caption };
-// `step` hears where things stand: { step: 'asking' | 'poster' | 'sending' | 'checking', sent, total }.
+// `step` hears where things stand: { step: 'asking' | 'poster' | 'sending' | 'waiting' | 'checking', sent, total }.
+// 'waiting' is a pause in the sending: the connection dropped, and the page is about to try again.
 //
 // Returns { done, cancel }. `done` resolves with { id } once the server has the video in the show.
 // It rejects with a DropError whose message is the sentence to show; `reason` is 'cancelled' after
@@ -244,7 +455,7 @@ async function putPoster(link, poster, holder) {
 // back, so the video can be in the show all the same, and the list says whether it is.
 export function sendVideo({ code, by, video }, step = () => {}) {
   const late = new DropError('That took too long. Check your connection and try again.', { reason: 'network' });
-  const holder = { xhr: null, stop: null };
+  const holder = { xhr: null, stop: null, cancelled: false };
   let id = '';
   let asked = false;
   let cancelled = false;
@@ -301,10 +512,18 @@ export function sendVideo({ code, by, video }, step = () => {}) {
       await unlessStopped(putPoster(answer.upload.poster, video.poster, holder));
     }
     step({ step: 'sending', sent: 0, total: video.file.size });
-    await unlessStopped(put(answer.upload.video, video.file, answer.upload.type || video.mime, {
-      holder,
-      progress: (sent, total) => step({ step: 'sending', sent, total })
-    }));
+    const type = answer.upload.type || video.mime;
+    const progress = (sent, total) => step({ step: 'sending', sent, total });
+    try {
+      await unlessStopped(sendInPieces(answer.upload.video, video.file, type, {
+        holder,
+        progress,
+        waiting: (sent, total) => step({ step: 'waiting', sent, total })
+      }));
+    } catch (e) {
+      if (e !== IN_ONE) throw e;
+      await unlessStopped(put(answer.upload.video, video.file, type, { holder, progress }));
+    }
     step({ step: 'checking' });
     asked = true;
     for (let attempt = 1; ; attempt += 1) {
@@ -335,6 +554,7 @@ export function sendVideo({ code, by, video }, step = () => {}) {
     cancel() {
       if (cancelled) return;
       cancelled = true;
+      holder.cancelled = true;
       // The reason first: stopping the upload ends its wait too, and that must not be what is said.
       quit(new DropError("You cancelled, so the video wasn't added.", { reason: 'cancelled' }));
       if (holder.stop) holder.stop.abort();

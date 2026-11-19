@@ -1,14 +1,15 @@
 // A stand-in for Supabase Storage: the five calls the photo-drop Edge Function makes (put a file,
-// sign links, list a folder, remove files, and hand out a link for an upload), and the one a
-// browser makes with such a link (send one file, with no key), checked the way Storage checks
-// them (the secret key on both headers, the bucket's size limit and allowed types, links that
-// run out), with switches to make them fail.
+// sign links, list a folder, remove files, and hand out a link for an upload), and the two ways a
+// browser sends a file with such a link and no key (in one request, or in pieces, as a resumable
+// upload), checked the way Storage checks them (the secret key on both headers, the bucket's size
+// limit and allowed types, links that run out), with switches to make them fail.
 // photo-drop-function.test.mjs uses it, and the live stand-in (live-server.mjs) serves its files
 // and passes a browser's uploads on to it.
 import { randomUUID } from 'node:crypto';
 
 const MAX_PATHS = 1000; // Storage's own limit on a sign or remove request
 const UPLOAD_LINK_MS = 2 * 3600000; // how long Storage lets a link for an upload be used
+export const RESUMABLE_PIECE = 6 * 1024 * 1024; // the size Storage wants every piece of a resumable upload to be, but for the last
 
 export class Storage {
   // url: the project's address (SUPABASE_URL). key: the secret key the function must send.
@@ -39,6 +40,15 @@ export class Storage {
     // An upload on a slow connection: how many milliseconds Storage takes to answer an upload
     // sent to a link. For a test that needs one to be still on its way.
     this.slowUpload = 0;
+    // Resumable uploads that are under way: id -> { path, type, cacheControl, length, parts, offset, token }.
+    this.resumables = new Map();
+    // Storage not taking resumable uploads at all: the browser then sends the file in one request.
+    this.noResumable = false;
+    // How many of the next pieces to cut off before any of them is kept (a connection that drops).
+    this.cutPieces = 0;
+    // How many of the next pieces to keep without the browser ever hearing so (an answer lost on
+    // the way back).
+    this.loseAnswers = 0;
   }
 
   // The bytes at a path, or null.
@@ -81,6 +91,7 @@ export class Storage {
     const call = { method, path: url.pathname, headers: Object.fromEntries(headers), json: null, bytes: 0 };
     this.calls.push(call);
     if (this.down) throw new TypeError('fetch failed');
+    if (url.origin === this.url && url.pathname.startsWith('/storage/v1/upload/resumable')) return this.resumable(url, method, headers, init, call);
     const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
     const error = (status, name, message) => reply(status, { statusCode: String(status), error: name, message });
     const broken = () => error(500, 'Internal', 'Internal Server Error');
@@ -208,5 +219,78 @@ export class Storage {
     }
 
     return error(404, 'not_found', 'Route not found');
+  };
+
+  // A resumable upload (the TUS protocol), the way a browser makes one with the token of an upload
+  // link in x-signature and no key. That has an address of its own, /upload/resumable/sign: the
+  // one without /sign is for people signed in to Supabase, and turns a token away. POST there
+  // opens the upload: the file's length, and its bucket, path, type and cache time as
+  // Upload-Metadata. The answer's Location is where the
+  // pieces go. PATCH there sends a piece, from the place Storage has reached and no other, every
+  // piece 6 MB but for the last. HEAD there says how far Storage has got. When the last piece
+  // is in, the file is stored under the bucket's rules, and the upload itself is forgotten.
+  resumable = async (url, method, headers, init, call) => {
+    const answer = (status, more = {}, body = null) => new Response(body, { status, headers: { 'Tus-Resumable': '1.0.0', ...more } });
+    const refused = (status, name, message) => answer(400, { 'Content-Type': 'application/json' }, JSON.stringify({ statusCode: String(status), error: name, message }));
+    if (this.noResumable) return answer(404, {}, 'not found');
+    const base = '/storage/v1/upload/resumable/sign';
+    // Without /sign Storage looks for a signed-in person's key, finds none, and says so this way.
+    if (url.pathname !== base && !url.pathname.startsWith(`${base}/`)) return refused(403, 'Unauthorized', 'Invalid Compact JWS');
+    if (headers.get('tus-resumable') !== '1.0.0') return answer(412, {}, 'Precondition Failed');
+    const token = headers.get('x-signature') || '';
+    const grant = this.uploads.get(token);
+    const allowed = !!grant && grant.until > this.now();
+    const id = url.pathname.slice(base.length).replace(/^\/+/, '');
+
+    if (method === 'POST' && !id) {
+      const about = {};
+      for (const pair of (headers.get('upload-metadata') || '').split(',')) {
+        const [name, value = ''] = pair.trim().split(/\s+/);
+        if (name) about[name] = Buffer.from(value, 'base64').toString('utf8');
+      }
+      call.json = about;
+      const length = Number(headers.get('upload-length'));
+      if (!allowed || about.bucketName !== this.bucket || about.objectName !== grant.path) return refused(403, 'Unauthorized', 'Invalid signature');
+      if (!Number.isInteger(length) || length < 0) return answer(400, {}, 'Invalid Upload-Length');
+      const type = String(about.contentType || 'application/octet-stream').split(';')[0].trim();
+      if (!this.types.some((t) => (t.endsWith('/*') ? type.startsWith(t.slice(0, -1)) : t === type))) return answer(415, {}, 'mime type is not supported');
+      if (length > this.maxBytes) return answer(413, {}, 'Maximum size exceeded');
+      if (this.files.has(grant.path) && !grant.upsert) return answer(409, {}, 'The resource already exists');
+      const made = randomUUID();
+      this.resumables.set(made, { path: grant.path, type, cacheControl: /^[0-9]+$/.test(about.cacheControl || '') ? `max-age=${about.cacheControl}` : 'no-cache', length, parts: [], offset: 0, token });
+      return answer(201, { Location: `${this.url}${base}/${made}`, 'Upload-Offset': '0' });
+    }
+
+    const upload = this.resumables.get(id);
+    if (!upload) return answer(404, {}, 'Upload not found');
+    if (!allowed || upload.token !== token) return refused(403, 'Unauthorized', 'Invalid signature');
+    if (method === 'HEAD') return answer(200, { 'Upload-Offset': String(upload.offset), 'Upload-Length': String(upload.length), 'Cache-Control': 'no-store' });
+    if (method !== 'PATCH') return answer(405, {}, 'Method not allowed');
+
+    if ((headers.get('content-type') || '') !== 'application/offset+octet-stream') return answer(415, {}, 'Content-Type must be application/offset+octet-stream');
+    if (Number(headers.get('upload-offset')) !== upload.offset) return answer(409, {}, 'Upload-Offset conflict');
+    const body = init.body === undefined || init.body === null ? Buffer.alloc(0) : Buffer.from(await new Response(init.body).arrayBuffer());
+    call.bytes = body.length;
+    if (this.slowUpload > 0) await new Promise((resolve) => setTimeout(resolve, this.slowUpload));
+    // A piece that is cut off before it is all in keeps nothing of itself.
+    if (init.signal && init.signal.aborted) throw new DOMException('This operation was aborted', 'AbortError');
+    if (this.cutPieces > 0) {
+      this.cutPieces -= 1;
+      throw new TypeError('fetch failed');
+    }
+    if (this.failUpload === true || (this.failUpload instanceof RegExp && this.failUpload.test(upload.path))) return answer(500, {}, 'Internal Server Error');
+    const last = upload.offset + body.length === upload.length;
+    if (upload.offset + body.length > upload.length || (!last && body.length !== RESUMABLE_PIECE)) return answer(400, {}, 'Wrong piece size');
+    upload.parts.push(body);
+    upload.offset += body.length;
+    if (last) {
+      this.files.set(upload.path, { bytes: Buffer.concat(upload.parts), type: upload.type, cacheControl: upload.cacheControl, created: this.now() });
+      this.resumables.delete(id);
+    }
+    if (this.loseAnswers > 0) {
+      this.loseAnswers -= 1;
+      throw new TypeError('fetch failed');
+    }
+    return answer(204, { 'Upload-Offset': String(upload.offset) });
   };
 }

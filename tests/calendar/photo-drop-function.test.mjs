@@ -1734,6 +1734,87 @@ test("an upload link takes one file, at its own path, for two hours, under the b
   assert.deepEqual(s.logs, []);
 });
 
+test("a video sent in pieces: an upload link's token opens a resumable upload, a piece goes in only where Storage has got to, and the whole file is checked like any other", async () => {
+  const s = await setup();
+  const PIECE = 6 * 1024 * 1024;
+  const clipFile = mp4(2 * PIECE + 1000);
+  const start = (await s.video({ bytes: clipFile.length })).body;
+  const token = new URL(start.upload.video).searchParams.get('token');
+  const path = `videos/${start.id}.mp4`;
+  const b64 = (text) => Buffer.from(text).toString('base64');
+  const about = (more = {}) => Object.entries({ bucketName: 'photo-drop', objectName: path, contentType: 'video/mp4', cacheControl: '31536000', ...more })
+    .map(([name, value]) => `${name} ${b64(value)}`).join(',');
+  const tus = (method, url, headers = {}, body = undefined) => s.storage.fetch(url, { method, headers: { 'Tus-Resumable': '1.0.0', 'x-signature': token, 'x-upsert': 'true', ...headers }, body });
+  const SIGNED = `${BASE}/storage/v1/upload/resumable/sign`;
+  const open = (headers = {}, meta = {}) => tus('POST', SIGNED, { 'Upload-Length': String(clipFile.length), 'Upload-Metadata': about(meta), ...headers });
+  const piece = (where, from, to, headers = {}) => tus('PATCH', where, { 'Upload-Offset': String(from), 'Content-Type': 'application/offset+octet-stream', ...headers }, clipFile.subarray(from, to));
+
+  // The address for a token is the one that ends in /sign. The other is for people signed in to
+  // Supabase, and answers a token the way real Storage does.
+  const plain = await tus('POST', `${BASE}/storage/v1/upload/resumable`, { 'Upload-Length': String(clipFile.length), 'Upload-Metadata': about() });
+  assert.deepEqual([plain.status, await plain.json()], [400, { statusCode: '403', error: 'Unauthorized', message: 'Invalid Compact JWS' }]);
+  // Only the token that was handed out for this path opens an upload to it, under the bucket's rules.
+  assert.equal((await open({ 'x-signature': '11111111-1111-4111-8111-111111111111' })).status, 400, 'a guessed token');
+  assert.equal((await open({ 'x-signature': new URL(start.upload.poster).searchParams.get('token') })).status, 400, "the poster's token");
+  assert.equal((await open({}, { objectName: `videos/${NO_ROW}.mp4` })).status, 400, "another video's path");
+  assert.equal((await open({}, { bucketName: 'calendar-files' })).status, 400, 'another bucket');
+  assert.equal((await open({}, { contentType: 'video/webm' })).status, 415);
+  assert.equal((await open({ 'Upload-Length': String(MB50 + 1) })).status, 413);
+  assert.equal((await open({ 'Tus-Resumable': '0.2.2' })).status, 412);
+  assert.equal(s.storage.resumables.size, 0, 'none of that opened anything');
+
+  const opened = await open();
+  assert.equal(opened.status, 201);
+  const where = opened.headers.get('Location');
+  assert.ok(where.startsWith(`${SIGNED}/`));
+  const asked = async () => { const res = await tus('HEAD', where); return [res.status, res.headers.get('Upload-Offset'), res.headers.get('Upload-Length')]; };
+  assert.deepEqual(await asked(), [200, '0', String(clipFile.length)]);
+
+  // A piece goes in at the place Storage has reached, every piece 6 MB but for the last, and
+  // only with the token.
+  assert.equal((await piece(where, PIECE, 2 * PIECE)).status, 409, 'not the place Storage is at');
+  assert.equal((await piece(where, 0, 1000)).status, 400, 'a piece that is not 6 MB and not the last');
+  assert.equal((await piece(where, 0, PIECE, { 'Content-Type': 'video/mp4' })).status, 415);
+  assert.equal((await piece(where, 0, PIECE, { 'x-signature': 'nope' })).status, 400);
+  assert.deepEqual(await asked(), [200, '0', String(clipFile.length)], 'none of that was kept');
+  let res = await piece(where, 0, PIECE);
+  assert.deepEqual([res.status, res.headers.get('Upload-Offset')], [204, String(PIECE)]);
+  // A piece whose connection drops keeps nothing. One whose answer is lost is kept all the
+  // same, and asking is how the sender finds out.
+  s.storage.cutPieces = 1;
+  await assert.rejects(piece(where, PIECE, 2 * PIECE));
+  assert.deepEqual(await asked(), [200, String(PIECE), String(clipFile.length)]);
+  s.storage.loseAnswers = 1;
+  await assert.rejects(piece(where, PIECE, 2 * PIECE));
+  assert.deepEqual(await asked(), [200, String(2 * PIECE), String(clipFile.length)]);
+  assert.equal((await piece(where, PIECE, 2 * PIECE)).status, 409, 'sent again, it is turned away: Storage has it');
+  assert.deepEqual(s.storage.paths(), [], 'nothing is in the bucket until the last piece is');
+
+  // Until the file is whole, the function finds nothing at its path.
+  is(await s.review('video-done', { id: start.id, by: 'Eugene Aiken' }), 400, NOT_WHOLE);
+  assert.equal((await s.rows()).length, 0, 'and gives the place up');
+
+  // The last piece puts the file in the bucket, and the upload itself is forgotten.
+  const again = (await s.video({ bytes: clipFile.length })).body;
+  const token2 = new URL(again.upload.video).searchParams.get('token');
+  const open2 = await s.storage.fetch(SIGNED, { method: 'POST', headers: { 'Tus-Resumable': '1.0.0', 'x-signature': token2, 'x-upsert': 'true', 'Upload-Length': String(clipFile.length),
+    'Upload-Metadata': about({ objectName: `videos/${again.id}.mp4` }) } });
+  const where2 = open2.headers.get('Location');
+  for (let from = 0; from < clipFile.length; from += PIECE) {
+    res = await s.storage.fetch(where2, { method: 'PATCH', headers: { 'Tus-Resumable': '1.0.0', 'x-signature': token2, 'Upload-Offset': String(from), 'Content-Type': 'application/offset+octet-stream' },
+      body: clipFile.subarray(from, Math.min(clipFile.length, from + PIECE)) });
+    assert.equal(res.status, 204, `piece at ${from}`);
+  }
+  assert.equal(res.headers.get('Upload-Offset'), String(clipFile.length));
+  assert.equal((await s.storage.fetch(where2, { method: 'HEAD', headers: { 'Tus-Resumable': '1.0.0', 'x-signature': token2 } })).status, 404);
+  const stored = s.storage.files.get(`videos/${again.id}.mp4`);
+  assert.deepEqual([stored.bytes.equals(clipFile), stored.type, stored.cacheControl], [true, 'video/mp4', 'max-age=31536000']);
+  // And the function checks it as it checks a file sent in one request.
+  is(await s.review('video-done', { id: again.id, by: 'Eugene Aiken' }), 200, { ok: true, id: again.id });
+  assert.deepEqual(await s.rows('select status, bytes, mime from public.drop_photos'), [{ status: 'approved', bytes: clipFile.length, mime: 'video/mp4' }]);
+  assert.deepEqual(s.logs, []);
+});
+
 test('the tidy-up gives a video three hours to arrive, and then takes its row and whatever of it is in the bucket', async () => {
   const s = await setup();
   // Half an upload: the poster is in, and the video never came. And one whose files both came,

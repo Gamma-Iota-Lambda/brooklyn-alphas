@@ -350,6 +350,36 @@ export async function startLiveServer({ port = 5181, confirmEmail = false, demo 
       // Storage, each to a link the function handed out, so they land in the bucket the function
       // then looks in. No key comes with them: the link is the permission. Storage lets any page
       // send to one, and says so when the browser asks first.
+      // The same upload in pieces (a resumable upload): opened with a POST, sent with PATCHes,
+      // asked about with HEAD. The token of the upload link comes in x-signature. Storage shows a
+      // page the headers it needs to follow along.
+      if (path.startsWith('/storage/v1/upload/resumable') && ['POST', 'PATCH', 'HEAD', 'OPTIONS'].includes(req.method)) {
+        const open = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'Location, Upload-Offset, Upload-Length, Tus-Resumable' };
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            ...open,
+            'Access-Control-Allow-Methods': 'POST, PATCH, HEAD, OPTIONS',
+            'Access-Control-Allow-Headers': req.headers['access-control-request-headers'] || 'tus-resumable, upload-length, upload-metadata, upload-offset, content-type, x-signature, x-upsert',
+            'Access-Control-Max-Age': '86400'
+          });
+          return res.end();
+        }
+        const gone = new AbortController();
+        res.on('close', () => { if (!res.writableEnded) gone.abort(); });
+        const chunks = [];
+        for await (const c of req) chunks.push(c);
+        const headers = Object.fromEntries(['tus-resumable', 'upload-length', 'upload-metadata', 'upload-offset', 'content-type', 'x-signature', 'x-upsert']
+          .filter((k) => req.headers[k]).map((k) => [k, req.headers[k]]));
+        let out;
+        try {
+          out = await storage.fetch(origin + req.url, { method: req.method, headers, body: req.method === 'PATCH' ? Buffer.concat(chunks) : undefined, signal: gone.signal });
+        } catch {
+          // A piece cut off, an answer lost, Storage not answering, or the browser gone.
+          return req.socket.destroy();
+        }
+        res.writeHead(out.status, { ...open, ...Object.fromEntries(out.headers) });
+        return res.end(req.method === 'HEAD' ? undefined : Buffer.from(await out.arrayBuffer()));
+      }
       if (path.startsWith(`/storage/v1/object/upload/sign/${DROP_BUCKET}/`) && (req.method === 'PUT' || req.method === 'OPTIONS')) {
         const open = { 'Access-Control-Allow-Origin': '*' };
         if (req.method === 'OPTIONS') {
