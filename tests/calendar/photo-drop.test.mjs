@@ -66,6 +66,7 @@ const set = (h, list, status, by = 'Eugene Aiken', code = REVIEW) =>
 // A committee video, as the Edge Function asks for a place for one: the review code, the
 // organizer's name, and what the organizer's browser read from the file.
 const MB50 = 52428800;
+const GB5 = 5368709120; // 5 GB: past what a 32-bit number holds, signed or not
 const NOT_A_VIDEO = "That file isn't a video we can use. Add an MP4 or MOV file.";
 const VIDEO_GONE = 'That video is no longer here. Add it again.';
 const video = (h, over = {}) => {
@@ -826,16 +827,16 @@ test('a video is added with the review code only, and is refused for one reason 
   assert.equal((await rows(h)).length, 0, 'none of the refusals saved anything');
 
   // The size limit is a setting, said in whole megabytes, rounded down. Mistyped, it counts as
-  // the default. Set past what the row's integer column holds, it stops there.
+  // the default. It can be set past 2 GB and past 4 GB: the row's size column holds any size.
   await setting(h, 'drop_video_max_bytes', '10000000');
   assert.deepEqual(await video(h, { ...sized, bytes: 10000001 }), tooLarge(9));
   assert.equal((await video(h, { ...sized, bytes: 10000000 })).ok, true, 'the limit itself is fine');
   await setting(h, 'drop_video_max_bytes', 'fifty');
   assert.deepEqual(await video(h, sized), tooLarge(50));
   assert.equal((await video(h, { ...sized, bytes: MB50 })).ok, true, '50 MB to the byte');
-  await setting(h, 'drop_video_max_bytes', '99999999999');
-  assert.equal((await run(h, 'drop_state()')).video_max_bytes, 2147483647);
-  assert.deepEqual(await video(h, { ...sized, bytes: 2147483648 }), tooLarge(2047));
+  await setting(h, 'drop_video_max_bytes', String(GB5));
+  assert.equal((await run(h, 'drop_state()')).video_max_bytes, GB5);
+  assert.deepEqual(await video(h, { ...sized, bytes: GB5 + 1 }), tooLarge(5120));
   await setting(h, 'drop_video_max_bytes', String(MB50));
 
   // Last, whether there is room. Both videos above are still on their way in, and hold a place.
@@ -1325,6 +1326,124 @@ test('run on a drop already in use, the video migration leaves every photo, sett
   assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([c])]), { ok: true, deleted: 1 });
   // And a video can be added now.
   assert.equal((await video(h)).ok, true);
+});
+
+test('with the limits raised, a video of 5 GB is added, counted, listed and shown like any other', async () => {
+  const h = await ready();
+  // The default limit still stands until someone raises it.
+  assert.deepEqual(await video(h, { bytes: GB5 }), { ok: false, status: 400, reason: 'size', error: 'That video is too large. One video can be 50 MB at most.' });
+  await setting(h, 'drop_video_max_bytes', String(GB5));
+  await setting(h, 'drop_video_total_bytes', String(5 * GB5));
+  assert.deepEqual(await h.sql(`select data_type from information_schema.columns where table_schema = 'public' and table_name = 'drop_photos' and column_name = 'bytes'`), [{ data_type: 'bigint' }]);
+
+  const r = await video(h, { bytes: GB5, seconds: 1500, caption: 'The whole step show' });
+  assert.deepEqual(r, { ok: true, id: r.id, path: `videos/${r.id}.mp4`, thumb_path: `thumbs/${r.id}.jpg`, bytes: GB5, mime: 'video/mp4' });
+  assert.deepEqual(await h.sql('select bytes::text as bytes, status, kind from public.drop_photos'), [{ bytes: String(GB5), status: 'sending', kind: 'video' }]);
+  assert.deepEqual(await videoHeld(h, r.id), { ok: true, id: r.id, path: r.path, thumb_path: r.thumb_path, bytes: GB5, mime: 'video/mp4' });
+  assert.deepEqual(await videoStored(h, r), { ok: true, id: r.id });
+
+  // Counted in the state, and said to the pages, as the number it is.
+  const state = await run(h, 'drop_state()');
+  assert.deepEqual([state.videos, state.video_bytes, state.video_max_bytes, state.video_total_bytes], [1, GB5, GB5, 5 * GB5]);
+  const listed = (await run(h, 'drop_review_list($1)', [REVIEW])).photos;
+  assert.deepEqual(listed.map((p) => [p.id, p.kind, p.bytes, p.seconds]), [[r.id, 'video', GB5, 1500]]);
+  const shown = await run(h, 'drop_screen_list($1)', [SCREEN]);
+  assert.deepEqual(shown.videos.map((v) => [v.id, v.bytes, v.caption]), [[r.id, GB5, 'The whole step show']]);
+
+  // One byte over is still refused, in whole megabytes.
+  assert.deepEqual(await video(h, { bytes: GB5 + 1 }), { ok: false, status: 400, reason: 'size', error: 'That video is too large. One video can be 5120 MB at most.' });
+  // The total is counted past 4 GB too: five videos of 5 GB fit in 25 GB, to the byte, and a sixth doesn't.
+  for (let i = 0; i < 4; i += 1) assert.equal((await video(h, { bytes: GB5 })).ok, true);
+  assert.equal((await run(h, 'drop_state()')).video_bytes, 5 * GB5);
+  assert.deepEqual(await video(h, { bytes: 1 }), {
+    ok: false, status: 409, reason: 'full',
+    error: "That video doesn't fit. All the videos together can take 25600 MB, and 25600 MB is in use. Delete one to add another."
+  });
+  // A guest's photo is none of this: it is taken as before.
+  assert.equal((await reserve(h)).ok, true);
+});
+
+test('run on a drop already in use, the large video migration changes only how large a size can be', async () => {
+  const LARGE = '20261120000100_photo_drop_large_videos.sql';
+  const earlier = readdirSync(new URL('../../supabase/migrations/', import.meta.url)).filter((f) => f.endsWith('.sql') && f < LARGE);
+  assert.ok(earlier.includes('20261118000400_photo_drop_video.sql'));
+  const h = await createDb({ codes: false, migrations: earlier });
+  await h.setNow(NOW);
+  for (const [kind, code] of [['upload', UPLOAD], ['review', REVIEW], ['screen', SCREEN]]) await h.sql('select cal_private.drop_set_code($1, $2)', [kind, code]);
+
+  // The drop as it stands: photos waiting, approved and rejected, one on its way in, a video in
+  // the show and one on its way in, and the limits the organizers raised for a paid plan.
+  const a = await photo(h, { caption: 'Howard, class of 1998' });
+  const b = await photo(h, { email: 'grace@example.com', thumb: false });
+  const c = await photo(h, { email: 'katherine@example.com' });
+  const coming = await reserve(h, { email: 'slow@example.com' });
+  await set(h, [a], 'approved');
+  await set(h, [c], 'rejected');
+  await setting(h, 'drop_video_max_bytes', '1048576000');
+  await setting(h, 'drop_video_total_bytes', '10485760000');
+  await h.sql(`update storage.buckets set file_size_limit = 1048576000 where id = 'photo-drop'`);
+  const v = await clip(h, { bytes: 900000000, caption: 'The step show' });
+  const sending = await video(h, { bytes: 1048576000 });
+  assert.equal(sending.ok, true);
+  // Before: 2 GB and one byte can't even be asked for, whatever the setting says.
+  await setting(h, 'drop_video_max_bytes', String(GB5));
+  assert.equal((await run(h, 'drop_state()')).video_max_bytes, 2147483647);
+  await setting(h, 'drop_video_max_bytes', '1048576000');
+
+  const plain = (list) => list.map((r) => ({ ...r, bytes: Number(r.bytes) }));
+  const settings = () => h.sql(`select key, value from cal_private.config where key like 'drop\\_%' order by key`);
+  const buckets = () => h.sql(`select id, name, public, file_size_limit::text as file_size_limit, allowed_mime_types from storage.buckets order by id`);
+  const sources = () => h.sql(`select p.proname, md5(p.prosrc) as body, pg_get_function_identity_arguments(p.oid) as takes, p.prosecdef, p.proconfig, p.proacl::text as acl,
+      p.provolatile::text as volatile, p.prorettype::regtype::text as returns, p.prolang::text as lang, pg_get_userbyid(p.proowner) as owner
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'cal_private' and p.proname like 'drop\\_%' order by 1, 3`);
+  const was = {
+    rows: plain(await rows(h)), state: await run(h, 'drop_state()'), open: await run(h, 'drop_open($1)', [UPLOAD]),
+    list: await run(h, 'drop_review_list($1)', [REVIEW]), screen: await run(h, 'drop_screen_list($1)', [SCREEN]),
+    held: await videoHeld(h, sending.id), settings: await settings(), buckets: await buckets(), sources: await sources()
+  };
+  assert.equal(was.rows.length, 6);
+
+  await h.migrate(LARGE);
+  await h.migrate(LARGE); // safe to run again
+
+  // Every row, every answer, every setting and the bucket are as they were.
+  assert.deepEqual(plain(await rows(h)), was.rows);
+  assert.deepEqual(await run(h, 'drop_state()'), was.state);
+  assert.deepEqual(await run(h, 'drop_open($1)', [UPLOAD]), was.open);
+  assert.deepEqual(await run(h, 'drop_review_list($1)', [REVIEW]), was.list);
+  assert.deepEqual(await run(h, 'drop_screen_list($1)', [SCREEN]), was.screen);
+  assert.deepEqual(await videoHeld(h, sending.id), was.held);
+  assert.deepEqual(await settings(), was.settings);
+  assert.deepEqual(await buckets(), was.buckets);
+  // Only the two functions that held the ceiling have a new body. Who may run each one, who owns
+  // it, what it takes and returns, and how it runs are untouched.
+  const now = await sources();
+  assert.deepEqual(now.map(({ body, ...rest }) => rest), was.sources.map(({ body, ...rest }) => rest));
+  assert.deepEqual(now.filter((f, i) => f.body !== was.sources[i].body).map((f) => f.proname), ['drop_state', 'drop_video_reserve']);
+  assert.deepEqual(await h.sql(`select data_type from information_schema.columns where table_schema = 'public' and table_name = 'drop_photos' and column_name = 'bytes'`), [{ data_type: 'bigint' }]);
+  assert.deepEqual(await h.sql(`select conname from pg_constraint where conrelid = 'public.drop_photos'::regclass and conname = 'drop_photos_size_check'`), [{ conname: 'drop_photos_size_check' }]);
+
+  // What the deployed function asks for still works: a guest's photo, the video on its way in
+  // arriving, the review actions, the tidy-up, and Delete.
+  const next = await reserve(h, { email: 'new@example.com' });
+  assert.equal(next.ok, true);
+  assert.equal(await stored(h, next), true);
+  assert.deepEqual(await videoStored(h, sending), { ok: true, id: sending.id });
+  assert.deepEqual(await set(h, [b], 'approved'), { ok: true, changed: 1 });
+  assert.deepEqual((await run(h, 'drop_screen_list($1)', [SCREEN])).videos.map((x) => x.id).sort(), [v, sending.id].sort());
+  await h.setNow(minutes(15));
+  assert.deepEqual([...await run(h, 'drop_stale()')].sort(), [coming.path, coming.thumb_path].sort());
+  assert.deepEqual(await run(h, 'drop_review_delete($1, ($2::text)::uuid[])', [REVIEW, ids([c])]), { ok: true, deleted: 1 });
+
+  // And now the setting is taken at its word: a 5 GB video is added once the limits say so.
+  assert.equal((await video(h, { bytes: GB5 })).reason, 'size');
+  await setting(h, 'drop_video_max_bytes', String(GB5));
+  await setting(h, 'drop_video_total_bytes', String(5 * GB5));
+  assert.equal((await run(h, 'drop_state()')).video_max_bytes, GB5);
+  const big = await video(h, { bytes: GB5 });
+  assert.equal(big.ok, true);
+  assert.deepEqual(await videoStored(h, big), { ok: true, id: big.id });
+  assert.equal((await run(h, 'drop_state()')).video_bytes, 900000000 + 1048576000 + GB5);
 });
 
 test('no API role can run any of the functions, read a row, or reach the bucket', async () => {
