@@ -511,7 +511,14 @@ try {
     'the video itself, playing, with no sound unless sound is switched on');
   assert.equal(await text(live, '.sc-slide.is-clip.is-on .sc-caption'), 'The step show');
   await shot(live, 'slideshow-video', 0);
-  await live.waitForSelector('.sc-slide.is-on:not(.is-clip)', { timeout: 30000 }); // and a photo after it
+  // After the video the School Daze logo has the screen to itself (the page's own copy of it, at
+  // full size), the logo in the corner gives way to it, and then the photos carry on.
+  await live.waitForSelector('.sc-slide.is-card.is-on', { timeout: 30000 });
+  assert.deepEqual(await live.locator('.sc-slide.is-card.is-on img.sc-photo').evaluate((img) => [img.naturalWidth, img.naturalHeight, img.src.slice(0, 5)]), [930, 1142, 'blob:']);
+  await live.waitForFunction(() => getComputedStyle(document.querySelector('#sc-mark-logo')).opacity === '0');
+  await shot(live, 'slideshow-logo-card', 0);
+  await live.waitForSelector('.sc-slide.is-on:not(.is-clip):not(.is-card)', { timeout: 30000 }); // and a photo after it
+  await live.waitForFunction(() => getComputedStyle(document.querySelector('#sc-mark-logo')).opacity === '0.92');
 
   step('Back to waiting takes the video out of the show at the slideshow\'s next check');
   await review.waitForTimeout(SETTLE);

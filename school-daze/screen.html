@@ -42,7 +42,7 @@
 
     <section class="pd-card" id="sc-setup" hidden>
       <h2 class="pd-h2" id="sc-setup-title" tabindex="-1">Set up this screen</h2>
-      <p class="pd-note" id="sc-demo-note" hidden>This is the test. It plays six test pictures and doesn't ask the server for photos. <a id="sc-real-link" href="screen.html">Go to the real slideshow</a></p>
+      <p class="pd-note" id="sc-demo-note" hidden>This is the test. It plays six test pictures and doesn't ask the server for photos. It has no videos, so the logo that follows each video shows after every six pictures instead. <a id="sc-real-link" href="screen.html">Go to the real slideshow</a></p>
 
       <form id="sc-form" novalidate>
         <div class="pd-field" id="sc-code-field">
@@ -97,6 +97,16 @@
           </label>
         </fieldset>
 
+        <fieldset class="sc-set">
+          <legend class="pd-label">The logo after each video</legend>
+          <p class="pd-hint">When a video ends, the School Daze logo fills the screen for this long. Then the photos carry on.</p>
+          <div class="sc-choices">
+            <label class="sc-choice"><input type="radio" name="logo" value="10" checked /><span>10 seconds</span></label>
+            <label class="sc-choice"><input type="radio" name="logo" value="15" /><span>15 seconds</span></label>
+            <label class="sc-choice"><input type="radio" name="logo" value="0" /><span>Off</span></label>
+          </div>
+        </fieldset>
+
         <p class="pd-note bad" id="sc-err" role="alert" hidden></p>
         <button class="pd-btn primary block sc-start" type="submit" id="sc-start">Start the slideshow</button>
         <p class="sc-status" id="sc-status" role="status" aria-live="polite"></p>
@@ -110,7 +120,7 @@
         <li><strong>Move the mouse</strong> to see the controls. They hide again after 3 seconds.</li>
         <li><strong>Keys:</strong> Space pauses, and the show starts again by itself after 3 minutes. The arrow keys go back and forward. C turns captions on or off. F is full screen. Esc leaves full screen.</li>
         <li>A newly approved photo joins within a minute or two.</li>
-        <li><strong>Videos</strong> the committee has added play in between the photos. Each one plays only once all of it has reached this computer, so the first showing can take a few minutes. The controls say how many are ready.</li>
+        <li><strong>Videos</strong> the committee has added play in between the photos. Each one plays only once all of it has reached this computer, so the first showing can take a few minutes. The controls say how many are ready. After each video the School Daze logo fills the screen for a few seconds, and then the photos carry on.</li>
         <li><strong>If the connection drops, leave this page open.</strong> The photos keep playing. Don't reload the page until the connection is back.</li>
         <li id="sc-demo-line">No photos approved yet? <a id="sc-demo-link" href="screen.html?demo=1">Try this screen with test pictures</a></li>
       </ul>
@@ -125,7 +135,8 @@
 </div>
 
 <!-- The slideshow. The title card sits at the bottom of the pile, so whenever there is no photo to
-     show, it is what the screens show. assets/photo-drop/screen.js puts the photos over it. -->
+     show, it is what the screens show. assets/photo-drop/screen.js puts the photos over it, the
+     committee's videos in between them, and the logo's card after each video. -->
 <div class="sc-stage" id="sc-stage" tabindex="-1" aria-label="The School Daze slideshow" hidden>
   <div class="sc-title" id="sc-title">
     <img class="sc-title-flyer" src="../assets/photo-drop/school-daze-flyer.jpg" width="1080" height="1440" alt="" decoding="async" />

@@ -226,6 +226,12 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
 .sc-clip { background: #000; pointer-events: none; }
 .sc-slide.is-clip.is-on .sc-frame { animation: none; }
 
+/* The logo's card: after a video, the party's logo on the title card's ground, with the screen
+   to itself. screen.js gives the logo its size, like a photo's. */
+.sc-slide.is-card {
+  background: #000 radial-gradient(90% 75% at 50% -10%, rgba(212, 160, 23, 0.24), rgba(212, 160, 23, 0) 72%);
+}
+
 /* A gentle zoom while the photo shows. */
 .sc-slide.is-on .sc-frame { animation: sc-drift var(--sc-dwell, 12s) linear both; }
 .sc-stage.is-paused .sc-frame { animation-play-state: paused; }
@@ -289,6 +295,8 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   pointer-events: none;
 }
 .sc-stage.has-photo .sc-mark { opacity: 0.92; }
+/* Nor over the logo's card, which is the same logo at full size. */
+.sc-stage.has-photo.on-card .sc-mark { opacity: 0; }
 
 /* The controls: out of sight until the mouse moves. */
 .sc-bar {
