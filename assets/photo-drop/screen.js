@@ -326,7 +326,7 @@ function play(list, videos = null) {
   stage.classList.toggle('no-captions', !S.captions);
   // The zoom runs on through the fade to the next photo.
   stage.style.setProperty('--sc-dwell', `${S.seconds + 2.5}s`);
-  $('#sc-mark-text').hidden = !S.mark;
+  $('#sc-mark-logo').hidden = !S.mark;
   S.awake = false;
   labels();
   // Keys go to the show, not to the button that started it.
