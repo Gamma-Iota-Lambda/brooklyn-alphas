@@ -331,7 +331,9 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   letter-spacing: 0;
   color: var(--pd-on-gold);
 }
-.sc-give-steps strong { font-weight: 700; color: var(--pd-gold-hi); white-space: nowrap; }
+/* The note stays in one piece, on a line of its own if need be, and breaks only when the screen
+   is too narrow for it. */
+.sc-give-steps strong { display: inline-block; font-weight: 700; color: var(--pd-gold-hi); }
 .sc-give-line {
   margin: 4.2vmin 0 0;
   font-size: 2.7vmin;
@@ -339,9 +341,24 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   color: var(--pd-muted);
 }
 @media (orientation: portrait) {
+  /* An upright screen: the code above the words, as wide as the height left over allows. */
   .sc-give { flex-direction: column; gap: 5vmin; }
-  .sc-give-code { width: min(46vh, 80vw); }
+  .sc-give-code { width: min(80vw, 100vh - 98vmin); }
   .sc-give-text { max-width: 86vw; }
+}
+@media (min-aspect-ratio: 4/5) and (max-aspect-ratio: 3/2) {
+  /* Square, or nearly, and an old 4:3 projector: side by side, with the words a little smaller
+     so that it all fits, in a wide fallback font too. */
+  .sc-give { flex-direction: row; gap: 5vmin; }
+  .sc-give-text { max-width: none; }
+  .sc-give-title { font-size: 7vmin; }
+  .sc-give-cause { font-size: 3.8vmin; }
+  .sc-give-steps { gap: 1.8vmin; margin-top: 3.2vmin; }
+  .sc-give-steps li { font-size: 3.6vmin; }
+  .sc-give-line { margin-top: 3vmin; font-size: 2.5vmin; }
+}
+@media (orientation: portrait) and (min-aspect-ratio: 4/5) {
+  .sc-give-code { width: 36vw; }
 }
 
 /* A gentle zoom while the photo shows. */

@@ -523,7 +523,7 @@ try {
   assert.deepEqual(await live.locator('.sc-slide.is-give.is-on img.sc-give-qr').evaluate((img) => [img.naturalWidth, img.naturalHeight, img.src.slice(0, 5), img.alt]),
     [972, 972, 'blob:', 'The Zelle code for Gamma Iota Lambda Chapter']);
   assert.equal(await text(live, '.sc-slide.is-give.is-on .sc-give-cause'), 'Flatbush Building Collapse Emergency Relief Fund');
-  assert.equal(await text(live, '.sc-slide.is-give.is-on .sc-give-steps li:last-child'), 'In the note, write Building Collapse.');
+  assert.equal(await text(live, '.sc-slide.is-give.is-on .sc-give-steps li:last-child'), 'In the note, write Flatbush Building Collapse.');
   assert.equal(await live.evaluate(() => getComputedStyle(document.querySelector('#sc-mark-logo')).opacity), '0');
   await shot(live, 'slideshow-giving-slide', 1500);
   await live.waitForSelector('.sc-slide.is-on:not(.is-clip):not(.is-card):not(.is-give)', { timeout: 45000 }); // and a photo after it

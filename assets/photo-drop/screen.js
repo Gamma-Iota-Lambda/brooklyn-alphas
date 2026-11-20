@@ -868,6 +868,13 @@ function cardStep(slide, t) {
   if (slide.main === null && !slide.loadedAt && t - slide.startedAt >= LOGO_WAIT) slide.main = false;
   const at = landed(slide, t);
   if (at === '' || (at === 'in' && build(slide))) return;
+  // The picture the page holds can't be drawn: it is let go of, and fetched afresh at the
+  // card's next turn.
+  const held = slide.kind === 'give' ? code : logo;
+  if (slide.main === false && held.src) {
+    URL.revokeObjectURL(held.src);
+    held.src = '';
+  }
   cancel(slide);
   S.next = null;
 }
@@ -883,6 +890,8 @@ const code = { url: new URL('./school-daze-give-qr.png', import.meta.url).href, 
 
 // Is the slide on screen owed the giving slide after it? A video or the logo's card is, once.
 // A photo is when a round's worth of photos has gone by since the giving slide was last up.
+// (A show of one photo and no video never changes its photo, so it counts none: the giving
+// slide waits for a second photo or a video.)
 function owesGive(slide) {
   if (!S.give || slide.gave || slide.kind === 'give') return false;
   if (!isPhoto(slide)) return true;
@@ -1242,7 +1251,9 @@ function change(t) {
     S.since = 0;
     S.lastClip = slide.id;
   } else if (slide.kind === 'give') {
-    S.sinceGive = 0;
+    // The giving slide closes the round, with a video or without one. A video that comes ready
+    // later waits for the end of the next round, so the slide is never back early.
+    S.sinceGive = S.since = 0;
   } else if (slide.card) {
     S.since = 0; // the photos' count to the next video starts after the card
   } else {
