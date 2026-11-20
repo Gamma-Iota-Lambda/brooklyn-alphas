@@ -15,11 +15,14 @@ export class Storage {
   // url: the project's address (SUPABASE_URL). key: the secret key the function must send.
   // maxBytes and types: the bucket's rules, as the migration sets them. now: the clock links
   // run out by, and files are dated by.
-  constructor({ url, key, bucket = 'photo-drop', maxBytes = 52428800, types = ['image/jpeg', 'video/mp4', 'video/quicktime'], now = () => Date.now() }) {
+  constructor({ url, key, bucket = 'photo-drop', maxBytes = 52428800, types = ['image/jpeg', 'video/mp4', 'video/quicktime'], now = () => Date.now(), holdBytes = 1073741824 }) {
     this.url = String(url).replace(/\/+$/, '');
     this.key = key;
     this.bucket = bucket;
     this.maxBytes = maxBytes;
+    // A resumable upload larger than this is counted, not kept: its file is its stated size with
+    // no bytes behind it. So a test can send a video of several gigabytes.
+    this.holdBytes = holdBytes;
     this.types = types;
     this.now = now;
     this.calls = [];
@@ -195,7 +198,9 @@ export class Storage {
       const to = from + (Number.isInteger(asked.limit) ? asked.limit : 100);
       return reply(200, names.slice(from, to).map((name) => {
         const file = this.files.get(folder + name);
-        return { name, id: randomUUID(), created_at: new Date(file.created).toISOString(), metadata: { size: file.bytes.length, mimetype: file.type } };
+        // A test may say a file's size (file.size) without holding that many bytes, for a video
+        // too large to hold in a test.
+        return { name, id: randomUUID(), created_at: new Date(file.created).toISOString(), metadata: { size: file.size ?? file.bytes.length, mimetype: file.type } };
       }));
     }
 
@@ -281,10 +286,12 @@ export class Storage {
     if (this.failUpload === true || (this.failUpload instanceof RegExp && this.failUpload.test(upload.path))) return answer(500, {}, 'Internal Server Error');
     const last = upload.offset + body.length === upload.length;
     if (upload.offset + body.length > upload.length || (!last && body.length !== RESUMABLE_PIECE)) return answer(400, {}, 'Wrong piece size');
-    upload.parts.push(body);
+    const held = upload.length <= this.holdBytes;
+    if (held) upload.parts.push(body);
     upload.offset += body.length;
     if (last) {
-      this.files.set(upload.path, { bytes: Buffer.concat(upload.parts), type: upload.type, cacheControl: upload.cacheControl, created: this.now() });
+      const about = { type: upload.type, cacheControl: upload.cacheControl, created: this.now() };
+      this.files.set(upload.path, held ? { bytes: Buffer.concat(upload.parts), ...about } : { bytes: Buffer.alloc(0), size: upload.length, ...about });
       this.resumables.delete(id);
     }
     if (this.loseAnswers > 0) {

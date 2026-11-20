@@ -65,11 +65,13 @@ from public.drop_photos group by status order by status;
 --                            limit (Storage, then Settings, in the dashboard), so change them
 --                            together:
 --                            update storage.buckets set file_size_limit = 52428800 where id = 'photo-drop';
---    For School Daze the live project is on the Pro plan, with 1000 MB a video and 10000 MB
---    together:
---    update storage.buckets set file_size_limit = 1048576000 where id = 'photo-drop';
---    update cal_private.config set value = '1048576000' where key = 'drop_video_max_bytes';
---    update cal_private.config set value = '10485760000' where key = 'drop_video_total_bytes';
+--    For School Daze the live project is on the Pro plan, with 5120 MB (5 GB) a video and
+--    25600 MB (25 GB) together. A video over 2 GB needs
+--    migrations/20261120000100_photo_drop_large_videos.sql to have run, and the global file size
+--    limit set to 5 GB or more:
+--    update storage.buckets set file_size_limit = 5368709120 where id = 'photo-drop';
+--    update cal_private.config set value = '5368709120' where key = 'drop_video_max_bytes';
+--    update cal_private.config set value = '26843545600' where key = 'drop_video_total_bytes';
 -- update cal_private.config set value = '8' where key = 'drop_per_person';
 -- update cal_private.config set value = '60' where key = 'drop_per_ip_day';
 

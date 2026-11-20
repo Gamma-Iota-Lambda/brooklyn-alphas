@@ -1389,6 +1389,52 @@ test('video-done puts a video in the show only when Storage holds the whole file
   assert.deepEqual(s.logs, []);
 });
 
+test('a video of 5 GB: with the limits raised, its size goes through every step as the number it is', async () => {
+  const s = await setup();
+  const GB5 = 5368709120; // past what a 32-bit number holds, signed or not
+  const TOO_LARGE_5 = { error: 'That video is too large. One video can be 5120 MB at most.', reason: 'size' };
+  await s.h.sql(`update cal_private.config set value = '${GB5}' where key = 'drop_video_max_bytes'`);
+  await s.h.sql(`update cal_private.config set value = '${5 * GB5}' where key = 'drop_video_total_bytes'`);
+  // The stand-in is told a file's size without being handed that many bytes.
+  const stand = (path, size, type = 'video/mp4') => s.storage.files.set(path, { bytes: Buffer.alloc(0), size, type, cacheControl: 'max-age=31536000', created: s.storage.now() });
+
+  // The review page hears the limits as they are, and one byte over is turned away in megabytes.
+  const limits = (await s.review('list')).body.settings;
+  assert.deepEqual([limits.videoMaxBytes, limits.videoTotalBytes], [GB5, 5 * GB5]);
+  is(await s.video({ bytes: GB5 + 1 }), 400, TOO_LARGE_5);
+  is(await s.video({ bytes: 2 ** 53 }), 400, UNREADABLE, 'a size no number can hold exactly');
+
+  // A place is held for exactly 5 GB, and the row keeps that size.
+  const start = await s.video({ bytes: GB5, seconds: 1500 });
+  assert.equal(start.status, 200, JSON.stringify(start.body));
+  const { id } = start.body;
+  assert.equal(start.body.bytes, GB5);
+  assert.deepEqual(await s.rows('select bytes::text as bytes, status from public.drop_photos'), [{ bytes: String(GB5), status: 'sending' }]);
+
+  // A byte short, the file is not the one the place was held for.
+  stand(`videos/${id}.mp4`, GB5 - 1);
+  is(await s.review('video-done', { id, by: 'Eugene Aiken' }), 400, NOT_WHOLE, 'a byte short of 5 GB');
+  assert.deepEqual(await s.rows(), []);
+
+  // The whole file: the video is in the show, listed and handed to the slideshow with its size.
+  const again = (await s.video({ bytes: GB5, seconds: 1500 })).body;
+  stand(`videos/${again.id}.mp4`, GB5);
+  const done = await s.review('video-done', { id: again.id, by: 'Eugene Aiken' });
+  assert.deepEqual([done.status, done.body.ok, done.body.id], [200, true, again.id]);
+  const list = (await s.review('list')).body;
+  assert.deepEqual(list.photos.map((p) => [p.id, p.kind, p.status, p.bytes, p.seconds]), [[again.id, 'video', 'approved', GB5, 1500]]);
+  assert.deepEqual([list.settings.videos, list.settings.videoBytes], [1, GB5]);
+  const shown = (await s.post('screen', { code: SCREEN })).body;
+  assert.deepEqual(shown.videos.map((v) => [v.id, v.bytes, v.seconds]), [[again.id, GB5, 1500]]);
+
+  // The total is kept past 4 GB too: four more fit in 25 GB, and then nothing does.
+  for (let i = 0; i < 4; i += 1) assert.equal((await s.video({ bytes: GB5 })).status, 200);
+  is(await s.video({ bytes: 1 }), 409, {
+    error: "That video doesn't fit. All the videos together can take 25600 MB, and 25600 MB is in use. Delete one to add another.", reason: 'full'
+  });
+  assertQuietLogs(s);
+});
+
 test('a poster that is not a small JPEG is taken back out, and the video goes in without one', async () => {
   const s = await setup();
   const cases = {
