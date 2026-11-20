@@ -517,7 +517,16 @@ try {
   assert.deepEqual(await live.locator('.sc-slide.is-card.is-on img.sc-photo').evaluate((img) => [img.naturalWidth, img.naturalHeight, img.src.slice(0, 5)]), [930, 1142, 'blob:']);
   await live.waitForFunction(() => getComputedStyle(document.querySelector('#sc-mark-logo')).opacity === '0');
   await shot(live, 'slideshow-logo-card', 0);
-  await live.waitForSelector('.sc-slide.is-on:not(.is-clip):not(.is-card)', { timeout: 30000 }); // and a photo after it
+  // The giving slide closes the round: the chapter's Zelle code (the page's own copy again) with
+  // how to give, and still no logo in the corner. Then the photos carry on.
+  await live.waitForSelector('.sc-slide.is-give.is-on', { timeout: 30000 });
+  assert.deepEqual(await live.locator('.sc-slide.is-give.is-on img.sc-give-qr').evaluate((img) => [img.naturalWidth, img.naturalHeight, img.src.slice(0, 5), img.alt]),
+    [972, 972, 'blob:', 'The Zelle code for Gamma Iota Lambda Chapter']);
+  assert.equal(await text(live, '.sc-slide.is-give.is-on .sc-give-cause'), 'Flatbush Building Collapse Emergency Relief Fund');
+  assert.equal(await text(live, '.sc-slide.is-give.is-on .sc-give-steps li:last-child'), 'In the note, write Building Collapse.');
+  assert.equal(await live.evaluate(() => getComputedStyle(document.querySelector('#sc-mark-logo')).opacity), '0');
+  await shot(live, 'slideshow-giving-slide', 1500);
+  await live.waitForSelector('.sc-slide.is-on:not(.is-clip):not(.is-card):not(.is-give)', { timeout: 45000 }); // and a photo after it
   await live.waitForFunction(() => getComputedStyle(document.querySelector('#sc-mark-logo')).opacity === '0.92');
 
   step('Back to waiting takes the video out of the show at the slideshow\'s next check');

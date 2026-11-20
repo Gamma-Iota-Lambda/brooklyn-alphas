@@ -21,7 +21,8 @@
 // videos" below has the rules. With no videos in the show, none of it does anything.
 //
 // After each video the party's logo has the screen to itself for a few seconds, and then the
-// photos carry on. "The logo's card" below has the rules.
+// photos carry on. "The logo's card" below has the rules. The giving slide, with the chapter's
+// Zelle code, closes each round: "The giving slide" below.
 import { READY, screen, codeFromAddress } from './api.js';
 import { createClips } from './clips.js';
 
@@ -62,6 +63,8 @@ const LOGO_ROOM = 0.8; // the logo takes no more than this share of the screen i
 const LOGO_WAIT = 4000; // the logo's picture is in this page already: a card not made from it by now is left out
 const LOGO_TIMEOUT = 30000; // how long the page waits for its own copy of that picture
 const LOGO_ID = '*logo'; // the card's place among the slides. No photo or video has this id
+const GIVE_SECONDS = [20, 30, 0]; // the choices for how long the giving slide stays up. 0: no giving slide
+const GIVE_ID = '*give'; // the giving slide's place among the slides
 const PAUSE_MAX = 180000; // a pause ends by itself after this: nobody is at this computer all night
 // A picture with nothing in it. An Image that is let go of is given this in place of its photo:
 // that stops the download, if it is still under way, and answers anything waiting on it. Just
@@ -154,6 +157,8 @@ const S = {
   every: 10, // a video plays after this many photos
   sound: false, // the videos play with their sound
   logo: 10, // after a video, the logo's card stays up this many seconds. 0: no card
+  give: 20, // the giving slide stays up this many seconds at the end of each round. 0: no giving slide
+  sinceGive: 0, // photos shown since the giving slide was last up
   since: 0, // photos shown since a video last went up
   began: false, // something has been on screen since the show started
   clipLine: [], // the videos still to have their turn this round
@@ -198,7 +203,8 @@ const S = {
 // frame, cap, w, h, tilt, removeAt }. back: it was asked for with Previous. cached: the browser
 // had the photo already when this load began. main: null while the photo loads, then true or
 // false. hasBack: the same for its blurred background. A slide is a photo unless it says
-// otherwise: `video` for one of the committee's videos, `card` for the logo's card.
+// otherwise: `video` for one of the committee's videos, `card` for a slide the page makes itself:
+// the logo's card (kind 'logo') or the giving slide (kind 'give').
 const isPhoto = (slide) => !slide.video && !slide.card;
 
 // ---------------------------------------------------------------- the setup card
@@ -245,6 +251,7 @@ function fillForm() {
   for (const el of document.querySelectorAll('#sc-form input[name="every"]')) el.checked = Number(el.value) === S.every;
   $('#sc-sound').checked = S.sound;
   for (const el of document.querySelectorAll('#sc-form input[name="logo"]')) el.checked = Number(el.value) === S.logo;
+  for (const el of document.querySelectorAll('#sc-form input[name="give"]')) el.checked = Number(el.value) === S.give;
 }
 
 function readForm() {
@@ -257,9 +264,10 @@ function readForm() {
   S.every = EVERY.includes(Number(chosen('every'))) ? Number(chosen('every')) : 10;
   S.sound = $('#sc-sound').checked;
   S.logo = LOGO_SECONDS.includes(Number(chosen('logo'))) ? Number(chosen('logo')) : 10;
+  S.give = GIVE_SECONDS.includes(Number(chosen('give'))) ? Number(chosen('give')) : 20;
 }
 
-const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound, logo: S.logo });
+const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound, logo: S.logo, give: S.give });
 
 // "Start the slideshow". Asks the server once before the stage goes up, so a wrong code or a dead
 // connection is found while someone is still standing at the computer. `resumed`: the page was
@@ -319,6 +327,7 @@ function play(list, videos = null) {
   S.tried = new Set();
   S.kept = new Set();
   S.since = 0;
+  S.sinceGive = 0;
   S.began = false;
   S.clipLine = [];
   S.lastClip = '';
@@ -342,7 +351,8 @@ function play(list, videos = null) {
   // The zoom runs on through the fade to the next photo.
   stage.style.setProperty('--sc-dwell', `${S.seconds + 2.5}s`);
   $('#sc-mark-logo').hidden = !S.mark;
-  fetchLogo();
+  hold(logo);
+  hold(code);
   S.awake = false;
   labels();
   // Keys go to the show, not to the button that started it.
@@ -758,11 +768,11 @@ function clipMs(slide) {
 }
 
 // Plays the video on screen from its start. With nothing else to show, it goes round and round
-// (with the logo's card switched on, it takes turns with the card instead).
+// (with the logo's card or the giving slide switched on, it takes turns with those instead).
 // A browser that won't play sound without a click plays it silent.
 function startClip(slide) {
   const v = slide.v;
-  v.loop = !S.ids.length && clips.ready().length < 2 && !S.logo;
+  v.loop = !S.ids.length && clips.ready().length < 2 && !S.logo && !S.give;
   try { v.currentTime = 0; } catch { /* it starts from where it is */ }
   const go = v.play();
   if (go && go.catch) {
@@ -807,24 +817,24 @@ function clipNote() {
 // page never got that picture, there is no card and the photos follow the video as they always
 // did. The test (screen.html?demo=1) has no videos: there the card follows each pass through
 // the test pictures, so the venue can see it on its own screens.
-const LOGO_URL = new URL('./school-daze-logo-large.png', import.meta.url).href;
-const logo = { src: '', asking: false };
+const logo = { url: new URL('./school-daze-logo-large.png', import.meta.url).href, src: '', asking: false };
 
-// Fetches the page's own copy of the logo. Asked again at a card's turn while it has none.
-function fetchLogo() {
-  if (logo.src || logo.asking) return;
-  logo.asking = true;
+// Fetches the page's own copy of a picture (the logo, or the giving slide's code). Asked again
+// at that slide's turn while the page has none.
+function hold(picture) {
+  if (picture.src || picture.asking) return;
+  picture.asking = true;
   const stop = new AbortController();
   const timer = setTimeout(() => stop.abort(), LOGO_TIMEOUT);
-  fetch(LOGO_URL, { signal: stop.signal })
-    .then((answer) => (answer.ok ? answer.blob() : Promise.reject(new Error('no logo'))))
+  fetch(picture.url, { signal: stop.signal })
+    .then((answer) => (answer.ok ? answer.blob() : Promise.reject(new Error('no picture'))))
     .then((blob) => {
-      if (blob.size && blob.type.startsWith('image/') && !logo.src) logo.src = URL.createObjectURL(blob);
+      if (blob.size && blob.type.startsWith('image/') && !picture.src) picture.src = URL.createObjectURL(blob);
     })
-    .catch(() => { /* asked for again at the next card's turn */ })
+    .catch(() => { /* asked for again at the slide's next turn */ })
     .then(() => {
       clearTimeout(timer);
-      logo.asking = false;
+      picture.asking = false;
     });
 }
 
@@ -834,13 +844,15 @@ function owesCard(slide) {
   return !!slide.video || (DEMO && S.ids.length > 0 && S.since >= S.ids.length);
 }
 
-// Starts getting the logo's card ready: a slide with the logo where a photo has its picture.
-function cardSlide(t) {
-  const slide = { id: LOGO_ID, card: true, back: false, fill: false, cached: true, ready: false, main: null, mainAt: 0, loadedAt: 0, hasBack: false, startedAt: t, img: new Image(), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
-  slide.img.alt = '';
+// Starts getting a card ready: a slide with the page's own picture where a photo has its
+// picture. `kind` is 'logo' for the logo's card or 'give' for the giving slide.
+function cardSlide(t, kind) {
+  const give = kind === 'give';
+  const slide = { id: give ? GIVE_ID : LOGO_ID, card: true, kind, back: false, fill: false, cached: true, ready: false, main: null, mainAt: 0, loadedAt: 0, hasBack: false, startedAt: t, img: new Image(), backImg: null, el: null, frame: null, cap: null, w: 0, h: 0, tilt: 0, removeAt: 0 };
+  slide.img.alt = give ? 'The Zelle code for Gamma Iota Lambda Chapter' : '';
   slide.img.decoding = 'async';
   slide.img.addEventListener('load', () => { slide.loadedAt = clock(); });
-  slide.img.src = logo.src;
+  slide.img.src = (give ? code : logo).src;
   arrived(slide.img).then((ok) => {
     if (slide.main !== null) return; // tick() stopped waiting for this answer
     slide.main = ok;
@@ -858,6 +870,52 @@ function cardStep(slide, t) {
   if (at === '' || (at === 'in' && build(slide))) return;
   cancel(slide);
   S.next = null;
+}
+
+// ---------------------------------------------------------------- the giving slide
+// The chapter's Zelle code and how to give, for S.give seconds, at the end of each round: after
+// a video and its logo, or, when no video ended the round, after every S.every photos. It is a
+// card like the logo's: the page holds its own copy of the code from the start, and with no
+// copy there is no slide that round. Its words are in screen.html (the template #sc-give), and
+// screen.css lays it out. It holds still, so a phone can read the code. In the test, where a
+// round is the six test pictures, it follows the logo's card.
+const code = { url: new URL('./school-daze-give-qr.png', import.meta.url).href, src: '', asking: false };
+
+// Is the slide on screen owed the giving slide after it? A video or the logo's card is, once.
+// A photo is when a round's worth of photos has gone by since the giving slide was last up.
+function owesGive(slide) {
+  if (!S.give || slide.gave || slide.kind === 'give') return false;
+  if (!isPhoto(slide)) return true;
+  const round = DEMO ? S.ids.length : S.every;
+  return round > 0 && S.sinceGive >= round;
+}
+
+// Lines the giving slide up after the slide on screen. It is asked for once: with no code to
+// make it from, the show goes on without it this round.
+function giveNext(t) {
+  S.now.gave = true;
+  if (code.src) S.next = cardSlide(t, 'give');
+  else hold(code);
+}
+
+// Puts the giving slide in the page, see-through: the words from screen.html around the code.
+function buildGive(slide) {
+  const mold = $('#sc-give');
+  slide.w = slide.img.naturalWidth;
+  slide.h = slide.img.naturalHeight;
+  if (!mold || !slide.w || !slide.h) return false;
+  const el = document.createElement('div');
+  el.className = 'sc-slide is-give';
+  el.dataset.id = slide.id;
+  el.append(mold.content.cloneNode(true));
+  const place = $('.sc-give-code', el);
+  if (!place) return false;
+  slide.img.className = 'sc-give-qr';
+  place.prepend(slide.img);
+  slide.el = el;
+  $('#sc-slides').append(el);
+  slide.ready = true;
+  return true;
 }
 
 // ---------------------------------------------------------------- the clock
@@ -933,9 +991,13 @@ function tick() {
   // for once: with no picture to make it from, the photos follow the video instead.
   if (!S.next && S.now && owesCard(S.now)) {
     S.now.carded = true;
-    if (logo.src) S.next = cardSlide(t);
-    else fetchLogo();
+    if (logo.src) S.next = cardSlide(t, 'logo');
+    else hold(logo);
   }
+
+  // The giving slide closes the round: after the logo's card, or after a video that has no
+  // card to follow it.
+  if (!S.next && S.now && !isPhoto(S.now) && owesGive(S.now)) giveNext(t);
 
   // A video's turn comes round every so many photos. It needs nothing from the network. Its
   // turn waits while the page is behind another tab, where a browser may not load it at all:
@@ -944,6 +1006,9 @@ function tick() {
     const id = dueClip(t);
     if (id) S.next = clipSlide(id, t);
   }
+
+  // A round of photos with no video to end it: the giving slide closes it by itself.
+  if (!S.next && S.now && isPhoto(S.now) && owesGive(S.now)) giveNext(t);
 
   // Start getting the one after ready. The pause after a failed load is for the network's
   // sake: a photo the browser has needs none. On a slow connection with no photo in hand to go
@@ -970,7 +1035,7 @@ function tick() {
 
   // A video that has played to its end with nothing to follow it plays again.
   if (S.now && S.now.video && !S.next && !S.paused && !S.now.v.loop && t >= S.dueAt + PATIENCE) {
-    S.now.carded = false; // this showing is owed the logo's card too, if the card can be made by now
+    S.now.carded = S.now.gave = false; // this showing is owed its cards too, if they can be made by now
     startClip(S.now);
     S.dueAt = t + clipMs(S.now);
   }
@@ -1086,6 +1151,7 @@ function say(slide, caption) {
 // Puts a loaded photo in the page, see-through, on top of the one showing. False when the
 // picture turned out to have no size.
 function build(slide) {
+  if (slide.kind === 'give') return buildGive(slide);
   const photo = slide.card ? { caption: '' } : slide.video ? clips.get(slide.id) : S.photos.get(slide.id);
   const picture = slide.video ? slide.v : slide.img;
   slide.w = slide.video ? picture.videoWidth : picture.naturalWidth;
@@ -1126,7 +1192,7 @@ function build(slide) {
 function layout(slide) {
   const W = stage.clientWidth;
   const H = stage.clientHeight;
-  if (!W || !H || !slide.el) return;
+  if (!W || !H || !slide.el || slide.kind === 'give') return; // screen.css alone sizes the giving slide
   const most = MAX_UPSCALE / (window.devicePixelRatio || 1);
   const fit = Math.min(W / slide.w, H / slide.h);
   const print = isPhoto(slide) && fit > most;
@@ -1175,10 +1241,13 @@ function change(t) {
   if (slide.video) {
     S.since = 0;
     S.lastClip = slide.id;
+  } else if (slide.kind === 'give') {
+    S.sinceGive = 0;
   } else if (slide.card) {
     S.since = 0; // the photos' count to the next video starts after the card
   } else {
     S.since += 1;
+    S.sinceGive += 1;
     S.shown.delete(slide.id); // so the set stays in the order the photos were last on screen
     S.shown.add(slide.id);
     S.ready.delete(slide.id);
@@ -1189,8 +1258,8 @@ function change(t) {
   void slide.el.offsetWidth; // so the fade starts from clear, even for a photo that only just arrived
   slide.el.classList.add('is-on');
   stage.classList.add('has-photo');
-  stage.classList.toggle('on-card', !!slide.card); // the logo in the corner gives way to the card
-  S.left = slide.video ? clipMs(slide) : (slide.card ? S.logo : S.seconds) * 1000;
+  stage.classList.toggle('on-card', !!slide.card); // the logo in the corner gives way to the card, and to the giving slide
+  S.left = slide.video ? clipMs(slide) : (slide.kind === 'give' ? S.give : slide.card ? S.logo : S.seconds) * 1000;
   S.dueAt = t + S.left;
   S.skip = false;
   if (slide.video) startClip(slide);
@@ -1488,8 +1557,10 @@ function start() {
   S.every = EVERY.includes(kept.every) ? kept.every : 10;
   S.sound = kept.sound === true;
   S.logo = LOGO_SECONDS.includes(kept.logo) ? kept.logo : 10;
+  S.give = GIVE_SECONDS.includes(kept.give) ? kept.give : 20;
   fillForm();
-  fetchLogo();
+  hold(logo);
+  hold(code);
   if (DEMO) {
     $('#sc-code-field').hidden = true;
     $('#sc-demo-note').hidden = false;

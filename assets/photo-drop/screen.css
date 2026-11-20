@@ -232,6 +232,118 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   background: #000 radial-gradient(90% 75% at 50% -10%, rgba(212, 160, 23, 0.24), rgba(212, 160, 23, 0) 72%);
 }
 
+/* The giving slide: the chapter's Zelle code and how to give, on the title card's ground. It
+   holds still, so a phone can read the code, and the code's squares stay sharp at any size.
+   Everything is sized from the screen. */
+.sc-slide.is-give {
+  background: #000 radial-gradient(90% 75% at 50% -10%, rgba(212, 160, 23, 0.24), rgba(212, 160, 23, 0) 72%);
+}
+.sc-give {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6vmin;
+  width: 100%;
+  height: 100%;
+  padding: 5vmin 6vmin;
+}
+/* The code is as wide as the screen allows beside the words. The line under it wraps inside
+   that width. */
+.sc-give-code { flex: none; width: min(68vh, 42vw); text-align: center; }
+.sc-give-qr {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 1.4vmin;
+  background: #fff;
+  box-shadow: 0 2.4vmin 7vmin rgba(0, 0, 0, 0.7);
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+.sc-give-payee {
+  margin: 2.4vmin 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 2.8vmin;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  color: var(--pd-muted);
+}
+.sc-give-payee strong { font-weight: 700; color: var(--pd-text); }
+.sc-give-text { min-width: 0; max-width: 84vmin; }
+.sc-give-title {
+  margin: 0;
+  font-family: var(--pd-font-block);
+  font-size: 9vmin;
+  font-weight: 400;
+  line-height: 0.98;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--pd-gold);
+  background: linear-gradient(180deg, #fff3bf 0%, var(--pd-gold-hi) 28%, var(--pd-gold) 62%, var(--pd-gold-deep) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.sc-give-cause {
+  margin: 2.2vmin 0 0;
+  font-family: var(--pd-font-label);
+  font-size: 4.4vmin;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.12;
+  text-transform: uppercase;
+  text-wrap: balance;
+}
+.sc-give-steps {
+  display: grid;
+  gap: 2.4vmin;
+  margin: 4.6vmin 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: sc-give;
+}
+.sc-give-steps li {
+  position: relative;
+  min-height: 5.4vmin;
+  padding: 0.5vmin 0 0 7.6vmin;
+  font-family: var(--pd-font-label);
+  font-size: 4.2vmin;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.12;
+  counter-increment: sc-give;
+}
+.sc-give-steps li::before {
+  content: counter(sc-give);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 5.4vmin;
+  height: 5.4vmin;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--pd-gold-hi), var(--pd-gold));
+  font-size: 3.4vmin;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--pd-on-gold);
+}
+.sc-give-steps strong { font-weight: 700; color: var(--pd-gold-hi); white-space: nowrap; }
+.sc-give-line {
+  margin: 4.2vmin 0 0;
+  font-size: 2.7vmin;
+  line-height: 1.3;
+  color: var(--pd-muted);
+}
+@media (orientation: portrait) {
+  .sc-give { flex-direction: column; gap: 5vmin; }
+  .sc-give-code { width: min(46vh, 80vw); }
+  .sc-give-text { max-width: 86vw; }
+}
+
 /* A gentle zoom while the photo shows. */
 .sc-slide.is-on .sc-frame { animation: sc-drift var(--sc-dwell, 12s) linear both; }
 .sc-stage.is-paused .sc-frame { animation-play-state: paused; }
@@ -295,7 +407,7 @@ html.sc-playing, html.sc-playing body { height: 100%; overflow: hidden; }
   pointer-events: none;
 }
 .sc-stage.has-photo .sc-mark { opacity: 0.92; }
-/* Nor over the logo's card, which is the same logo at full size. */
+/* Nor over the logo's card, which is the same logo at full size, nor over the giving slide. */
 .sc-stage.has-photo.on-card .sc-mark { opacity: 0; }
 
 /* The controls: out of sight until the mouse moves. */

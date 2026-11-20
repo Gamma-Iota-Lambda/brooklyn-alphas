@@ -42,7 +42,7 @@
 
     <section class="pd-card" id="sc-setup" hidden>
       <h2 class="pd-h2" id="sc-setup-title" tabindex="-1">Set up this screen</h2>
-      <p class="pd-note" id="sc-demo-note" hidden>This is the test. It plays six test pictures and doesn't ask the server for photos. It has no videos, so the logo that follows each video shows after every six pictures instead. <a id="sc-real-link" href="screen.html">Go to the real slideshow</a></p>
+      <p class="pd-note" id="sc-demo-note" hidden>This is the test. It plays six test pictures and doesn't ask the server for photos. It has no videos, so the logo that follows each video shows after every six pictures instead, and the giving slide after the logo. <a id="sc-real-link" href="screen.html">Go to the real slideshow</a></p>
 
       <form id="sc-form" novalidate>
         <div class="pd-field" id="sc-code-field">
@@ -107,6 +107,16 @@
           </div>
         </fieldset>
 
+        <fieldset class="sc-set">
+          <legend class="pd-label">The giving slide</legend>
+          <p class="pd-hint">The chapter's Zelle code for the Flatbush Building Collapse Emergency Relief Fund. It shows after each video and its logo, or after every round of photos when no video is ready, for this long.</p>
+          <div class="sc-choices">
+            <label class="sc-choice"><input type="radio" name="give" value="20" checked /><span>20 seconds</span></label>
+            <label class="sc-choice"><input type="radio" name="give" value="30" /><span>30 seconds</span></label>
+            <label class="sc-choice"><input type="radio" name="give" value="0" /><span>Off</span></label>
+          </div>
+        </fieldset>
+
         <p class="pd-note bad" id="sc-err" role="alert" hidden></p>
         <button class="pd-btn primary block sc-start" type="submit" id="sc-start">Start the slideshow</button>
         <p class="sc-status" id="sc-status" role="status" aria-live="polite"></p>
@@ -121,6 +131,7 @@
         <li><strong>Keys:</strong> Space pauses, and the show starts again by itself after 3 minutes. The arrow keys go back and forward. C turns captions on or off. F is full screen. Esc leaves full screen.</li>
         <li>A newly approved photo joins within a minute or two.</li>
         <li><strong>Videos</strong> the committee has added play in between the photos. Each one plays only once all of it has reached this computer, so the first showing can take a few minutes. The controls say how many are ready. After each video the School Daze logo fills the screen for a few seconds, and then the photos carry on.</li>
+        <li><strong>The giving slide</strong> shows the chapter's Zelle code for the Flatbush Building Collapse Emergency Relief Fund. It comes after each video and its logo, or after every round of photos when no video is ready.</li>
         <li><strong>If the connection drops, leave this page open.</strong> The photos keep playing. Don't reload the page until the connection is back.</li>
         <li id="sc-demo-line">No photos approved yet? <a id="sc-demo-link" href="screen.html?demo=1">Try this screen with test pictures</a></li>
       </ul>
@@ -136,7 +147,8 @@
 
 <!-- The slideshow. The title card sits at the bottom of the pile, so whenever there is no photo to
      show, it is what the screens show. assets/photo-drop/screen.js puts the photos over it, the
-     committee's videos in between them, and the logo's card after each video. -->
+     committee's videos in between them, the logo's card after each video, and the giving slide
+     at the end of each round. -->
 <div class="sc-stage" id="sc-stage" tabindex="-1" aria-label="The School Daze slideshow" hidden>
   <div class="sc-title" id="sc-title">
     <img class="sc-title-flyer" src="../assets/photo-drop/school-daze-flyer.jpg" width="1080" height="1440" alt="" decoding="async" />
@@ -161,6 +173,26 @@
     <span class="sc-bar-note" id="sc-clips" role="status" hidden></span>
   </div>
 </div>
+
+<!-- The giving slide's words. screen.js copies this into the show and puts the chapter's Zelle
+     code (assets/photo-drop/school-daze-give-qr.png) at the top of sc-give-code. -->
+<template id="sc-give">
+  <div class="sc-give">
+    <div class="sc-give-code">
+      <p class="sc-give-payee">Zelle to <strong>Gamma Iota Lambda Chapter</strong></p>
+    </div>
+    <div class="sc-give-text">
+      <p class="sc-give-title">Give tonight</p>
+      <p class="sc-give-cause">Flatbush Building Collapse Emergency Relief Fund</p>
+      <ol class="sc-give-steps">
+        <li>Open your bank's app and choose Zelle.</li>
+        <li>Scan this code.</li>
+        <li>In the note, write <strong>Building Collapse</strong>.</li>
+      </ol>
+      <p class="sc-give-line">The chapter sends every gift with that note to the relief fund.</p>
+    </div>
+  </div>
+</template>
 
   <script>
     // If the page's own script never arrives (a weak signal, a very old browser), say so
