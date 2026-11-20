@@ -155,6 +155,7 @@ const S = {
   sound: false, // the videos play with their sound
   logo: 10, // after a video, the logo's card stays up this many seconds. 0: no card
   since: 0, // photos shown since a video last went up
+  began: false, // something has been on screen since the show started
   clipLine: [], // the videos still to have their turn this round
   lastClip: '', // the video that played last, so a new round doesn't open with it again
   photos: new Map(), // id -> { id, url, thumbUrl, caption }: the approved photos, as last heard
@@ -318,6 +319,7 @@ function play(list, videos = null) {
   S.tried = new Set();
   S.kept = new Set();
   S.since = 0;
+  S.began = false;
   S.clipLine = [];
   S.lastClip = '';
   S.old = S.now = S.next = S.trying = null;
@@ -667,15 +669,20 @@ const quiet = () => !S.trying && (!S.next || S.next.ready || !isPhoto(S.next));
 function dueClip(t) {
   const ready = clips.ready();
   if (!ready.length) return '';
+  // The show opens with a photo when it has photos. A video that is on this computer already
+  // (the show was stopped and started again) waits its turn, unless the photos aren't arriving.
+  if (!S.began && S.ids.length && !S.misses && !S.slow) return '';
   const on = S.now ? S.now.id : '';
   const stuck = !!S.now && !S.paused && t >= S.dueAt + PATIENCE;
   if (S.now && !stuck) {
     if (S.ids.length && S.now.video) return ''; // not two videos in a row while there are photos
     if (S.ids.length && S.since < Math.min(S.every, S.ids.length)) return '';
   }
-  // The logo's card has just followed a video. However late the next photo is, another video
-  // doesn't cut in ahead of a photo the browser has.
-  if (S.now && S.now.card && spare()) return '';
+  // The logo's card has just followed a video. Another video doesn't cut in ahead of a photo
+  // the browser has, however late that photo is, short of LOAD_TIMEOUT: then the browser
+  // doesn't have it after all, and a video is better than the card standing for minutes.
+  const veryLate = !!S.now && !S.paused && t >= S.dueAt + LOAD_TIMEOUT;
+  if (S.now && S.now.card && spare() && !veryLate) return '';
   S.clipLine = S.clipLine.filter((id) => ready.includes(id));
   if (!S.clipLine.some((id) => id !== on)) {
     S.clipLine = ready.slice();
@@ -950,6 +957,10 @@ function tick() {
     else S.skip = false; // there is nothing else to change to
   }
 
+  // The logo's card has had its time and nothing is left to follow it: no photos, and the last
+  // video has been taken out of the show. The screens go back to the title card.
+  if (S.now && S.now.card && !S.next && !S.paused && t >= S.dueAt && !S.ids.length && !clips.ready().length) clear();
+
   // On a slow connection, while the show goes round the photos the browser has, one that it
   // doesn't have is tried behind the scenes.
   if (S.slow && !S.trying && t >= S.tryAt && S.ready.size < AHEAD && spare()) {
@@ -959,6 +970,7 @@ function tick() {
 
   // A video that has played to its end with nothing to follow it plays again.
   if (S.now && S.now.video && !S.next && !S.paused && !S.now.v.loop && t >= S.dueAt + PATIENCE) {
+    S.now.carded = false; // this showing is owed the logo's card too, if the card can be made by now
     startClip(S.now);
     S.dueAt = t + clipMs(S.now);
   }
@@ -1159,6 +1171,7 @@ function change(t) {
     }
   }
   S.now = slide;
+  S.began = true;
   if (slide.video) {
     S.since = 0;
     S.lastClip = slide.id;
