@@ -268,7 +268,8 @@ function readForm() {
   S.give = GIVE_SECONDS.includes(Number(chosen('give'))) ? Number(chosen('give')) : 20;
 }
 
-const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound, logo: S.logo, give: S.give });
+// `since` says these choices were saved by a page that has "Evenly": see start().
+const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound, logo: S.logo, give: S.give, since: 'evenly' });
 
 // "Start the slideshow". Asks the server once before the stage goes up, so a wrong code or a dead
 // connection is found while someone is still standing at the computer. `resumed`: the page was
@@ -821,7 +822,7 @@ function clipNote() {
   if (p.bad) words += `, ${p.bad} can't be played on this computer`;
   if (p.left) words += `, ${p.left} with no room to keep ${p.left === 1 ? 'it' : 'them'} on this computer`;
   // With the photos shared out evenly, the number that comes to is said, so it can be checked.
-  if (!S.every && p.ready && S.ids.length) words += `. One after every ${perRound()} ${perRound() === 1 ? 'photo' : 'photos'}`;
+  if (!S.every && p.ready && S.ids.length) words += perRound() === 1 ? '. One after every photo' : `. One after every ${perRound()} photos`;
   if (note.textContent !== words) note.textContent = words;
 }
 
@@ -1581,7 +1582,11 @@ function start() {
   S.order = kept.order === 'oldest' ? 'oldest' : 'shuffle';
   S.captions = kept.captions !== false;
   S.mark = kept.mark !== false;
-  S.every = EVERY.includes(kept.every) ? kept.every : 0;
+  // Before "Evenly" existed the page started at 10 photos and saved that with every Start,
+  // chosen or not. So a 10 saved back then is nobody's choice, and counts as none. (5 and 20
+  // were always chosen, and so is a 10 saved since.)
+  const chosen = kept.since === 'evenly' || kept.every !== 10;
+  S.every = chosen && EVERY.includes(kept.every) ? kept.every : 0;
   S.sound = kept.sound === true;
   S.logo = LOGO_SECONDS.includes(kept.logo) ? kept.logo : 10;
   S.give = GIVE_SECONDS.includes(kept.give) ? kept.give : 20;
