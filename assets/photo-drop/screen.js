@@ -55,7 +55,8 @@ const TILT = 1.4; // degrees, for a framed print
 const PRINT_ROOM = 0.84; // a print takes no more than this share of the screen it could fill
 const SECONDS = [5, 8, 12, 20];
 const PAST = 200; // how far back Previous can go
-const EVERY = [5, 10, 20]; // the choices for how many photos go by between two videos
+const EVERY = [0, 5, 10, 20]; // the choices for how many photos go by between two videos. 0: the photos are shared out evenly among the videos
+const EVEN_ALONE = 10; // with "evenly" chosen and no video to share the photos among, a round is this many photos
 const CLIP_WAIT = 8000; // a video on this computer that hasn't shown its first picture by now is left out
 const CLIP_MAX = 3600000; // the longest a video stays on screen, whatever length its file claims
 const LOGO_SECONDS = [10, 15, 0]; // the choices for how long the logo's card stays up after a video. 0: no card
@@ -154,7 +155,7 @@ const S = {
   order: 'shuffle', // or 'oldest'
   captions: true,
   mark: true,
-  every: 10, // a video plays after this many photos
+  every: 0, // a video plays after this many photos. 0: after an even share of them (perRound)
   sound: false, // the videos play with their sound
   logo: 10, // after a video, the logo's card stays up this many seconds. 0: no card
   give: 20, // the giving slide stays up this many seconds at the end of each round. 0: no giving slide
@@ -261,13 +262,14 @@ function readForm() {
   S.order = chosen('order') === 'oldest' ? 'oldest' : 'shuffle';
   S.captions = $('#sc-captions').checked;
   S.mark = $('#sc-mark').checked;
-  S.every = EVERY.includes(Number(chosen('every'))) ? Number(chosen('every')) : 10;
+  S.every = EVERY.includes(Number(chosen('every'))) ? Number(chosen('every')) : 0;
   S.sound = $('#sc-sound').checked;
   S.logo = LOGO_SECONDS.includes(Number(chosen('logo'))) ? Number(chosen('logo')) : 10;
   S.give = GIVE_SECONDS.includes(Number(chosen('give'))) ? Number(chosen('give')) : 20;
 }
 
-const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound, logo: S.logo, give: S.give });
+// `since` says these choices were saved by a page that has "Evenly": see start().
+const keep = () => store.set({ code: S.code, seconds: S.seconds, order: S.order, captions: S.captions, mark: S.mark, every: S.every, sound: S.sound, logo: S.logo, give: S.give, since: 'evenly' });
 
 // "Start the slideshow". Asks the server once before the stage goes up, so a wrong code or a dead
 // connection is found while someone is still standing at the computer. `resumed`: the page was
@@ -672,8 +674,21 @@ function takeClips(list) {
 // Nor does the logo's card.
 const quiet = () => !S.trying && (!S.next || S.next.ready || !isPhoto(S.next));
 
+// How many photos go by between two videos: a round of photos. It is the number chosen on the
+// setup card, or, with "Evenly" chosen (S.every is 0), the photos shared out among the videos
+// that can be played here, so that one time round shows every photo once and every video once:
+// 70 photos and 5 videos make it 14. It is worked out afresh each time it is asked, so it follows
+// the photos as they are approved and the videos as they arrive. With no video to share the
+// photos among, a round is EVEN_ALONE photos, for the giving slide's sake.
+function perRound() {
+  if (S.every) return S.every;
+  const videos = clips.ready().length;
+  if (!videos || !S.ids.length) return EVEN_ALONE;
+  return Math.max(1, Math.round(S.ids.length / videos));
+}
+
 // The video to get ready next, or '' when it isn't a video's turn. One plays after every
-// S.every photos (after each pass, when there are fewer photos than that), and the videos take
+// round of photos (perRound; after each pass, when there are fewer photos than that), and the videos take
 // turns. A video also goes up when there is nothing else to show: no photo on screen, or one
 // that has run past its time with no photo to follow it.
 function dueClip(t) {
@@ -686,7 +701,7 @@ function dueClip(t) {
   const stuck = !!S.now && !S.paused && t >= S.dueAt + PATIENCE;
   if (S.now && !stuck) {
     if (S.ids.length && S.now.video) return ''; // not two videos in a row while there are photos
-    if (S.ids.length && S.since < Math.min(S.every, S.ids.length)) return '';
+    if (S.ids.length && S.since < Math.min(perRound(), S.ids.length)) return '';
   }
   // The logo's card has just followed a video. Another video doesn't cut in ahead of a photo
   // the browser has, however late that photo is, short of LOAD_TIMEOUT: then the browser
@@ -806,6 +821,8 @@ function clipNote() {
   if (p.coming !== null) words += `, the next one ${p.coming}% here`;
   if (p.bad) words += `, ${p.bad} can't be played on this computer`;
   if (p.left) words += `, ${p.left} with no room to keep ${p.left === 1 ? 'it' : 'them'} on this computer`;
+  // With the photos shared out evenly, the number that comes to is said, so it can be checked.
+  if (!S.every && p.ready && S.ids.length) words += perRound() === 1 ? '. One after every photo' : `. One after every ${perRound()} photos`;
   if (note.textContent !== words) note.textContent = words;
 }
 
@@ -881,7 +898,7 @@ function cardStep(slide, t) {
 
 // ---------------------------------------------------------------- the giving slide
 // The chapter's Zelle code and how to give, for S.give seconds, at the end of each round: after
-// a video and its logo, or, when no video ended the round, after every S.every photos. It is a
+// a video and its logo, or, when no video ended the round, after every round of photos. It is a
 // card like the logo's: the page holds its own copy of the code from the start, and with no
 // copy there is no slide that round. Its words are in screen.html (the template #sc-give), and
 // screen.css lays it out. It holds still, so a phone can read the code. In the test, where a
@@ -895,7 +912,7 @@ const code = { url: new URL('./school-daze-give-qr.png', import.meta.url).href, 
 function owesGive(slide) {
   if (!S.give || slide.gave || slide.kind === 'give') return false;
   if (!isPhoto(slide)) return true;
-  const round = DEMO ? S.ids.length : S.every;
+  const round = DEMO ? S.ids.length : perRound();
   return round > 0 && S.sinceGive >= round;
 }
 
@@ -1565,7 +1582,11 @@ function start() {
   S.order = kept.order === 'oldest' ? 'oldest' : 'shuffle';
   S.captions = kept.captions !== false;
   S.mark = kept.mark !== false;
-  S.every = EVERY.includes(kept.every) ? kept.every : 10;
+  // Before "Evenly" existed the page started at 10 photos and saved that with every Start,
+  // chosen or not. So a 10 saved back then is nobody's choice, and counts as none. (5 and 20
+  // were always chosen, and so is a 10 saved since.)
+  const chosen = kept.since === 'evenly' || kept.every !== 10;
+  S.every = chosen && EVERY.includes(kept.every) ? kept.every : 0;
   S.sound = kept.sound === true;
   S.logo = LOGO_SECONDS.includes(kept.logo) ? kept.logo : 10;
   S.give = GIVE_SECONDS.includes(kept.give) ? kept.give : 20;

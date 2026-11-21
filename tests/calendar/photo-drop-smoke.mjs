@@ -494,6 +494,9 @@ try {
   const live = stage.page;
   await live.waitForSelector('#sc-setup');
   await live.fill('#sc-code', DROP_SCREEN_CODE);
+  // The photos between two videos: shared out evenly unless a number is chosen.
+  assert.deepEqual(await live.evaluate(() => [...document.querySelectorAll('#sc-form input[name="every"]')].map((i) => [i.value, i.checked, i.nextElementSibling.textContent])),
+    [['0', true, 'Evenly'], ['5', false, '5 photos'], ['10', false, '10 photos'], ['20', false, '20 photos']]);
   for (const [name, value] of [['seconds', '5'], ['order', 'oldest'], ['every', '5']]) await live.click(`label.sc-choice:has(input[name="${name}"][value="${value}"])`);
   await live.click('#sc-start');
   await live.waitForSelector('#sc-stage');
